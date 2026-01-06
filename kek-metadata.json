@@ -1,0 +1,17 @@
+{
+  "token_label": "hsm-token",
+  "pkcs11_lib": "/usr/lib/softhsm/libsofthsm2.so",
+  "kek_count": 2,
+  "keks": [
+    {
+      "config_key": "exchange-key",
+      "label": "kek-exchange-v1",
+      "type": "aes"
+    },
+    {
+      "config_key": "2fa",
+      "label": "kek-2fa-v1",
+      "type": "aes"
+    }
+  ]
+}

@@ -1094,10 +1094,10 @@ func createKEK(args []string) {
 ```
 
 **Deliverables:**
-- [ ] create-kek работает
-- [ ] list-kek показывает все KEK
-- [ ] delete-kek удаляет KEK
-- [ ] Все команды протестированы
+- [x] create-kek работает
+- [x] list-kek показывает все KEK
+- [x] delete-kek удаляет KEK
+- [x] Все команды протестированы
 
 ---
 

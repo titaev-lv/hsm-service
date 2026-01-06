@@ -31,7 +31,7 @@ func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
 
 	// 3. Find and cache all configured KEKs
 	keys := make(map[string]cipher.AEAD)
-	for label, keyConfig := range cfg.Keys {
+	for _, keyConfig := range cfg.Keys {
 		if keyConfig.Type != "aes" {
 			continue // Skip non-AES keys for now
 		}
@@ -55,8 +55,8 @@ func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
 			return nil, fmt.Errorf("failed to create GCM for key %s: %w", keyConfig.Label, err)
 		}
 
-		// Cache the GCM cipher
-		keys[label] = gcm
+		// Cache the GCM cipher by keyConfig.Label (e.g., "kek-exchange-v1")
+		keys[keyConfig.Label] = gcm
 	}
 
 	if len(keys) == 0 {

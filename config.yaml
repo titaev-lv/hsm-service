@@ -6,15 +6,15 @@ server:
     key_path: /app/pki/server/hsm-service.local.key
 
 hsm:
-  library: /usr/lib/softhsm/libsofthsm2.so
-  token_label: hsm-token
+  pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
+  slot_id: hsm-token
   keys:
-    - label: kek-exchange-v1
-      context: exchange-key
-      active: true
-    - label: kek-2fa-v1
-      context: 2fa
-      active: true
+    exchange-key:
+      label: kek-exchange-v1
+      type: aes
+    2fa:
+      label: kek-2fa-v1
+      type: aes
 
 acl:
   revoked_file: /app/pki/revoked.yaml
