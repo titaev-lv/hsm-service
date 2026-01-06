@@ -1,0 +1,34 @@
+server:
+  port: "8443"
+  tls:
+    ca_path: /app/pki/ca/ca.crt
+    cert_path: /app/pki/server/hsm-service.local.crt
+    key_path: /app/pki/server/hsm-service.local.key
+
+hsm:
+  library: /usr/lib/softhsm/libsofthsm2.so
+  token_label: hsm-token
+  keys:
+    - label: kek-exchange-v1
+      context: exchange-key
+      active: true
+    - label: kek-2fa-v1
+      context: 2fa
+      active: true
+
+acl:
+  revoked_file: /app/pki/revoked.yaml
+  mappings:
+    Trading:
+      - exchange-key
+    2FA:
+      - 2fa
+    Database: []
+
+rate_limit:
+  requests_per_second: 100
+  burst: 50
+
+logging:
+  level: info
+  format: json

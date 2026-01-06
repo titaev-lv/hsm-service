@@ -322,8 +322,11 @@ go get golang.org/x/time/rate
 - golang.org/x/time/rate для rate limiting
 
 **Deliverables:**
-- [ ] go.mod создан
-- [ ] Зависимости скачаны
+- [x] go.mod создан
+- [x] Зависимости скачаны
+- [x] crypto11 (ThalesGroup) v1.6.0 установлен
+- [x] yaml.v3 v3.0.1 установлен
+- [x] golang.org/x/time v0.14.0 установлен
 
 ---
 
@@ -388,10 +391,12 @@ func (c *Config) Validate() error
 ```
 
 **Deliverables:**
-- [ ] Config types определены
-- [ ] Load() функция работает
-- [ ] ENV variables поддерживаются (HSM_PIN)
-- [ ] Validation логика реализована
+- [x] Config types определены (types.go)
+- [x] Load() функция работает (config.go)
+- [x] ENV variables поддерживаются (HSM_PIN и др.)
+- [x] Validation логика реализована (validateConfig)
+- [x] Unit tests созданы (config_test.go)
+- [x] Все тесты проходят
 
 ---
 
@@ -429,9 +434,12 @@ func AuditLogger(next http.Handler) http.Handler {
 ```
 
 **Deliverables:**
-- [ ] Structured logging настроен
-- [ ] Audit logger реализован
-- [ ] НЕ логируются plaintext/secrets
+- [x] Structured logging настроен (log/slog)
+- [x] Audit logger реализован (AuditLogMiddleware)
+- [x] НЕ логируются plaintext/secrets (SanitizeForLog)
+- [x] RecoveryMiddleware для panic recovery
+- [x] Unit tests созданы (logger_test.go)
+- [x] Все тесты проходят
 
 ---
 
@@ -489,10 +497,10 @@ func (h *HSMContext) Close() error {
 ```
 
 **Deliverables:**
-- [ ] PKCS#11 инициализация работает
-- [ ] KEK успешно находятся по label
-- [ ] Error handling корректен
-- [ ] Context cleanup через Close()
+- [x] PKCS#11 инициализация работает
+- [x] KEK успешно находятся по label
+- [x] Error handling корректен
+- [x] Context cleanup через Close()
 
 ---
 
@@ -586,10 +594,10 @@ func BuildAAD(context, clientCN string) []byte {
 ```
 
 **Deliverables:**
-- [ ] Encrypt работает корректно
-- [ ] Decrypt работает корректно
-- [ ] AAD проверяется
-- [ ] Unit tests для round-trip
+- [x] Encrypt работает корректно
+- [x] Decrypt работает корректно
+- [x] AAD проверяется
+- [x] Unit tests для round-trip (6 тестов проходят)
 
 **Testing:**
 ```go
@@ -686,9 +694,9 @@ func (s *Server) Start() error {
 ```
 
 **Deliverables:**
-- [ ] TLS 1.3 server работает
-- [ ] mTLS обязателен
-- [ ] Endpoints зарегистрированы
+- [x] TLS 1.3 server работает
+- [x] mTLS обязателен
+- [x] Endpoints зарегистрированы
 
 ---
 
@@ -775,10 +783,10 @@ func (a *ACLChecker) CheckAccess(cert *x509.Certificate, context string) error {
 ```
 
 **Deliverables:**
-- [ ] ACL проверка работает
-- [ ] revoked.yaml загружается
-- [ ] OU-based authorization работает
-- [ ] Unit tests
+- [x] ACL проверка работает
+- [x] revoked.yaml загружается
+- [x] OU-based authorization работает
+- [x] Unit tests
 
 ---
 
@@ -911,11 +919,11 @@ func HealthHandler(hsmCtx *hsm.HSMContext) http.HandlerFunc {
 ```
 
 **Deliverables:**
-- [ ] /encrypt handler работает
-- [ ] /decrypt handler работает
-- [ ] /health handler работает
-- [ ] Error handling корректен
-- [ ] Unit tests
+- [x] /encrypt handler работает
+- [x] /decrypt handler работает
+- [x] /health handler работает
+- [x] Error handling корректен
+- [x] Unit tests
 
 ---
 
@@ -977,9 +985,9 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 ```
 
 **Deliverables:**
-- [ ] Rate limiting работает
-- [ ] Per-client limiters
-- [ ] 429 возвращается при превышении
+- [x] Rate limiting работает
+- [x] Per-client limiters
+- [x] 429 возвращается при превышении
 
 ---
 
@@ -1032,9 +1040,9 @@ func main() {
 ```
 
 **Deliverables:**
-- [ ] main.go собирает все компоненты
-- [ ] Graceful startup
-- [ ] Error handling
+- [x] main.go собирает все компоненты
+- [x] Graceful startup
+- [x] Error handling
 
 ---
 
@@ -1333,9 +1341,9 @@ curl -X POST https://localhost:8443/encrypt \
 | 1   | PKI   | PKI scripts, structure | ✅ |
 | 2   | PKI   | Certificate generation, MySQL test | ✅ |
 | 3   | PKI   | Documentation, review | ✅ |
-| 4   | Core  | Project setup, config | ⬜ |
-| 5   | Core  | PKCS#11 integration | ⬜ |
-| 6   | Core  | HTTP server, handlers | ⬜ |
+| 4   | Core  | Project setup, config | ✅ |
+| 5   | Core  | PKCS#11 integration | ✅ |
+| 6   | Core  | HTTP server, handlers | ✅ |
 | 7   | Core  | Middleware, main | ⬜ |
 | 8   | Core  | CLI tool | ⬜ |
 | 9   | Final | Docker setup | ⬜ |
