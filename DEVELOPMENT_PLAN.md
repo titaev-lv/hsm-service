@@ -193,9 +193,9 @@ revoked: []
 ```
 
 **Deliverables:**
-- [ ] Все сертификаты выпущены
-- [ ] inventory.yaml обновлен
-- [ ] Проверка: openssl verify -CAfile ca.crt <cert>.crt
+- [x] Все сертификаты выпущены
+- [x] inventory.yaml обновлен
+- [x] Проверка: openssl verify -CAfile ca.crt <cert>.crt
 
 ---
 
@@ -222,8 +222,8 @@ FLUSH PRIVILEGES;
 ```
 
 **Deliverables:**
-- [ ] MySQL настроен с mTLS
-- [ ] Тестовый пользователь создан
+- [x] MySQL настроен с mTLS
+- [x] Тестовый пользователь создан
 
 ---
 
@@ -248,9 +248,9 @@ mysql \
 - Подключение с истекшим сертификатом → FAIL
 
 **Deliverables:**
-- [ ] mTLS подключение к MySQL работает
-- [ ] Negative tests пройдены
-- [ ] Документирован процесс в README-PKI.md
+- [x] mTLS подключение к MySQL работает
+- [x] Negative tests пройдены
+- [x] Документирован процесс в README-PKI.md
 
 ---
 
@@ -271,8 +271,8 @@ mysql \
 8. Troubleshooting
 
 **Deliverables:**
-- [ ] README-PKI.md создан
-- [ ] Все примеры протестированы
+- [x] README-PKI.md создан
+- [x] Все примеры протестированы
 
 ---
 
@@ -281,11 +281,11 @@ mysql \
 **Estimate:** 1 hour
 
 **Review checklist:**
-- [ ] Скрипты следуют bash best practices
-- [ ] Error handling корректен
-- [ ] Permissions на файлах правильные (0600 для .key)
-- [ ] inventory.yaml формат валиден
-- [ ] Все сертификаты проверены через openssl
+- [x] Скрипты следуют bash best practices
+- [x] Error handling корректен
+- [x] Permissions на файлах правильные (0600 для .key)
+- [x] inventory.yaml формат валиден
+- [x] Все сертификаты проверены через openssl
 
 ---
 
@@ -294,6 +294,7 @@ mysql \
 - ✅ Выпущены тестовые сертификаты
 - ✅ mTLS протестирован на MySQL
 - ✅ Документация готова
+- ✅ Code review завершен
 
 ---
 
@@ -1329,9 +1330,9 @@ curl -X POST https://localhost:8443/encrypt \
 
 | Day | Phase | Tasks | Status |
 |-----|-------|-------|--------|
-| 1   | PKI   | PKI scripts, structure | ⬜ |
-| 2   | PKI   | Certificate generation, MySQL test | ⬜ |
-| 3   | PKI   | Documentation, review | ⬜ |
+| 1   | PKI   | PKI scripts, structure | ✅ |
+| 2   | PKI   | Certificate generation, MySQL test | ✅ |
+| 3   | PKI   | Documentation, review | ✅ |
 | 4   | Core  | Project setup, config | ⬜ |
 | 5   | Core  | PKCS#11 integration | ⬜ |
 | 6   | Core  | HTTP server, handlers | ⬜ |

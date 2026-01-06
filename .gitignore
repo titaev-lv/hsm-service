@@ -1,0 +1,49 @@
+# Binaries
+hsm-service
+hsm-admin
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace file
+go.work
+
+# Private keys (NEVER commit!)
+*.key
+*.pem
+*.crt
+*.srl
+!*.example.key
+inventory.yaml
+revoked.yaml
+
+# SoftHSM tokens
+data/tokens/*
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/var/log/
+
+# Temporary files
+tmp/
+temp/
