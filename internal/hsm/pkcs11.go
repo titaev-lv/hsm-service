@@ -10,8 +10,9 @@ import (
 
 // HSMContext represents the PKCS#11 session and cached key handles
 type HSMContext struct {
-	ctx  *crypto11.Context
-	keys map[string]cipher.AEAD // label -> GCM cipher
+	ctx            *crypto11.Context
+	keys           map[string]cipher.AEAD // label -> GCM cipher
+	contextToLabel map[string]string      // context -> label mapping
 }
 
 // InitHSM initializes the PKCS#11 context and loads all configured keys
@@ -31,10 +32,14 @@ func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
 
 	// 3. Find and cache all configured KEKs
 	keys := make(map[string]cipher.AEAD)
-	for _, keyConfig := range cfg.Keys {
+	contextToLabel := make(map[string]string)
+	for context, keyConfig := range cfg.Keys {
 		if keyConfig.Type != "aes" {
 			continue // Skip non-AES keys for now
 		}
+
+		// Save context -> label mapping
+		contextToLabel[context] = keyConfig.Label
 
 		// Find key by label
 		secretKey, err := ctx.FindKey(nil, []byte(keyConfig.Label))
@@ -65,8 +70,9 @@ func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
 	}
 
 	return &HSMContext{
-		ctx:  ctx,
-		keys: keys,
+		ctx:            ctx,
+		keys:           keys,
+		contextToLabel: contextToLabel,
 	}, nil
 }
 
@@ -91,4 +97,13 @@ func (h *HSMContext) GetKeyLabels() []string {
 func (h *HSMContext) HasKey(label string) bool {
 	_, exists := h.keys[label]
 	return exists
+}
+
+// GetKeyLabelByContext returns the key label for a given context
+func (h *HSMContext) GetKeyLabelByContext(context string) (string, error) {
+	label, exists := h.contextToLabel[context]
+	if !exists {
+		return "", fmt.Errorf("no key configured for context: %s", context)
+	}
+	return label, nil
 }
