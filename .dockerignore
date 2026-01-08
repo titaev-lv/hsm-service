@@ -1,0 +1,49 @@
+# Binaries
+hsm-service
+hsm-admin
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation (excluding README files needed in image)
+*.md
+!README.md
+
+# Data directories
+data/tokens/*
+
+# Build artifacts
+kek-metadata.json
+
+# Development files
+DEVELOPMENT_PLAN.md
+ARCHITECTURE.md
+TECHNICAL_SPEC.md

@@ -1153,8 +1153,8 @@ ENTRYPOINT ["/app/init-hsm.sh"]
 ```
 
 **Deliverables:**
-- [ ] Dockerfile собирается
-- [ ] Multi-stage build работает
+- [x] Dockerfile собирается
+- [x] Multi-stage build работает
 
 ---
 
@@ -1198,9 +1198,13 @@ networks:
 ```
 
 **Deliverables:**
-- [ ] docker-compose работает
-- [ ] Volumes настроены корректно
-- [ ] ENV variables работают
+- [x] docker-compose работает
+- [x] Volumes настроены корректно
+- [x] ENV variables работают
+- [x] .env.example создан
+- [x] Healthcheck настроен
+- [x] Networks настроены
+- [x] Resource limits добавлены
 
 ---
 
@@ -1243,9 +1247,12 @@ exec /app/hsm-service
 ```
 
 **Deliverables:**
-- [ ] Script инициализирует токен
-- [ ] Idempotent (можно запускать повторно)
-- [ ] Exec в конце для PID 1
+- [x] Script инициализирует токен
+- [x] Idempotent (можно запускать повторно)
+- [x] Exec в конце для PID 1
+- [x] Автоматически создает KEK при первом запуске
+- [x] Проверяет наличие KEK перед запуском
+- [x] Используется create-kek helper tool
 
 ---
 

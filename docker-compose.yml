@@ -1,0 +1,81 @@
+services:
+  hsm-service:
+    image: hsm-service:latest
+    container_name: hsm-service
+    hostname: hsm-service
+    
+    # Port mapping
+    ports:
+      - "8443:8443"
+    
+    # Environment variables (loaded from .env file)
+    environment:
+      - HSM_PIN=${HSM_PIN:-1234}
+      - HSM_SO_PIN=${HSM_SO_PIN:-12345678}
+      - HSM_TOKEN_LABEL=${HSM_TOKEN_LABEL:-hsm-token}
+      - CONFIG_PATH=/app/config.yaml
+    
+    # Volume mounts
+    volumes:
+      # Persistent token storage
+      - ./data/tokens:/var/lib/softhsm/tokens
+      
+      # PKI certificates (read-only)
+      - ./pki:/app/pki:ro
+      
+      # Configuration file (read-only)
+      - ./config.yaml:/app/config.yaml:ro
+      
+      # SoftHSM configuration (read-only)
+      - ./softhsm2.conf:/etc/softhsm2.conf:ro
+    
+    # Network configuration
+    networks:
+      - hsm-net
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits (optional, adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Read-only root filesystem (commented out - SoftHSM needs write access to /var/lib/softhsm/tokens)
+    # read_only: true
+    
+    # tmpfs mounts for writable system directories
+    tmpfs:
+      - /tmp:noexec,nodev,nosuid,size=64m
+
+# Networks
+networks:
+  hsm-net:
+    driver: bridge
+    name: hsm-net
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+
+# Volumes (optional: use named volumes instead of bind mounts)
+# volumes:
+#   hsm-tokens:
+#     driver: local
