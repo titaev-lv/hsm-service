@@ -127,13 +127,16 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
 
 **Issues Found:**
 
-1. **🟠 HIGH: No request size limits**
+1. **✅ FIXED: Request size limits implemented**
    ```go
-   // handlers.go:67
-   json.NewDecoder(r.Body).Decode(&req)
+   // handlers.go (EncryptHandler and DecryptHandler)
+   const maxRequestSize = 1 * 1024 * 1024 // 1MB
+   r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
    ```
-   - Unbounded request body
-   - **Risk:** DoS via large payloads
+   - ✅ 1MB limit prevents DoS via large payloads
+   - ✅ Applied to both /encrypt and /decrypt endpoints
+   - ✅ Returns 413 Request Entity Too Large automatically
+   - **Status:** DoS protection via oversized requests implemented
 
 2. **🟠 HIGH: No timeout configuration**
    ```go

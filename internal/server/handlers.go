@@ -60,6 +60,10 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			return
 		}
 
+		// Limit request body size (DoS protection)
+		const maxRequestSize = 1 * 1024 * 1024 // 1MB
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
+
 		// 1. Parse request
 		var req EncryptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -145,6 +149,10 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			respondError(w, http.StatusMethodNotAllowed, "only POST allowed")
 			return
 		}
+
+		// Limit request body size (DoS protection)
+		const maxRequestSize = 1 * 1024 * 1024 // 1MB
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
 
 		// 1. Parse request
 		var req DecryptRequest
