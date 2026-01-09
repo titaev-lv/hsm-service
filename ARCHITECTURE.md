@@ -57,9 +57,9 @@ graph TB
     CRYPTO --> KEK1
     CRYPTO --> KEK2
     
-    TS1 -.->|stores encrypted DEKs| DB1
-    TS2 -.->|stores encrypted DEKs| DB1
-    WEB -.->|stores encrypted secrets| DB2
+    TS1 -.->|mTLS<br/>stores encrypted DEKs| DB1
+    TS2 -.->|mTLS<br/>stores encrypted DEKs| DB1
+    WEB -.->|mTLS<br/>stores encrypted secrets| DB2
 ```
 
 ### Проблема, которую решаем

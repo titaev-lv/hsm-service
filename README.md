@@ -1,6 +1,179 @@
-# HSM Service
+# 🔐 HSM Service - Centralized Cryptographic Key Management
 
-Enterprise-grade HSM (Hardware Security Module) Key Encryption Key (KEK) management service с поддержкой mTLS, автоматической ротации ключей и ACL.
+> **Никогда больше не храните ключи шифрования в конфигах!**
+
+Enterprise-grade HSM (Hardware Security Module) сервис для централизованного управления Key Encryption Keys (KEK) с поддержкой автоматической ротации, mTLS аутентификации и гранулярного контроля доступа.
+
+---
+
+## 💡 Зачем это нужно?
+
+### Проблема: Ключи шифрования везде
+
+В современных распределенных системах каждый микросервис часто хранит свои ключи шифрования локально:
+
+❌ **Проблемы традиционного подхода:**
+- Ключи в environment variables или config файлах
+- Каждый сервис имеет копию KEK → высокий риск утечки
+- Невозможность централизованной ротации ключей
+- Нет аудита криптографических операций
+- При компрометации одного сервиса → все данные под угрозой
+- Сложность управления ключами в multi-service архитектуре
+
+### Решение: Централизованный HSM Service
+
+✅ **HSM Service обеспечивает:**
+- **Zero trust**: KEK НИКОГДА не покидают HSM - только шифрование/расшифровка
+- **Централизация**: Один источник истины для всех ключей
+- **Простая ротация**: Ротация KEK без перезапуска микросервисов
+- **Аудит**: Полное логирование всех криптографических операций
+- **mTLS + ACL**: Гранулярный контроль доступа по Organizational Unit
+- **PCI DSS compliance**: Автоматическая ротация каждые 90 дней
+- **High Availability**: Stateless архитектура для горизонтального масштабирования
+
+---
+
+## 🎯 Где применять?
+
+### Use Case 1: Защита данных в базах данных
+
+**Проблема**: Нужно хранить sensitive данные (PII, платежные данные, пароли) в БД
+
+**Решение**:
+```
+Application → HSM Service (encrypt with KEK) → Store DEK in DB
+Application ← HSM Service (decrypt with KEK) ← Retrieve DEK from DB
+Application uses DEK to encrypt/decrypt actual data
+```
+
+**Применимо для**:
+- E-commerce платформы (платежные данные)
+- Healthcare системы (медицинские записи, HIPAA compliance)
+- Banking приложения (транзакции, PCI DSS compliance)
+- SaaS платформы (данные клиентов, GDPR compliance)
+
+---
+
+### Use Case 2: Microservices Architecture
+
+**Проблема**: 50+ микросервисов, у каждого свои ключи для inter-service communication
+
+**Решение**: Централизованное управление ключами через HSM Service
+
+```
+Trading Service (OU=Trading) → HSM → encrypt/decrypt exchange-key context
+2FA Service (OU=2FA) → HSM → encrypt/decrypt 2fa context
+Billing Service (OU=Billing) → HSM → encrypt/decrypt billing context
+```
+
+**Преимущества**:
+- Единая точка управления ключами для всех сервисов
+- Автоматическая ротация без downtime
+- Изоляция по contexts (каждый сервис видит только свои ключи)
+- Аудит всех операций
+
+---
+
+### Use Case 3: Secrets Management
+
+**Проблема**: Хранение secrets (API keys, tokens, credentials) в Vault/env vars
+
+**Решение**: Шифрование secrets через HSM Service перед сохранением
+
+```
+Secret → HSM Service (encrypt) → Store encrypted in Vault/DB
+Secret ← HSM Service (decrypt) ← Retrieve encrypted from Vault/DB
+```
+
+**Применимо для**:
+- CI/CD pipelines (credentials для deployment)
+- API key management
+- OAuth tokens хранение
+- Database credentials rotation
+
+---
+
+### Use Case 4: Compliance (PCI DSS, GDPR, HIPAA)
+
+**Проблема**: Регуляторы требуют ротацию ключей, аудит доступа, secure key storage
+
+**HSM Service из коробки**:
+- ✅ PCI DSS Requirement 3.6.4: Ротация KEK каждые 90 дней
+- ✅ PCI DSS Requirement 3.5: Защита ключей от unauthorized access (mTLS + ACL)
+- ✅ GDPR Article 32: Encryption of personal data
+- ✅ HIPAA: Encryption and key management controls
+- ✅ Audit trail всех операций для compliance отчетов
+
+---
+
+### Use Case 5: Multi-Tenant SaaS
+
+**Проблема**: Каждый tenant требует изоляции данных
+
+**Решение**: Dedicated context для каждого tenant
+
+```
+Tenant A → HSM Service (context: tenant-a-data)
+Tenant B → HSM Service (context: tenant-b-data)
+Tenant C → HSM Service (context: tenant-c-data)
+```
+
+**ACL гарантирует**: Tenant A не может расшифровать данные Tenant B
+
+---
+
+## 🏗️ Архитектура системы
+
+### Контекст использования
+
+```mermaid
+graph TB
+    subgraph "Распределенные сервисы"
+        TS1[Trading Service 1<br/>OU=Trading]
+        TS2[Trading Service 2<br/>OU=Trading]
+        WEB[Web 2FA Service<br/>OU=2FA]
+        MOB[Mobile 2FA App<br/>OU=2FA]
+    end
+    
+    subgraph "HSM Service"
+        API[HTTPS API :8443<br/>mTLS Required]
+        ACL[ACL Engine<br/>OU-based]
+        CRYPTO[Crypto Engine<br/>AES-256-GCM]
+        
+        subgraph "SoftHSM v2"
+            KEK1[kek-exchange-v1<br/>AES-256]
+            KEK2[kek-2fa-v1<br/>AES-256]
+        end
+    end
+    
+    subgraph "Databases"
+        DB1[(Trading DB<br/>encrypted DEKs)]
+        DB2[(2FA DB<br/>encrypted secrets)]
+    end
+    
+    TS1 -->|mTLS| API
+    TS2 -->|mTLS| API
+    WEB -->|mTLS| API
+    MOB -->|mTLS| API
+    
+    API --> ACL
+    ACL --> CRYPTO
+    CRYPTO --> KEK1
+    CRYPTO --> KEK2
+    
+    TS1 -.->|mTLS<br/>stores encrypted DEKs| DB1
+    TS2 -.->|mTLS<br/>stores encrypted DEKs| DB1
+    WEB -.->|mTLS<br/>stores encrypted secrets| DB2
+```
+
+**Ключевые принципы**:
+- 🔒 KEK никогда не покидают HSM
+- 🔐 Все соединения - mTLS (clients ↔ HSM, services ↔ DB)
+- 🎯 ACL изолирует contexts по Organizational Unit
+- 🔄 Zero-downtime ротация ключей
+- 📊 Полный аудит всех операций
+
+---
 
 ## � Документация
 
