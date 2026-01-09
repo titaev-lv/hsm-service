@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/titaev-lv/hsm-service/internal/config"
 	"github.com/titaev-lv/hsm-service/internal/hsm"
@@ -117,11 +119,25 @@ func main() {
 		log.Fatalf("Server error: %v", err)
 	case sig := <-sigChan:
 		log.Printf("Received signal %v, shutting down gracefully...", sig)
+
+		// Create shutdown context with timeout
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		// 1. Stop ACL auto-reload
+		log.Println("Stopping ACL auto-reload...")
+		if err := aclChecker.StopAutoReload(shutdownCtx); err != nil {
+			log.Printf("Warning: ACL auto-reload stop timeout: %v", err)
+		}
+
+		// 2. Stop HTTP server
+		log.Println("Stopping HTTP server...")
 		if err := srv.Shutdown(); err != nil {
 			log.Printf("Error during shutdown: %v", err)
 		}
 
-		// Close HSM context with panic recovery
+		// 3. Close HSM context with panic recovery
+		log.Println("Closing HSM context...")
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
