@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/titaev-lv/hsm-service/internal/config"
 	"github.com/titaev-lv/hsm-service/internal/hsm"
@@ -75,6 +76,12 @@ func NewServer(cfg *config.ServerConfig, hsmCtx *hsm.HSMContext, aclChecker *ACL
 		Addr:      ":" + cfg.Port,
 		Handler:   handler,
 		TLSConfig: tlsConfig,
+		// Timeout protection against Slowloris attacks
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 
 	return &Server{

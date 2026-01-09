@@ -123,7 +123,7 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
 
 ---
 
-### 🟠 A04:2021 – Insecure Design (MEDIUM RISK)
+### � A04:2021 – Insecure Design (LOW RISK - 2/3 FIXED)
 
 **Issues Found:**
 
@@ -138,17 +138,26 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
    - ✅ Returns 413 Request Entity Too Large automatically
    - **Status:** DoS protection via oversized requests implemented
 
-2. **🟠 HIGH: No timeout configuration**
+2. **✅ FIXED: Server timeouts configured**
    ```go
-   // server.go:77
+   // server.go:74
    httpServer := &http.Server{
-       Addr:      ":" + cfg.Port,
-       Handler:   handler,
-       TLSConfig: tlsConfig,
-       // Missing: ReadTimeout, WriteTimeout, IdleTimeout
+       Addr:              ":" + cfg.Port,
+       Handler:           handler,
+       TLSConfig:         tlsConfig,
+       ReadTimeout:       10 * time.Second,
+       WriteTimeout:      10 * time.Second,
+       IdleTimeout:       60 * time.Second,
+       ReadHeaderTimeout: 5 * time.Second,
+       MaxHeaderBytes:    1 << 20, // 1 MB
    }
    ```
-   - Slowloris attacks possible
+   - ✅ ReadTimeout 10s - защита от медленного чтения request
+   - ✅ WriteTimeout 10s - защита от медленной записи response
+   - ✅ IdleTimeout 60s - автоматическое закрытие keep-alive соединений
+   - ✅ ReadHeaderTimeout 5s - защита от slow header attacks
+   - ✅ MaxHeaderBytes 1MB - ограничение размера заголовков
+   - **Status:** Slowloris attack protection implemented
 
 3. **🟡 MEDIUM: Rate limiter memory leak**
    ```go
