@@ -18,8 +18,9 @@ Enterprise-grade HSM (Hardware Security Module) Key Encryption Key (KEK) managem
 | 🔧 Troubleshooting | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 15 мин |
 | 💾 Backup & DR | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | 10 мин |
 | 🛠️ CLI tools | [CLI_TOOLS.md](CLI_TOOLS.md) | 10 мин |
+| 🧪 Test Plan | [TEST_PLAN.md](TEST_PLAN.md) | 20 мин |
 
-**Всего 19 документов**, ~12,000 строк, полное покрытие от quick start до production deployment.
+**Всего 20 документов**, ~16,500 строк, полное покрытие от quick start до production deployment.
 
 ---
 
