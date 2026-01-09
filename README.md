@@ -98,11 +98,44 @@ Secret ← HSM Service (decrypt) ← Retrieve encrypted from Vault/DB
 **Проблема**: Регуляторы требуют ротацию ключей, аудит доступа, secure key storage
 
 **HSM Service из коробки**:
-- ✅ PCI DSS Requirement 3.6.4: Ротация KEK каждые 90 дней
-- ✅ PCI DSS Requirement 3.5: Защита ключей от unauthorized access (mTLS + ACL)
-- ✅ GDPR Article 32: Encryption of personal data
-- ✅ HIPAA: Encryption and key management controls
-- ✅ Audit trail всех операций для compliance отчетов
+- ✅ **PCI DSS Requirement 3.6.4**: Ротация KEK каждые 90 дней (автоматическая)
+- ✅ **PCI DSS Requirement 3.5**: Защита ключей от unauthorized access (mTLS + ACL)
+- ✅ **PCI DSS Requirement 3.6.1**: Full documentation ключей (inventory.yaml)
+- ✅ **PCI DSS Requirement 3.7**: Минимизация доступа к ключам (ACL по OU)
+- ✅ **PCI DSS Requirement 10.2**: Audit trail всех криптографических операций
+- ✅ **GDPR Article 32**: Encryption of personal data
+- ✅ **HIPAA**: Encryption and key management controls
+
+#### 📋 Детальное соответствие PCI DSS v4.0
+
+| Requirement | Описание | Реализация в HSM Service |
+|------------|----------|--------------------------|
+| **3.5.1** | Cryptographic keys secured against disclosure | KEK хранятся в SoftHSM (PKCS#11), никогда не экспортируются |
+| **3.6.1.1** | Cryptographic keys documented | `pki/inventory.yaml` - полный реестр KEK с версиями |
+| **3.6.1.2** | Key usage documented | Каждый KEK привязан к context (exchange, 2fa, billing) |
+| **3.6.1.3** | Key custodian defined | ACL определяет, кто может использовать каждый context |
+| **3.6.4** | Key rotation every 90 days | Автоматическая ротация через `POST /rotate/:context` |
+| **3.7.1** | Minimize locations with keys | Только HSM Service имеет доступ к KEK |
+| **3.7.2** | Minimum access to keys | ACL на уровне OU + context изоляция |
+| **10.2.2** | All actions by privileged users | Логирование всех encrypt/decrypt операций |
+| **10.3** | Audit trail for key events | Timestamps + client CN + context в логах |
+| **12.3.2** | Cryptographic architecture documented | `ARCHITECTURE.md`, `API.md` |
+
+**Пример audit log для PCI DSS 10.2**:
+```json
+{
+  "timestamp": "2026-01-10T15:30:45Z",
+  "client_cn": "trading-service-1.ct-system.local",
+  "client_ou": "Trading",
+  "operation": "encrypt",
+  "context": "exchange-key",
+  "kek_alias": "kek-exchange-v2",
+  "status": "success",
+  "request_id": "req-abc123"
+}
+```
+
+**Для PCI DSS audit**: экспортируйте логи в SIEM (Splunk/ELK), настройте алерты на unauthorized access attempts.
 
 ---
 
