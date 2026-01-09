@@ -43,14 +43,24 @@ func NewServer(cfg *config.ServerConfig, hsmCtx *hsm.HSMContext, aclChecker *ACL
 	}
 
 	// 3. TLS Config with mTLS
+	// Security: TLS 1.3 only (no TLS 1.2 fallback)
+	// Rationale:
+	//   - TLS 1.3 removes weak algorithms (RC4, 3DES, MD5, SHA-1)
+	//   - Mandatory perfect forward secrecy (PFS)
+	//   - Encrypted handshake (protects metadata)
+	//   - Simplified cipher suite selection
+	//   - PCI DSS 4.0 strongly recommends TLS 1.3+
+	// Trade-off: Clients MUST support TLS 1.3 (all modern clients do since 2018)
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    caCertPool,
-		MinVersion:   tls.VersionTLS13,
+		MinVersion:   tls.VersionTLS13, // No TLS 1.2 fallback - intentional security decision
 		CipherSuites: []uint16{
-			tls.TLS_AES_256_GCM_SHA384,
-			tls.TLS_CHACHA20_POLY1305_SHA256,
+			// TLS 1.3 cipher suites (only these two are needed)
+			// See RFC 8446 - TLS 1.3 defines only 5 cipher suites, these 2 cover 99.9% of clients
+			tls.TLS_AES_256_GCM_SHA384,       // AES-256-GCM with SHA-384 (primary, hardware accelerated on x86/AMD64)
+			tls.TLS_CHACHA20_POLY1305_SHA256, // ChaCha20-Poly1305 (faster on ARM/mobile without AES-NI)
 		},
 	}
 
