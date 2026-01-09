@@ -90,8 +90,67 @@ kill -TERM <pid>
 Вывод:
 ```
 2026/01/07 00:31:00 Received signal interrupt, shutting down gracefully...
+2026/01/07 00:31:00 Stopping ACL auto-reload...
+2026/01/07 00:31:00 Stopping HTTP server...
+2026/01/07 00:31:00 Closing HSM context...
 2026/01/07 00:31:00 HSM service stopped
 ```
+
+**Graceful shutdown включает:**
+- Остановку auto-reload для revoked.yaml (timeout 15s)
+- Завершение HTTP сервера (existing connections)
+- Закрытие PKCS#11 сессии
+- Cleanup rate limiter goroutines
+
+## Auto-Reload Revoked Certificates
+
+Сервис автоматически перезагружает `revoked.yaml` каждые **30 секунд** без перезапуска.
+
+### Features
+
+✅ **Automatic validation**: битые YAML файлы не применяются
+✅ **Old data preserved**: при ошибке валидации старые данные сохраняются  
+✅ **No downtime**: перезагрузка происходит в фоне
+✅ **File deletion handling**: если файл удален → список очищается
+
+### Validation Rules
+
+```yaml
+# ✅ Valid
+revoked:
+  - cn: "test.example.com"
+    serial: "1234"
+    reason: "key-compromise"
+    date: "2024-01-15"
+
+# ❌ Invalid - empty CN
+revoked:
+  - cn: ""
+    serial: "1234"
+
+# ❌ Invalid - duplicate CN
+revoked:
+  - cn: "test.example.com"
+    serial: "1234"
+  - cn: "test.example.com"  # ERROR: duplicate
+    serial: "5678"
+
+# ❌ Invalid - syntax error
+revoked:
+  - cn: "test
+    reason: unclosed quote
+```
+
+### Logs
+
+```
+INFO  started revoked.yaml auto-reload interval=30s file=/app/pki/revoked.yaml
+INFO  revoked.yaml reloaded successfully path=/app/pki/revoked.yaml count=5
+WARN  revoked.yaml reload skipped due to validation error path=/app/pki/revoked.yaml
+INFO  revoked.yaml deleted, cleared revocation list
+```
+
+**Подробная документация**: [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
 
 ## Проверка работы
 

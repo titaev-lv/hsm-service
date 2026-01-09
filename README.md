@@ -2,7 +2,28 @@
 
 Enterprise-grade HSM (Hardware Security Module) Key Encryption Key (KEK) management service с поддержкой mTLS, автоматической ротации ключей и ACL.
 
-## 🔐 Основные возможности
+## � Документация
+
+**Начните здесь**: [DOCS_INDEX.md](DOCS_INDEX.md) - Master index всей документации с порядком чтения
+
+### Быстрые ссылки
+
+| Задача | Документ | Время |
+|--------|----------|-------|
+| 🚀 Запустить локально | [QUICKSTART.md](QUICKSTART.md) | 10 мин |
+| 🔌 Интеграция API | [API.md](API.md) | 15 мин |
+| 🐳 Development в Docker | [DOCKER_DEV.md](DOCKER_DEV.md) | 10 мин |
+| 🏭 Production deployment | [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) | 30 мин |
+| 📊 Мониторинг | [MONITORING.md](MONITORING.md) | 15 мин |
+| 🔧 Troubleshooting | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 15 мин |
+| 💾 Backup & DR | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | 10 мин |
+| 🛠️ CLI tools | [CLI_TOOLS.md](CLI_TOOLS.md) | 10 мин |
+
+**Всего 19 документов**, ~12,000 строк, полное покрытие от quick start до production deployment.
+
+---
+
+## �🔐 Основные возможности
 
 - **PKCS#11 Integration** - Работа с HSM через стандартный PKCS#11 интерфейс
 - **Mutual TLS (mTLS)** - Двусторонняя аутентификация по клиентским сертификатам
