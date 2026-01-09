@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=20
+TOTAL_TESTS=31
 
 # Helper functions
 print_header() {
@@ -42,30 +42,52 @@ print_info() {
     echo -e "${BLUE}ℹ${NC} $1"
 }
 
-# Get project root
-cd "$(dirname "$0")/.."
-PROJECT_ROOT=$(pwd)
+# ==========================================
+# SETUP: Determine project root
+# ==========================================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Always work from project root
+cd "$PROJECT_ROOT"
 
 print_header "HSM Service - Full Integration Test Suite"
-print_info "Project: $PROJECT_ROOT"
+print_info "Project root: $PROJECT_ROOT"
+print_info "Working directory: $(pwd)"
 print_info "Date: $(date)"
+
+# Detect docker-compose file (.yaml or .yml)
+if [ -f "$PROJECT_ROOT/docker-compose.yaml" ]; then
+    COMPOSE_FILE="docker-compose.yaml"
+elif [ -f "$PROJECT_ROOT/docker-compose.yml" ]; then
+    COMPOSE_FILE="docker-compose.yml"
+else
+    echo -e "${RED}✗ docker-compose.yaml or docker-compose.yml not found in $PROJECT_ROOT${NC}"
+    exit 1
+fi
+print_info "Using: $COMPOSE_FILE"
 
 # ==========================================
 # PHASE 1: CLEANUP
 # ==========================================
 print_header "PHASE 1: Docker Cleanup"
 
-print_test "Stop and remove existing containers"
-docker-compose down -v 2>/dev/null || true
-print_success "Containers stopped"
+print_test "Stop and remove existing containers and volumes"
+cd "$PROJECT_ROOT"
+docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+print_success "Containers stopped and volumes removed (tokens ephemeral)"
 
-print_test "Remove project images"
-docker rmi hsm-service:latest 2>/dev/null || true
-print_success "Images removed"
+# Commented out: Keep downloaded layers to speed up rebuilds
+# Uncomment these lines for full cleanup (slower but cleaner)
+#print_test "Remove project images"
+#docker rmi hsm-service:latest 2>/dev/null || true
+#print_success "Images removed"
 
-print_test "Prune unused Docker resources"
-docker system prune -f > /dev/null
-print_success "Docker cleanup complete"
+#print_test "Prune unused Docker resources"
+#docker system prune -f > /dev/null
+#print_success "Docker cleanup complete"
+
+print_success "Cleanup complete (cached layers preserved for faster rebuilds)"
 
 # ==========================================
 # PHASE 2: BUILD
@@ -73,10 +95,16 @@ print_success "Docker cleanup complete"
 print_header "PHASE 2: Build from Scratch"
 
 print_test "Build Docker image (no cache)"
-if ! docker build --no-cache -t hsm-service:latest . > /tmp/docker-build.log 2>&1; then
-    cat /tmp/docker-build.log
-    print_error "Docker build failed (see /tmp/docker-build.log)"
+cd "$PROJECT_ROOT"
+echo ""
+echo "=== Docker Build Output (--no-cache) ==="
+echo "This will take a few minutes on first run..."
+echo ""
+if ! docker build --no-cache -t hsm-service:latest . 2>&1 | tee /tmp/docker-build.log; then
+    echo ""
+    print_error "Docker build failed (full log saved to /tmp/docker-build.log)"
 fi
+echo ""
 print_success "Image built successfully"
 
 print_test "Verify image exists"
@@ -107,9 +135,24 @@ echo ""
 echo -e "${BLUE}Please provide client certificate details for testing:${NC}"
 echo ""
 
-# Request client certificate name
-read -p "Client certificate name (default: hsm-trading-client-1): " CLIENT_CERT_NAME
-CLIENT_CERT_NAME=${CLIENT_CERT_NAME:-hsm-trading-client-1}
+# Request client certificate name with validation
+while true; do
+    read -p "Client certificate name (default: hsm-trading-client-1): " CLIENT_CERT_NAME
+    # Use default if empty
+    if [ -z "$CLIENT_CERT_NAME" ]; then
+        CLIENT_CERT_NAME="hsm-trading-client-1"
+    fi
+    # Trim whitespace
+    CLIENT_CERT_NAME=$(echo "$CLIENT_CERT_NAME" | xargs)
+    # Validate not empty after trimming
+    if [ -n "$CLIENT_CERT_NAME" ]; then
+        break
+    fi
+    echo -e "${RED}Certificate name cannot be empty${NC}"
+done
+
+echo "Using certificate: $CLIENT_CERT_NAME"
+echo ""
 
 # Build paths
 CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.crt"
@@ -165,21 +208,27 @@ print_success "metadata.yaml created with initial structure"
 print_header "PHASE 5: Start Service"
 
 print_test "Start services with docker-compose"
-docker-compose up -d > /dev/null 2>&1
+cd "$PROJECT_ROOT"
+if ! docker compose -f "$COMPOSE_FILE" up -d > /tmp/docker-compose-up.log 2>&1; then
+    cat /tmp/docker-compose-up.log
+    print_error "docker-compose up failed (see /tmp/docker-compose-up.log)"
+fi
 sleep 3
 print_success "Services started"
 
 print_test "Verify container is running"
 if ! docker ps | grep -q hsm-service; then
-    docker-compose logs
+    cd "$PROJECT_ROOT"
+    docker compose -f "$COMPOSE_FILE" logs
     print_error "Container not running"
 fi
 print_success "Container is running"
 
 print_test "Check container logs for errors"
 sleep 2
-if docker-compose logs | grep -i "fatal\|panic"; then
-    docker-compose logs
+cd "$PROJECT_ROOT"
+if docker compose -f "$COMPOSE_FILE" logs | grep -i "fatal\|panic"; then
+    docker compose -f "$COMPOSE_FILE" logs
     print_error "Fatal errors found in logs"
 fi
 print_success "No fatal errors in logs"
@@ -189,17 +238,23 @@ print_success "No fatal errors in logs"
 # ==========================================
 print_header "PHASE 6: HSM Key Initialization"
 
-print_test "Initialize HSM keys (kek-exchange-v1, kek-2fa-v1)"
-if ! docker exec hsm-service /app/scripts/init-hsm.sh > /tmp/init-hsm.log 2>&1; then
-    cat /tmp/init-hsm.log
-    print_error "HSM initialization failed (see /tmp/init-hsm.log)"
+print_test "Verify HSM initialized automatically (init-hsm.sh runs on container start)"
+sleep 3  # Give time for init to complete
+if ! docker logs hsm-service 2>&1 | grep -q "HSM Service Initialization"; then
+    docker logs hsm-service
+    print_error "HSM initialization did not run"
+fi
+print_success "HSM initialization completed automatically"
+
+print_test "Verify keys created automatically"
+if ! docker logs hsm-service 2>&1 | grep -q "Default KEKs created"; then
+    # Keys might already exist from previous run
+    if ! docker logs hsm-service 2>&1 | grep -q "Found .* KEK"; then
+        docker logs hsm-service
+        print_error "No KEKs found in HSM"
+    fi
 fi
 print_success "HSM keys initialized"
-
-print_test "Restart service to load keys"
-docker restart hsm-service > /dev/null
-sleep 5
-print_success "Service restarted"
 
 print_test "Verify keys loaded (check logs)"
 if ! docker logs hsm-service 2>&1 | grep -q "Loaded KEK: kek-exchange-v1"; then
@@ -218,38 +273,84 @@ print_success "All KEKs loaded successfully"
 print_header "PHASE 7: Basic Functionality Tests"
 
 # Test variables
-BASE_URL="https://hsm-service.local:8443"
+BASE_URL="https://localhost:8443"
 CA_CERT="$PROJECT_ROOT/pki/ca/ca.crt"
 CLIENT_CERT="$CLIENT_CERT_PATH"
 CLIENT_KEY="$CLIENT_KEY_PATH"
 
 print_test "Test 7.1: Health check endpoint"
-HEALTH_RESPONSE=$(curl -s --cacert "$CA_CERT" \
+echo ""
+echo "=== Health Check Request ==="
+echo "URL: $BASE_URL/health"
+echo "CA Cert: $CA_CERT"
+echo "Client Cert: $CLIENT_CERT"
+echo "Client Key: $CLIENT_KEY"
+echo ""
+
+# Make request with verbose output
+HEALTH_RESPONSE=$(curl -v --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
-    "$BASE_URL/health")
+    "$BASE_URL/health" 2>&1)
 
-if ! echo "$HEALTH_RESPONSE" | grep -q "ok"; then
-    echo "Response: $HEALTH_RESPONSE"
-    print_error "Health check failed"
+echo "=== Full Response ==="
+echo "$HEALTH_RESPONSE"
+echo ""
+
+# Extract just the body (last line after headers)
+HEALTH_BODY=$(echo "$HEALTH_RESPONSE" | tail -1)
+echo "=== Response Body ==="
+echo "$HEALTH_BODY"
+echo ""
+
+# Check for success - looking for "healthy" or "ok" status
+if ! echo "$HEALTH_BODY" | grep -qiE "(healthy|ok)"; then
+    echo ""
+    echo "Checking if service is running..."
+    docker ps | grep hsm-service
+    echo ""
+    echo "Service logs (last 30 lines):"
+    docker logs --tail 30 hsm-service
+    print_error "Health check failed - response doesn't contain 'healthy' or 'ok'"
 fi
 print_success "Health check passed"
 
 print_test "Test 7.2: Encrypt data with exchange-key"
 PLAINTEXT="SGVsbG8gV29ybGQh"  # "Hello World!" in base64
 
-ENCRYPT_RESPONSE=$(curl -s --cacert "$CA_CERT" \
+echo ""
+echo "=== Encrypt Request ==="
+echo "URL: $BASE_URL/encrypt"
+echo "Payload: {\"context\":\"exchange-key\",\"plaintext\":\"$PLAINTEXT\"}"
+echo ""
+
+ENCRYPT_RESPONSE=$(curl -v --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"context\":\"exchange-key\",\"plaintext\":\"$PLAINTEXT\"}" \
-    "$BASE_URL/encrypt")
+    "$BASE_URL/encrypt" 2>&1)
 
-CIPHERTEXT=$(echo "$ENCRYPT_RESPONSE" | grep -o '"ciphertext":"[^"]*"' | cut -d'"' -f4)
-KEY_ID=$(echo "$ENCRYPT_RESPONSE" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
+echo "=== Encrypt Full Response ==="
+echo "$ENCRYPT_RESPONSE"
+echo ""
+
+# Extract body
+ENCRYPT_BODY=$(echo "$ENCRYPT_RESPONSE" | grep -o '{.*}' | tail -1)
+echo "=== Encrypt Response Body ==="
+echo "$ENCRYPT_BODY"
+echo ""
+
+CIPHERTEXT=$(echo "$ENCRYPT_BODY" | grep -o '"ciphertext":"[^"]*"' | cut -d'"' -f4)
+KEY_ID=$(echo "$ENCRYPT_BODY" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
+
+echo "Extracted - Ciphertext: ${CIPHERTEXT:0:50}... Key ID: $KEY_ID"
+echo ""
 
 if [ -z "$CIPHERTEXT" ]; then
-    echo "Response: $ENCRYPT_RESPONSE"
+    echo "ERROR: No ciphertext in response"
     print_error "Encryption failed - no ciphertext returned"
 fi
 if [ "$KEY_ID" != "kek-exchange-v1" ]; then
@@ -259,19 +360,37 @@ fi
 print_success "Encryption successful (key: $KEY_ID)"
 
 print_test "Test 7.3: Decrypt data with exchange-key"
-DECRYPT_RESPONSE=$(curl -s --cacert "$CA_CERT" \
+echo ""
+echo "=== Decrypt Request ==="
+echo "URL: $BASE_URL/decrypt"
+echo "Payload: {\"context\":\"exchange-key\",\"ciphertext\":\"${CIPHERTEXT:0:50}...\",\"key_id\":\"$KEY_ID\"}"
+echo ""
+
+DECRYPT_RESPONSE=$(curl -v --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$CIPHERTEXT\",\"key_id\":\"$KEY_ID\"}" \
-    "$BASE_URL/decrypt")
+    "$BASE_URL/decrypt" 2>&1)
 
-DECRYPTED=$(echo "$DECRYPT_RESPONSE" | grep -o '"plaintext":"[^"]*"' | cut -d'"' -f4)
+echo "=== Decrypt Full Response ==="
+echo "$DECRYPT_RESPONSE"
+echo ""
+
+DECRYPT_BODY=$(echo "$DECRYPT_RESPONSE" | grep -o '{.*}' | tail -1)
+echo "=== Decrypt Response Body ==="
+echo "$DECRYPT_BODY"
+echo ""
+
+DECRYPTED=$(echo "$DECRYPT_BODY" | grep -o '"plaintext":"[^"]*"' | cut -d'"' -f4)
+
+echo "Decrypted: $DECRYPTED (expected: $PLAINTEXT)"
+echo ""
 
 if [ "$DECRYPTED" != "$PLAINTEXT" ]; then
     echo "Expected: $PLAINTEXT"
     echo "Got: $DECRYPTED"
-    echo "Response: $DECRYPT_RESPONSE"
     print_error "Decryption failed - plaintext mismatch"
 fi
 print_success "Decryption successful - data matches"
@@ -309,8 +428,14 @@ fi
 print_success "metadata.yaml contains both v1 and v2"
 
 print_test "Test 8.4: Restart service to load new key"
-docker restart hsm-service > /dev/null
-sleep 5
+docker stop hsm-service > /dev/null 2>&1
+sleep 2
+docker start hsm-service > /dev/null 2>&1
+sleep 7
+if ! docker ps | grep -q hsm-service; then
+    docker logs hsm-service
+    print_error "Container failed to start after rotation"
+fi
 print_success "Service restarted"
 
 print_test "Test 8.5: Verify both versions loaded (overlap period)"
@@ -331,12 +456,13 @@ print_success "Both v1 and v2 keys loaded (overlap period active)"
 print_header "PHASE 9: Post-Rotation Functionality"
 
 print_test "Test 9.1: Decrypt old data with v1 key"
-DECRYPT_V1=$(curl -s --cacert "$CA_CERT" \
+DECRYPT_V1=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$CIPHERTEXT\",\"key_id\":\"kek-exchange-v1\"}" \
-    "$BASE_URL/decrypt")
+    "$BASE_URL/decrypt" 2>&1)
 
 DECRYPTED_V1=$(echo "$DECRYPT_V1" | grep -o '"plaintext":"[^"]*"' | cut -d'"' -f4)
 if [ "$DECRYPTED_V1" != "$PLAINTEXT" ]; then
@@ -348,12 +474,13 @@ print_success "Old data successfully decrypted with v1"
 print_test "Test 9.2: Encrypt new data uses v2 key"
 PLAINTEXT_NEW="TmV3IERhdGEh"  # "New Data!" in base64
 
-ENCRYPT_V2=$(curl -s --cacert "$CA_CERT" \
+ENCRYPT_V2=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"context\":\"exchange-key\",\"plaintext\":\"$PLAINTEXT_NEW\"}" \
-    "$BASE_URL/encrypt")
+    "$BASE_URL/encrypt" 2>&1)
 
 KEY_ID_V2=$(echo "$ENCRYPT_V2" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
 if [ "$KEY_ID_V2" != "kek-exchange-v2" ]; then
@@ -371,12 +498,16 @@ print_header "PHASE 10: Key Lifecycle Management (PCI DSS)"
 print_test "Test 10.1: Simulate multiple rotations (create v3, v4)"
 # Rotate to v3
 docker exec hsm-service /app/hsm-admin rotate exchange-key > /dev/null 2>&1
-docker restart hsm-service > /dev/null 2>&1
-sleep 5
+docker stop hsm-service > /dev/null 2>&1
+sleep 2
+docker start hsm-service > /dev/null 2>&1
+sleep 7
 # Rotate to v4
 docker exec hsm-service /app/hsm-admin rotate exchange-key > /dev/null 2>&1
-docker restart hsm-service > /dev/null 2>&1
-sleep 5
+docker stop hsm-service > /dev/null 2>&1
+sleep 2
+docker start hsm-service > /dev/null 2>&1
+sleep 7
 print_success "Rotated to v3 and v4"
 
 print_test "Test 10.2: Verify 4 versions exist"
@@ -394,38 +525,131 @@ fi
 print_success "Auto-cleanup check executed"
 
 print_test "Test 10.4: Dry-run cleanup (should show what would be deleted)"
+echo ""
+echo "=== Running cleanup in dry-run mode ==="
 CLEANUP_DRYRUN=$(docker exec -e HSM_PIN=1234 hsm-service /app/hsm-admin cleanup-old-versions --dry-run 2>&1)
 echo "$CLEANUP_DRYRUN"
+echo ""
 if ! echo "$CLEANUP_DRYRUN" | grep -q "DRY RUN"; then
     print_error "Dry-run flag not working"
 fi
-print_success "Dry-run shows planned deletions"
+
+# Check if dry-run shows deletions planned
+if echo "$CLEANUP_DRYRUN" | grep -q "Would delete"; then
+    print_success "Dry-run shows planned deletions"
+else
+    echo "WARNING: Dry-run shows NO deletions planned!"
+    echo "This might indicate that cleanup logic needs adjustment"
+    print_success "Dry-run executed (but no deletions planned)"
+fi
+
+print_test "Test 10.4b: Backdate old versions to test cleanup (simulate aging)"
+echo ""
+echo "=== Simulating aged key versions for cleanup testing ==="
+echo "ℹ️  For testing purposes, we're backdating v1 and v2 to simulate old keys"
+echo "   In production, this would happen naturally over time"
+echo ""
+
+# Backdate v1 and v2 to 60 days ago (will be deleted by cleanup)
+# Backdate v3 to 15 days ago (will be kept)
+# v4 stays current
+DATE_60_DAYS_AGO=$(date -d '60 days ago' +%Y-%m-%dT%H:%M:%SZ)
+DATE_15_DAYS_AGO=$(date -d '15 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+echo "Backdating versions:"
+echo "  v1 → $DATE_60_DAYS_AGO (60 days ago - will be deleted)"
+echo "  v2 → $DATE_60_DAYS_AGO (60 days ago - will be deleted)"  
+echo "  v3 → $DATE_15_DAYS_AGO (15 days ago - will be kept)"
+echo "  v4 → current (will be kept as current version)"
+echo ""
+
+# Work with metadata.yaml on host (container has it mounted)
+cp "$PROJECT_ROOT/metadata.yaml" /tmp/metadata-before-backdate.yaml
+
+# Modify metadata with backdated timestamps
+sed -E "s/(label: kek-exchange-v1.*)/\1/; /label: kek-exchange-v1/,/created_at:/ s/created_at:.*/created_at: $DATE_60_DAYS_AGO/" /tmp/metadata-before-backdate.yaml | \
+sed -E "s/(label: kek-exchange-v2.*)/\1/; /label: kek-exchange-v2/,/created_at:/ s/created_at:.*/created_at: $DATE_60_DAYS_AGO/" | \
+sed -E "s/(label: kek-exchange-v3.*)/\1/; /label: kek-exchange-v3/,/created_at:/ s/created_at:.*/created_at: $DATE_15_DAYS_AGO/" > /tmp/metadata-backdated.yaml
+
+# Stop container before modifying mounted file
+echo "Stopping container to modify metadata.yaml on host..."
+docker stop hsm-service > /dev/null 2>&1
+sleep 3
+
+# Replace metadata.yaml on host (which is mounted to container)
+cp /tmp/metadata-backdated.yaml "$PROJECT_ROOT/metadata.yaml"
+
+echo "Backdated metadata.yaml content:"
+cat "$PROJECT_ROOT/metadata.yaml" | grep -A 15 "exchange-key:"
+echo ""
+
+# Restart container with backdated metadata
+echo "Restarting container with backdated metadata..."
+docker start hsm-service > /dev/null 2>&1
+sleep 7
+
+print_success "Versions backdated for cleanup testing"
 
 print_test "Test 10.5: Execute cleanup (delete excess versions)"
+echo ""
+echo "=== Executing cleanup with --force ==="
 docker exec -e HSM_PIN=1234 hsm-service /app/hsm-admin cleanup-old-versions --force > /tmp/cleanup.log 2>&1
-if ! grep -q "CLEANUP COMPLETE" /tmp/cleanup.log; then
-    cat /tmp/cleanup.log
-    print_error "Cleanup failed (see /tmp/cleanup.log)"
-fi
-print_success "Cleanup executed successfully"
+CLEANUP_EXIT_CODE=$?
 
-print_test "Test 10.6: Verify max 3 versions remain"
-docker restart hsm-service > /dev/null 2>&1
-sleep 5
-VERSION_COUNT_AFTER=$(grep -c "label: kek-exchange-v" "$PROJECT_ROOT/metadata.yaml")
-if [ "$VERSION_COUNT_AFTER" -gt 3 ]; then
-    cat "$PROJECT_ROOT/metadata.yaml"
-    print_error "Still have $VERSION_COUNT_AFTER versions (expected ≤3)"
+echo "Cleanup output:"
+cat /tmp/cleanup.log
+echo ""
+echo "Cleanup exit code: $CLEANUP_EXIT_CODE"
+echo ""
+
+if ! grep -q "CLEANUP COMPLETE" /tmp/cleanup.log; then
+    print_error "Cleanup failed - CLEANUP COMPLETE not found in output"
 fi
-print_success "Cleanup enforced max_versions=3 limit"
+
+# Check how many were deleted
+DELETED_COUNT=$(grep -oP "Deleted \K\d+" /tmp/cleanup.log | tail -1 || echo "0")
+echo "Deleted versions: $DELETED_COUNT"
+
+if [ "$DELETED_COUNT" -eq 0 ]; then
+    echo "WARNING: No versions were deleted!"
+    echo "This indicates cleanup logic may need adjustment"
+fi
+
+print_success "Cleanup executed"
+
+print_test "Test 10.6: Verify cleanup behavior"
+docker stop hsm-service > /dev/null 2>&1
+sleep 2
+docker start hsm-service > /dev/null 2>&1
+sleep 7
+
+# Copy updated metadata from container to host
+docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+
+echo "Updated metadata.yaml content:"
+cat "$PROJECT_ROOT/metadata.yaml"
+echo ""
+
+VERSION_COUNT_AFTER=$(grep -c "label: kek-exchange-v" "$PROJECT_ROOT/metadata.yaml")
+echo "Version count after cleanup: $VERSION_COUNT_AFTER"
+echo ""
+
+if [ "$VERSION_COUNT_AFTER" -le 3 ]; then
+    print_success "Cleanup worked! Kept $VERSION_COUNT_AFTER versions (≤3)"
+else
+    echo "⚠️  Cleanup did not reduce versions to ≤3"
+    echo "   Current count: $VERSION_COUNT_AFTER"
+    print_error "Cleanup failed to enforce max_versions limit"
+fi
 
 print_test "Test 10.7: Current version still works after cleanup"
-ENCRYPT_AFTER_CLEANUP=$(curl -s --cacert "$CA_CERT" \
+ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"context\":\"exchange-key\",\"plaintext\":\"$PLAINTEXT_NEW\"}" \
-    "$BASE_URL/encrypt")
+    "$BASE_URL/encrypt" 2>&1)
 
 if ! echo "$ENCRYPT_AFTER_CLEANUP" | grep -q "ciphertext"; then
     echo "Response: $ENCRYPT_AFTER_CLEANUP"
@@ -452,7 +676,7 @@ echo "  ✓ Post-cleanup functionality"
 echo ""
 echo -e "${BLUE}Logs:${NC}"
 echo "  Docker build:  /tmp/docker-build.log"
-echo "  HSM init:      /tmp/init-hsm.log"
+echo "  Compose up:    /tmp/docker-compose-up.log"
 echo "  Rotation:      /tmp/rotation.log"
 echo "  Cleanup:       /tmp/cleanup.log"
 echo ""

@@ -17,9 +17,6 @@ services:
     
     # Volume mounts
     volumes:
-      # Persistent token storage
-      - ./data/tokens:/var/lib/softhsm/tokens
-      
       # PKI certificates (read-only)
       - ./pki:/app/pki:ro
       

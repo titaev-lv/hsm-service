@@ -173,12 +173,17 @@ func cleanupOldVersionsCommand(args []string) error {
 
 	// Save updated metadata
 	if modified && !*dryRun {
-		// Backup old metadata
+		// Backup old metadata (copy instead of rename for bind mounts)
 		backupPath := metadataPath + ".backup." + time.Now().Format("20060102-150405")
-		if err := os.Rename(metadataPath, backupPath); err != nil {
-			log.Printf("Warning: failed to backup metadata: %v", err)
+		oldData, err := os.ReadFile(metadataPath)
+		if err != nil {
+			log.Printf("Warning: failed to read metadata for backup: %v", err)
 		} else {
-			fmt.Printf("\n✓ Old metadata backed up to: %s\n", backupPath)
+			if err := os.WriteFile(backupPath, oldData, 0644); err != nil {
+				log.Printf("Warning: failed to write backup: %v", err)
+			} else {
+				fmt.Printf("\n✓ Old metadata backed up to: %s\n", backupPath)
+			}
 		}
 
 		// Save new metadata

@@ -48,23 +48,44 @@ echo "========================================="
 echo "KEK Setup"
 echo "========================================="
 
-# Check if KEKs exist
+# Check total KEK count in HSM
 KEK_COUNT=$(pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
   --login --pin "$TOKEN_PIN" \
   --list-objects --type secrkey 2>/dev/null | grep -c "Secret Key" || true)
 
-if [ "$KEK_COUNT" -eq 0 ]; then
-    echo "⚠️  No KEKs found. Creating default KEKs from config.yaml..."
-    echo ""
-    
-    # Create KEKs using create-kek helper (ID is now auto-generated)
+echo "✓ Found $KEK_COUNT KEK(s) in HSM token"
+
+# Check if required KEKs exist by label
+CHECK_KEK_EXCHANGE=$(pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
+  --login --pin "$TOKEN_PIN" \
+  --list-objects --type secrkey 2>/dev/null | grep -c "label:.*kek-exchange-v1" || true)
+
+CHECK_KEK_2FA=$(pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
+  --login --pin "$TOKEN_PIN" \
+  --list-objects --type secrkey 2>/dev/null | grep -c "label:.*kek-2fa-v1" || true)
+
+# Create missing KEKs
+CREATED_ANY=false
+
+if [ "$CHECK_KEK_EXCHANGE" -eq 0 ]; then
+    echo "⚠️  kek-exchange-v1 not found. Creating..."
     /app/create-kek "kek-exchange-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-exchange-v1"
+    CREATED_ANY=true
+else
+    echo "✓ kek-exchange-v1 already exists"
+fi
+
+if [ "$CHECK_KEK_2FA" -eq 0 ]; then
+    echo "⚠️  kek-2fa-v1 not found. Creating..."
     /app/create-kek "kek-2fa-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-2fa-v1"
-    
+    CREATED_ANY=true
+else
+    echo "✓ kek-2fa-v1 already exists"
+fi
+
+if [ "$CREATED_ANY" = true ]; then
     echo ""
     echo "✓ Default KEKs created"
-else
-    echo "✓ Found $KEK_COUNT KEK(s) in HSM token"
 fi
 
 echo ""
