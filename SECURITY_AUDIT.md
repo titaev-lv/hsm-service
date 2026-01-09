@@ -30,14 +30,16 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
 
 ---
 
-### 🟠 A02:2021 – Cryptographic Failures (MEDIUM RISK)
+### ✅ A02:2021 – Cryptographic Failures (FIXED)
 
-**Issues Found:**
+**Status:** All critical issues resolved
 
-1. **🔴 CRITICAL: No key rotation mechanism**
-   - KEKs are static with no rotation policy
-   - Violates PCI DSS Requirement 3.6.4
-   - **Risk:** Long-term key exposure increases attack surface
+1. **✅ FIXED: Key rotation mechanism implemented**
+   - ✅ KEK rotation via `hsm-admin rotate` command
+   - ✅ Multi-version support (overlap period for zero-downtime)
+   - ✅ PCI DSS cleanup via `hsm-admin cleanup-old-versions`
+   - ✅ Integration tests cover full rotation lifecycle
+   - **Status:** PCI DSS 3.6.4 compliant
 
 2. **✅ FIXED: Plaintext in memory**
    ```go
@@ -58,41 +60,34 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
    - ✅ Applied to plaintext and ciphertext buffers
    - **Status:** Mitigated memory dump risk
 
-3. **🟡 MEDIUM: AAD construction predictable**
+3. **✅ FIXED: AAD construction strengthened**
    ```go
-   // crypto.go:20
+   // crypto.go:20-28
    func BuildAAD(context, clientCN string) []byte {
-       return []byte(context + "|" + clientCN)
+       h := sha256.New()
+       h.Write([]byte(context))
+       h.Write([]byte{0x00}) // NULL byte separator
+       h.Write([]byte(clientCN))
+       return h.Sum(nil) // Returns 32-byte SHA-256 hash
    }
    ```
-   - Simple concatenation with known separator
-   - **Risk:** Potential AAD collisions
+   - ✅ SHA-256 hashing prevents separator ambiguity
+   - ✅ NULL byte separator ensures no collisions
+   - ✅ Fixed-length 32-byte output
+   - **Status:** Collision-resistant AAD construction
+   
+   **Vulnerability explained:**
+   - **Before:** Simple concatenation `context + "|" + clientCN`
+   - **Problem:** `"exchange|key" + "|" + "admin"` == `"exchange" + "|" + "key|admin"` (same AAD!)
+   - **Attack scenario:** Attacker encrypts with context="exchange", CN="key|admin", then replays with different context/CN split
+   - **After:** SHA-256 ensures `hash("exchange" + 0x00 + "key|admin")` ≠ `hash("exchange|key" + 0x00 + "admin")`
 
 **Recommendations:**
 ```go
-// 1. Add key rotation
-type KeyMetadata struct {
-    Label      string
-    CreatedAt  time.Time
-    RotateAt   time.Time  // Auto-rotate after 90 days
-    Version    int
-}
-
-// 2. Zero memory after use
-defer func() {
-    for i := range plaintext {
-        plaintext[i] = 0
-    }
-}()
-
-// 3. Strengthen AAD
-func BuildAAD(context, clientCN string) []byte {
-    h := sha256.New()
-    h.Write([]byte(context))
-    h.Write([]byte{0x00}) // NULL separator
-    h.Write([]byte(clientCN))
-    return h.Sum(nil)
-}
+// All critical cryptographic issues have been addressed:
+// ✅ Key rotation implemented (hsm-admin rotate)
+// ✅ Memory zeroing implemented (defer cleanup)
+// ✅ AAD collision prevention (SHA-256 hashing)
 ```
 
 ---
