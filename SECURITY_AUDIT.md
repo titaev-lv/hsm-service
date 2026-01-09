@@ -123,7 +123,7 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
 
 ---
 
-### � A04:2021 – Insecure Design (LOW RISK - 2/3 FIXED)
+### ✅ A04:2021 – Insecure Design (FIXED)
 
 **Issues Found:**
 
@@ -159,15 +159,33 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
    - ✅ MaxHeaderBytes 1MB - ограничение размера заголовков
    - **Status:** Slowloris attack protection implemented
 
-3. **🟡 MEDIUM: Rate limiter memory leak**
+3. **✅ FIXED: Rate limiter cleanup implemented**
    ```go
-   // middleware.go:92
-   if !exists {
-       limiter = rate.NewLimiter(rate.Limit(rl.rps), rl.burst)
-       rl.limiters[clientCN] = limiter  // Never cleaned up
+   // middleware.go:76-82
+   type limiterEntry struct {
+       limiter  *rate.Limiter
+       lastUsed time.Time  // Track when last used
+   }
+   
+   func (rl *RateLimiter) cleanupLoop() {
+       ticker := time.NewTicker(1 * time.Hour)
+       defer ticker.Stop()
+       for range ticker.C {
+           rl.cleanupStale(24 * time.Hour)  // Remove limiters unused for 24h
+       }
    }
    ```
-   - Grows unbounded with unique CNs
+   - ✅ Background cleanup goroutine runs every hour
+   - ✅ Removes limiters unused for 24 hours
+   - ✅ Tracks `lastUsed` timestamp for each limiter
+   - ✅ Logs cleanup operations (removed/remaining count)
+   - **Status:** Memory leak fixed, automatic cleanup implemented
+   
+   **Vulnerability explained:**
+   - **Before:** Each unique CN creates a rate.Limiter that NEVER gets deleted
+   - **Attack:** Attacker generates 10,000 unique certificates → 10,000 limiters in memory forever
+   - **Impact:** Memory grows unbounded, potential OOM after months of operation
+   - **After:** Inactive limiters automatically removed after 24h of no usage
 
 **Recommendations:**
 ```go

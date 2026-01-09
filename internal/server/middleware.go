@@ -71,19 +71,28 @@ func RequestLogMiddleware(next http.Handler) http.Handler {
 
 // RateLimiter manages per-client rate limiters
 type RateLimiter struct {
-	limiters map[string]*rate.Limiter // CN -> limiter
+	limiters map[string]*limiterEntry // CN -> limiter entry
 	mu       sync.RWMutex
 	rps      int
 	burst    int
 }
 
+// limiterEntry wraps a rate limiter with usage tracking
+type limiterEntry struct {
+	limiter  *rate.Limiter
+	lastUsed time.Time
+}
+
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(rps, burst int) *RateLimiter {
-	return &RateLimiter{
-		limiters: make(map[string]*rate.Limiter),
+	rl := &RateLimiter{
+		limiters: make(map[string]*limiterEntry),
 		rps:      rps,
 		burst:    burst,
 	}
+	// Start cleanup goroutine
+	go rl.cleanupLoop()
+	return rl
 }
 
 // GetLimiter returns the rate limiter for a client CN
@@ -91,13 +100,52 @@ func (rl *RateLimiter) GetLimiter(clientCN string) *rate.Limiter {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	limiter, exists := rl.limiters[clientCN]
+	entry, exists := rl.limiters[clientCN]
 	if !exists {
-		limiter = rate.NewLimiter(rate.Limit(rl.rps), rl.burst)
-		rl.limiters[clientCN] = limiter
+		entry = &limiterEntry{
+			limiter:  rate.NewLimiter(rate.Limit(rl.rps), rl.burst),
+			lastUsed: time.Now(),
+		}
+		rl.limiters[clientCN] = entry
+	} else {
+		// Update last used time
+		entry.lastUsed = time.Now()
 	}
 
-	return limiter
+	return entry.limiter
+}
+
+// cleanupLoop removes rate limiters that haven't been used in 24 hours
+func (rl *RateLimiter) cleanupLoop() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		rl.cleanupStale(24 * time.Hour)
+	}
+}
+
+// cleanupStale removes limiters not used within the specified duration
+func (rl *RateLimiter) cleanupStale(maxAge time.Duration) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	var removed int
+
+	for cn, entry := range rl.limiters {
+		if now.Sub(entry.lastUsed) > maxAge {
+			delete(rl.limiters, cn)
+			removed++
+		}
+	}
+
+	if removed > 0 {
+		slog.Info("rate limiter cleanup",
+			"removed", removed,
+			"remaining", len(rl.limiters),
+		)
+	}
 }
 
 // RateLimitMiddleware applies per-client rate limiting
