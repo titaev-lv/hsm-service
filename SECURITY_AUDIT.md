@@ -321,7 +321,7 @@ tlsConfig.OCSPStapling = true
 
 ---
 
-### � A08:2021 – Software/Data Integrity (LOW RISK - 1/2 FIXED)
+### ✅ A08:2021 – Software/Data Integrity (FIXED)
 
 **Issues Found:**
 
@@ -367,27 +367,42 @@ tlsConfig.OCSPStapling = true
    # Logs will show: "KEK integrity verified: kek-exchange-v1"
    ```
 
-2. **🟠 HIGH: No AAD validation on decrypt**
+2. **✅ FIXED: AAD validation enforced on decrypt**
    ```go
-   // crypto.go:55
-   plaintext, err := gcm.Open(nil, nonce, ciphertext[nonceSize:], aad)
+   // crypto.go:62-82
+   func (h *HSMContext) Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error) {
+       // ... get key ...
+       
+       // Reconstruct AAD from context and clientCN (security: force correct AAD)
+       // This prevents caller from passing wrong AAD that could allow unauthorized decryption
+       aad := BuildAAD(context, clientCN)
+       
+       // Decrypt with AAD verification
+       plaintext, err := gcm.Open(nil, nonce, encrypted, aad)
+       // ...
+   }
+   
+   // handlers.go:210
+   plaintext, err := hsmCtx.Decrypt(ciphertext, req.Context, clientCN, req.KeyID)
    ```
-   - AAD is verified by GCM, but caller can pass wrong AAD
-   - **Risk:** Context/CN mismatch allows unauthorized decrypt
+   - ✅ AAD is **reconstructed** inside Decrypt() from context+clientCN
+   - ✅ Caller cannot pass arbitrary AAD (API changed)
+   - ✅ Prevents context/CN mismatch attacks
+   - ✅ Same protection applied to Encrypt() for consistency
+   - **Status:** AAD tampering prevention implemented
+   
+   **Vulnerability explained:**
+   - **Before:** `Decrypt(ciphertext, aad, keyLabel)` - caller provides AAD
+   - **Problem:** Caller could pass wrong AAD (e.g., different context/CN)
+   - **Attack:** If attacker can get ciphertext encrypted with context="admin", they could try to decrypt with context="public" by guessing AAD
+   - **After:** `Decrypt(ciphertext, context, clientCN, keyLabel)` - AAD rebuilt internally
+   - **Protection:** Only correct context+CN combination will work, enforced by API
 
 **Recommendations:**
 ```go
-// 1. KEK integrity check
-type KEKChecksum struct {
-    Label    string
-    Checksum [32]byte  // SHA-256 of key attributes
-}
-
-// 2. AAD re-construction on decrypt
-func (h *HSMContext) Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error) {
-    aad := BuildAAD(context, clientCN)  // Force correct AAD
-    // ... decrypt with verified AAD
-}
+// All data integrity issues have been addressed:
+// ✅ KEK integrity verification (checksums)
+// ✅ AAD validation (forced reconstruction)
 ```
 
 ---

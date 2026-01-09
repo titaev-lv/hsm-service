@@ -34,7 +34,8 @@ func BuildAAD(context, clientCN string) []byte {
 
 // Encrypt encrypts plaintext using AES-GCM with the specified key
 // Returns: nonce (12 bytes) || ciphertext || tag (16 bytes)
-func (h *HSMContext) Encrypt(plaintext []byte, aad []byte, keyLabel string) ([]byte, error) {
+// AAD is constructed from context and clientCN internally
+func (h *HSMContext) Encrypt(plaintext []byte, context, clientCN, keyLabel string) ([]byte, error) {
 	// 1. Get GCM cipher for the key
 	gcm, ok := h.keys[keyLabel]
 	if !ok {
@@ -47,7 +48,10 @@ func (h *HSMContext) Encrypt(plaintext []byte, aad []byte, keyLabel string) ([]b
 		return nil, fmt.Errorf("failed to generate nonce: %w", err)
 	}
 
-	// 3. Encrypt with AAD
+	// 3. Build AAD from context and clientCN (security: enforce correct AAD construction)
+	aad := BuildAAD(context, clientCN)
+
+	// 4. Encrypt with AAD
 	// Seal appends ciphertext and tag to nonce
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, aad)
 
@@ -56,7 +60,8 @@ func (h *HSMContext) Encrypt(plaintext []byte, aad []byte, keyLabel string) ([]b
 
 // Decrypt decrypts ciphertext using AES-GCM with the specified key
 // Expects: nonce (12 bytes) || ciphertext || tag (16 bytes)
-func (h *HSMContext) Decrypt(ciphertext []byte, aad []byte, keyLabel string) ([]byte, error) {
+// AAD is reconstructed from context and clientCN to ensure correctness
+func (h *HSMContext) Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error) {
 	// 1. Get GCM cipher for the key
 	gcm, ok := h.keys[keyLabel]
 	if !ok {
@@ -73,7 +78,11 @@ func (h *HSMContext) Decrypt(ciphertext []byte, aad []byte, keyLabel string) ([]
 	nonce := ciphertext[:nonceSize]
 	encrypted := ciphertext[nonceSize:]
 
-	// 4. Decrypt with AAD verification
+	// 4. Reconstruct AAD from context and clientCN (security: force correct AAD)
+	// This prevents caller from passing wrong AAD that could allow unauthorized decryption
+	aad := BuildAAD(context, clientCN)
+
+	// 5. Decrypt with AAD verification
 	plaintext, err := gcm.Open(nil, nonce, encrypted, aad)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)

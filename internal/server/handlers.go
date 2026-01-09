@@ -104,10 +104,7 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			}
 		}()
 
-		// 5. Build AAD (Additional Authenticated Data)
-		aad := hsm.BuildAAD(req.Context, clientCN)
-
-		// 6. Get key label for context
+		// 5. Get key label for context
 		keyID, err := hsmCtx.GetKeyLabelByContext(req.Context)
 		if err != nil {
 			slog.Error("no key found for context",
@@ -120,8 +117,9 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			return
 		}
 
-		// 7. Encrypt
-		ciphertext, err := hsmCtx.Encrypt(plaintext, aad, keyID)
+		// 6. Encrypt with context and clientCN (AAD constructed internally)
+		// Security: Encrypt() will build AAD from context+clientCN to ensure consistency
+		ciphertext, err := hsmCtx.Encrypt(plaintext, req.Context, clientCN, keyID)
 		if err != nil {
 			slog.Error("encryption failed",
 				"client_cn", clientCN,
@@ -132,7 +130,7 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			return
 		}
 
-		// 8. Respond
+		// 7. Respond
 		resp := EncryptResponse{
 			Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
 			KeyID:      keyID,
@@ -194,11 +192,9 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			}
 		}()
 
-		// 5. Build AAD (must match encryption AAD)
-		aad := hsm.BuildAAD(req.Context, clientCN)
-
-		// 6. Decrypt with AAD verification
-		plaintext, err := hsmCtx.Decrypt(ciphertext, aad, req.KeyID)
+		// 5. Decrypt with context and clientCN (AAD reconstructed internally)
+		// Security: Decrypt() will rebuild AAD from context+clientCN to prevent AAD tampering
+		plaintext, err := hsmCtx.Decrypt(ciphertext, req.Context, clientCN, req.KeyID)
 		if err != nil {
 			slog.Warn("decryption failed",
 				"client_cn", clientCN,
