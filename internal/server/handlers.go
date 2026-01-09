@@ -67,7 +67,7 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 		// 1. Parse request
 		var req EncryptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			slog.Warn("invalid JSON in encrypt request", "error", err)
+			slog.Warn("invalid JSON in request", "path", r.URL.Path, "method", r.Method)
 			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
@@ -155,7 +155,7 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 		// 1. Parse request
 		var req DecryptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			slog.Warn("invalid JSON in decrypt request", "error", err)
+			slog.Warn("invalid JSON in request", "path", r.URL.Path, "method", r.Method)
 			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
