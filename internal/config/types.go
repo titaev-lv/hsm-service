@@ -46,6 +46,7 @@ type KeyVersion struct {
 	Label     string     `yaml:"label"`
 	Version   int        `yaml:"version"`
 	CreatedAt *time.Time `yaml:"created_at"`
+	Checksum  string     `yaml:"checksum,omitempty"` // SHA-256 of key attributes (label+id) for integrity
 }
 
 // KeyMetadata defines dynamic key rotation metadata

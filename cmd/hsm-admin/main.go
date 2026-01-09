@@ -46,6 +46,10 @@ func main() {
 		if err := cleanupOldVersionsCommand(os.Args[2:]); err != nil {
 			log.Fatalf("Failed to cleanup old versions: %v", err)
 		}
+	case "update-checksums":
+		if err := updateChecksumsCommand(os.Args[2:]); err != nil {
+			log.Fatalf("Failed to update checksums: %v", err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
@@ -67,6 +71,7 @@ func printUsage() {
 	fmt.Println("  rotate            Rotate a KEK to new version")
 	fmt.Println("  rotation-status   Check rotation status for all keys")
 	fmt.Println("  cleanup-old-versions  Delete old key versions (PCI DSS compliance)")
+	fmt.Println("  update-checksums  Compute and update KEK checksums (integrity verification)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  hsm-admin create-kek --label kek-trading-v1 --context trading")
@@ -76,6 +81,7 @@ func printUsage() {
 	fmt.Println("  hsm-admin rotate kek-exchange-v1")
 	fmt.Println("  hsm-admin rotation-status")
 	fmt.Println("  hsm-admin cleanup-old-versions --dry-run")
+	fmt.Println("  hsm-admin update-checksums")
 	fmt.Println()
 	fmt.Println("Environment Variables:")
 	fmt.Println("  HSM_PIN          HSM token PIN (required)")
