@@ -31,6 +31,21 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// LoadMetadata loads key rotation metadata from metadata.yaml
+func LoadMetadata(path string) (*Metadata, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read metadata file: %w", err)
+	}
+
+	var meta Metadata
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return nil, fmt.Errorf("parse metadata YAML: %w", err)
+	}
+
+	return &meta, nil
+}
+
 // applyEnvOverrides applies environment variable overrides to configuration
 func applyEnvOverrides(cfg *Config) {
 	// Server overrides
@@ -97,9 +112,6 @@ func validateConfig(cfg *Config) error {
 
 	// Validate key configurations
 	for name, key := range cfg.HSM.Keys {
-		if key.Label == "" {
-			return fmt.Errorf("hsm.keys.%s.label is required", name)
-		}
 		if key.Type == "" {
 			return fmt.Errorf("hsm.keys.%s.type is required", name)
 		}

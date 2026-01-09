@@ -3,13 +3,14 @@
 ## Оглавление
 1. [Обзор системы](#обзор-системы)
 2. [Компоненты архитектуры](#компоненты-архитектуры)
-3. [Криптографическая архитектура](#криптографическая-архитектура)
-4. [Сетевая архитектура](#сетевая-архитектура)
-5. [Управление доступом (ACL)](#управление-доступом-acl)
-6. [PKI Инфраструктура](#pki-инфраструктура)
-7. [Потоки данных](#потоки-данных)
-8. [Безопасность](#безопасность)
-9. [Масштабирование и отказоустойчивость](#масштабирование-и-отказоустойчивость)
+3. [Управление конфигурацией](#управление-конфигурацией)
+4. [Криптографическая архитектура](#криптографическая-архитектура)
+5. [Сетевая архитектура](#сетевая-архитектура)
+6. [Управление доступом (ACL)](#управление-доступом-acl)
+7. [PKI Инфраструктура](#pki-инфраструктура)
+8. [Потоки данных](#потоки-данных)
+9. [Безопасность](#безопасность)
+10. [Масштабирование и отказоустойчивость](#масштабирование-и-отказоустойчивость)
 
 ---
 
@@ -134,8 +135,8 @@ hsm-service/
 │
 ├── internal/
 │   ├── config/                 # Конфигурация
-│   │   ├── config.go           # Загрузка config.yaml
-│   │   └── types.go            # Типы конфигурации
+│   │   ├── config.go           # Загрузка config.yaml и metadata.yaml
+│   │   └── types.go            # Типы конфигурации и метаданных
 │   │
 │   ├── hsm/                    # PKCS#11 и криптография
 │   │   ├── pkcs11.go           # Инициализация SoftHSM
@@ -163,9 +164,15 @@ hsm-service/
 │   └── revoked.yaml            # Список отозванных сертификатов
 │
 ├── scripts/
-│   └── init-hsm.sh             # Инициализация SoftHSM token
+│   ├── init-hsm.sh             # Инициализация SoftHSM token
+│   ├── rotate-key-auto.sh      # Автоматическая ротация ключей
+│   ├── rotate-key-interactive.sh # Интерактивная ротация
+│   ├── cleanup-old-keys.sh     # Очистка старых ключей
+│   └── check-key-rotation.sh   # Мониторинг статуса ротации
 │
-├── config.yaml                 # Основная конфигурация
+├── config.yaml                 # Статическая конфигурация (в Git)
+├── metadata.yaml               # Динамические метаданные ротации (вне Git)
+├── metadata.yaml.example       # Шаблон метаданных для Git
 ├── softhsm2.conf              # SoftHSM конфигурация
 ├── Dockerfile
 ├── docker-compose.yml
@@ -176,6 +183,120 @@ hsm-service/
 ├── TECHNICAL_SPEC.md           # Техническое задание
 ├── DEVELOPMENT_PLAN.md         # План разработки
 └── README.md                   # Основная документация
+```
+
+---
+
+## Управление конфигурацией
+
+### Разделение статической конфигурации и динамических метаданных
+
+Архитектура разделяет два типа данных для обеспечения совместимости с GitOps/IaC и принципами immutable infrastructure:
+
+#### 1. Статическая конфигурация (config.yaml)
+
+**Назначение:** Неизменяемая конфигурация сервиса, управляемая через Git/Ansible/Terraform
+
+**Расположение:** В Git репозитории, монтируется в контейнер как read-only (`:ro`)
+
+**Содержимое:**
+```yaml
+server:
+  port: "8443"
+  tls:
+    ca_path: /app/pki/ca/ca.crt
+    cert_path: /app/pki/server/hsm-service.local.crt
+    key_path: /app/pki/server/hsm-service.local.key
+
+hsm:
+  pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
+  slot_id: hsm-token
+  metadata_file: /app/metadata.yaml  # Путь к файлу метаданных
+  keys:
+    exchange-key:
+      type: aes
+      rotation_interval: 2160h  # 90 days
+    2fa:
+      type: aes
+      rotation_interval: 2160h
+
+acl:
+  revoked_file: /app/pki/revoked.yaml
+  mappings:
+    Trading: [exchange-key]
+    2FA: [2fa]
+    Database: []
+```
+
+**Характеристики:**
+- ✅ Управляется через систему контроля версий (Git)
+- ✅ Изменяется только через pull request / code review
+- ✅ Монтируется в контейнер как read-only
+- ✅ Содержит только типы ключей и политики
+- ✅ GitOps/IaC friendly (Ansible, Terraform)
+
+#### 2. Динамические метаданные ротации (metadata.yaml)
+
+**Назначение:** Текущее состояние ключей, обновляемое автоматическими скриптами при ротации
+
+**Расположение:** Вне Git, на сервере, монтируется как read-write (`:rw`)
+
+**Содержимое:**
+```yaml
+rotation:
+  exchange-key:
+    label: kek-exchange-v2
+    version: 2
+    created_at: '2025-10-11T12:00:00Z'
+  
+  2fa:
+    label: kek-2fa-v1
+    version: 1
+    created_at: '2025-10-11T12:00:00Z'
+```
+
+**Характеристики:**
+- ✅ НЕ коммитится в Git (в `.gitignore`)
+- ✅ Обновляется автоматическими скриптами
+- ✅ Монтируется в контейнер как read-write
+- ✅ Содержит только runtime состояние
+- ✅ Шаблон `metadata.yaml.example` в Git
+
+#### Преимущества разделения
+
+**1. GitOps совместимость:**
+- config.yaml управляется через Git/Ansible
+- Автоматическая ротация не создаёт конфликтов
+- metadata.yaml не перезаписывается при deploy
+
+**2. Immutable Infrastructure:**
+- config.yaml неизменяемый (`:ro`)
+- Только metadata.yaml изменяется в runtime
+- Соответствие принципам 12-factor app
+
+**3. Упрощённый Rollback:**
+- Откат требует только metadata.yaml
+- config.yaml остаётся стабильным
+- Быстрое восстановление при сбоях
+
+**4. Чистое разделение ответственности:**
+- DevOps → config.yaml (статика)
+- Automation → metadata.yaml (динамика)
+- Понятные границы изменений
+
+#### Docker конфигурация
+
+```yaml
+# docker-compose.yml
+volumes:
+  # Статическая конфигурация (read-only)
+  - ./config.yaml:/app/config.yaml:ro
+  
+  # Динамические метаданные (read-write)
+  - ./metadata.yaml:/app/metadata.yaml:rw
+  
+  # PKI (read-only)
+  - ./pki:/app/pki:ro
 ```
 
 ---
@@ -288,12 +409,12 @@ kek-exchange-v2:  [PENDING]   - создан, но не активен
 kek-2fa-v1:       [ACTIVE]
 
 # Процесс ротации:
-1. Создать kek-exchange-v2 через CLI
-2. Обновить config.yaml: active_key_id = "kek-exchange-v2"
-3. Restart HSM service
+1. Создать новую версию ключа: `hsm-admin rotate exchange-key`
+2. Автоматически обновляется metadata.yaml (label: kek-exchange-v2, version: 2)
+3. Restart HSM service для применения изменений
 4. Новые encrypt используют v2, старые decrypt работают с v1
-5. Фоновая миграция старых данных (в клиентских сервисах)
-6. После 100% миграции удалить kek-exchange-v1
+5. Фоновое перешифрование данных в клиентских сервисах
+6. После завершения удалить старый ключ: `hsm-admin cleanup exchange-key`
 ```
 
 ---
@@ -376,12 +497,12 @@ GET  /metrics      (prometheus, optional)
 **Принцип:** Организационная единица в сертификате определяет разрешения
 
 ```yaml
-# config.yaml
+# config.yaml (статическая конфигурация)
 acl:
-  by_ou:
+  mappings:
     Trading: [exchange-key]
     2FA: [2fa]
-    Admin: [admin]  # для CLI утилиты (future)
+    Database: []  # нет доступа к ключам
 ```
 
 **Certificate Subject Format:**

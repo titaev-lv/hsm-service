@@ -388,9 +388,14 @@ hsm-service/
 │   └── revoked.yaml
 │
 ├── scripts/
-│   └── init-hsm.sh
+│   ├── init-hsm.sh
+│   ├── rotate-key-auto.sh
+│   ├── cleanup-old-keys.sh
+│   └── check-key-rotation.sh
 │
-├── config.yaml
+├── config.yaml              # Статическая конфигурация (в Git)
+├── metadata.yaml            # Динамические метаданные (вне Git)
+├── metadata.yaml.example    # Шаблон для Git
 ├── softhsm2.conf
 ├── Dockerfile
 ├── docker-compose.yml
@@ -401,7 +406,9 @@ hsm-service/
 
 ### 3.3 Конфигурация
 
-**config.yaml:**
+#### 3.3.1 Статическая конфигурация (config.yaml)
+
+Управляется через Git/Ansible/Terraform, монтируется read-only:
 
 ```yaml
 server:
@@ -410,9 +417,9 @@ server:
   
   # TLS конфигурация
   tls:
-    ca_cert: /app/certs/ca/ca.crt
-    server_cert: /app/certs/server/hsm-service.local.crt
-    server_key: /app/certs/server/hsm-service.local.key
+    ca_path: /app/pki/ca/ca.crt
+    cert_path: /app/pki/server/hsm-service.local.crt
+    key_path: /app/pki/server/hsm-service.local.key
   
   # Таймауты
   read_timeout: 10s
@@ -421,23 +428,30 @@ server:
 
 # HSM конфигурация
 hsm:
-  # Путь к библиотеке SoftHSM
-  library: /usr/lib/softhsm/libsofthsm2.so
+  # Путь к библиотеке PKCS#11
+  pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
   
-  # Имя токена
-  token_label: hsm-token
+  # Идентификатор токена
+  slot_id: hsm-token
+  
+  # Путь к файлу метаданных ротации
+  metadata_file: /app/metadata.yaml
+  
+  # PCI DSS Compliance - Key Retention Policy
+  max_versions: 3           # Maximum key versions to keep
+  cleanup_after_days: 30    # Auto-delete versions older than N days
   
   # PIN загружается из ENV: HSM_PIN
   
-  # Активные KEK
+  # Конфигурация ключей (типы и политики ротации)
   keys:
-    - label: kek-exchange-v1
-      context: exchange-key
-      active: true
+    exchange-key:
+      type: aes
+      rotation_interval: 2160h  # 90 days
     
-    - label: kek-2fa-v1
-      context: 2fa
-      active: true
+    2fa:
+      type: aes
+      rotation_interval: 2160h
 
 # ACL конфигурация
 acl:
@@ -445,9 +459,10 @@ acl:
   revoked_file: /app/pki/revoked.yaml
   
   # Маппинг OU -> contexts
-  by_ou:
+  mappings:
     Trading: [exchange-key]
     2FA: [2fa]
+    Database: []
 
 # Rate limiting
 rate_limit:
@@ -460,6 +475,37 @@ logging:
   format: json # json | text
   audit_log_path: /var/log/hsm/audit.log  # опционально
 ```
+
+#### 3.3.2 Динамические метаданные (metadata.yaml)
+
+Обновляется автоматически при ротации, НЕ в Git, монтируется read-write:
+
+```yaml
+rotation:
+  exchange-key:
+    current: kek-exchange-v2     # Активная версия для encrypt
+    versions:
+      - label: kek-exchange-v1   # Доступна для decrypt (overlap)
+        version: 1
+        created_at: '2026-01-09T00:00:00Z'
+      - label: kek-exchange-v2   # Используется для encrypt
+        version: 2
+        created_at: '2026-01-16T10:30:00Z'
+  
+  2fa:
+    current: kek-2fa-v1
+    versions:
+      - label: kek-2fa-v1
+        version: 1
+        created_at: '2026-01-09T00:00:00Z'
+```
+
+**Особенности:**
+- Поле `current` указывает на label активной версии
+- Массив `versions` содержит **все доступные версии** ключа
+- При ротации добавляется новая версия, старые сохраняются (overlap period)
+- Каждая версия имеет уникальный label с инкрементным номером
+- HSM ID генерируется динамически на основе timestamp (16 hex символов)
 
 **Environment Variables (секреты):**
 
@@ -817,7 +863,7 @@ Example:
   Handle: 0x12345678
   
 Next steps:
-1. Update config.yaml to activate this KEK
+1. Update metadata.yaml with new label/version
 2. Restart HSM service
 ```
 
@@ -838,24 +884,49 @@ Example output:
 └──────────────────┴──────────────┴────────┴───────────┘
 ```
 
-#### delete-kek
+#### rotate
 
-Удаляет KEK из токена (только если нет зависимостей).
+Выполняет ротацию KEK с автоматическим созданием новой версии.
 
 ```bash
-hsm-admin delete-kek --label <label> --confirm
+hsm-admin rotate <context>
 
-Flags:
-  --label    KEK label to delete
-  --confirm  Required flag для подтверждения
+Arguments:
+  context  Context для ротации (e.g., "exchange-key")
 
 Example:
-  hsm-admin delete-kek --label kek-exchange-v1 --confirm
+  hsm-admin rotate exchange-key
 ```
 
-**Validation:**
-- Проверить, что KEK не активен в config.yaml
-- Требовать `--confirm` для безопасности
+**Алгоритм:**
+1. Загрузить metadata.yaml
+2. Получить текущую версию для context
+3. Вычислить новую версию: `current_version + 1`
+4. Сгенерировать новый label: `kek-{context}-v{new_version}`
+5. Создать KEK в HSM с уникальным динамическим ID (timestamp-based)
+6. Добавить новую версию в массив `versions` в metadata
+7. Обновить `current` на новый label
+8. Создать backup: `metadata.yaml.backup-{timestamp}`
+9. Записать обновленный metadata.yaml
+
+**Output:**
+```
+✓ Key rotation completed:
+  Context: exchange-key
+  Old key: kek-exchange-v1 (version 1)
+  New key: kek-exchange-v2 (version 2, ID: 1888e8fab3990801)
+  
+⚠️  IMPORTANT:
+  1. Restart the HSM service to load the new key
+  2. Re-encrypt all data encrypted with the old key
+  3. Old key remains available for 7-day overlap period
+```
+
+**Особенности:**
+- Старый ключ **НЕ удаляется** - оба доступны (overlap period)
+- Динамический ID (16 hex символов) генерируется автоматически
+- Каждая версия получает уникальный HSM ID на основе `time.Now().UnixNano()`
+- Все версии доступны одновременно для zero-downtime rotation
 
 #### export-metadata
 
@@ -884,6 +955,60 @@ Example:
   ]
 }
 ```
+
+#### cleanup-old-versions
+
+Удаление старых версий ключей (PCI DSS compliance).
+
+```bash
+hsm-admin cleanup-old-versions [flags]
+
+Flags:
+  --dry-run      Show what would be deleted without deleting
+  --force        Delete without confirmation
+  --config       Path to config.yaml (default: config.yaml)
+
+Example:
+  hsm-admin cleanup-old-versions --dry-run
+  hsm-admin cleanup-old-versions
+```
+
+**Алгоритм:**
+1. Загрузить config.yaml и metadata.yaml
+2. Получить политики: max_versions, cleanup_after_days
+3. Для каждого context:
+   - Найти версии старше cleanup_after_days
+   - Найти версии, превышающие лимит max_versions
+   - Никогда не удалять текущую версию (current)
+4. Удалить из HSM (PKCS#11 DestroyObject)
+5. Удалить из metadata.yaml versions array
+6. Создать backup metadata.yaml
+7. Сохранить обновленный metadata.yaml
+
+**Output:**
+```
+=== PCI DSS Key Cleanup ===
+Max versions to keep: 3
+Delete versions older than: 30 days
+
+Context: exchange-key (current: kek-exchange-v4)
+  ⚠ kek-exchange-v1 (v1) - created 2025-11-01 - TOO OLD
+  ⚠ kek-exchange-v2 (v2) - EXCEEDS MAX VERSIONS
+  ✓ Deleted kek-exchange-v1 (v1) from HSM
+  ✓ Deleted kek-exchange-v2 (v2) from HSM
+  Summary: kept 2, deleted 2
+
+✓ Old metadata backed up to: metadata.yaml.backup.20260109-103000
+✓ Metadata updated: metadata.yaml
+
+CLEANUP COMPLETE - Deleted 2 versions
+```
+
+**Важно:**
+- Всегда используйте `--dry-run` перед реальным удалением
+- Текущая версия (current) никогда не удаляется
+- Backup metadata.yaml создается автоматически
+- При старте сервиса выполняется только проверка (без удаления)
 
 ---
 
@@ -928,6 +1053,7 @@ services:
       - ./data/tokens:/var/lib/softhsm/tokens
       - ./pki:/app/pki:ro
       - ./config.yaml:/app/config.yaml:ro
+      - ./metadata.yaml:/app/metadata.yaml:rw
     restart: unless-stopped
 ```
 

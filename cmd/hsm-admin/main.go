@@ -34,6 +34,18 @@ func main() {
 		deleteKEK(os.Args[2:])
 	case "export-metadata":
 		exportMetadata(os.Args[2:])
+	case "rotate":
+		if err := rotateKeyCommand(os.Args[2:]); err != nil {
+			log.Fatalf("Rotation failed: %v", err)
+		}
+	case "rotation-status":
+		if err := checkRotationStatusCommand(); err != nil {
+			log.Fatalf("Failed to check rotation status: %v", err)
+		}
+	case "cleanup-old-versions":
+		if err := cleanupOldVersionsCommand(os.Args[2:]); err != nil {
+			log.Fatalf("Failed to cleanup old versions: %v", err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
@@ -48,16 +60,22 @@ func printUsage() {
 	fmt.Println("  hsm-admin <command> [options]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  create-kek       Create a new KEK")
-	fmt.Println("  list-kek         List all KEKs")
-	fmt.Println("  delete-kek       Delete a KEK")
-	fmt.Println("  export-metadata  Export KEK metadata to file")
+	fmt.Println("  create-kek        Create a new KEK")
+	fmt.Println("  list-kek          List all KEKs")
+	fmt.Println("  delete-kek        Delete a KEK")
+	fmt.Println("  export-metadata   Export KEK metadata to file")
+	fmt.Println("  rotate            Rotate a KEK to new version")
+	fmt.Println("  rotation-status   Check rotation status for all keys")
+	fmt.Println("  cleanup-old-versions  Delete old key versions (PCI DSS compliance)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  hsm-admin create-kek --label kek-trading-v1 --context trading")
 	fmt.Println("  hsm-admin list-kek")
 	fmt.Println("  hsm-admin delete-kek --label kek-old-v1 --confirm")
 	fmt.Println("  hsm-admin export-metadata --output metadata.json")
+	fmt.Println("  hsm-admin rotate kek-exchange-v1")
+	fmt.Println("  hsm-admin rotation-status")
+	fmt.Println("  hsm-admin cleanup-old-versions --dry-run")
 	fmt.Println()
 	fmt.Println("Environment Variables:")
 	fmt.Println("  HSM_PIN          HSM token PIN (required)")
@@ -199,20 +217,50 @@ func listKEK(args []string) {
 		return
 	}
 
+	// Load metadata
+	metadataPath := cfg.HSM.MetadataFile
+	if metadataPath == "" {
+		metadataPath = "metadata.yaml"
+	}
+	metadata, err := config.LoadMetadata(metadataPath)
+	if err != nil {
+		log.Printf("Warning: failed to load metadata: %v", err)
+		metadata = &config.Metadata{Rotation: make(map[string]config.KeyMetadata)}
+	}
+
 	count := 0
 	for keyName, keyConfig := range cfg.HSM.Keys {
 		count++
 		fmt.Printf("%d. Config Key: %s\n", count, keyName)
-		fmt.Printf("   Label: %s\n", keyConfig.Label)
+
+		// Get label from metadata
+		if meta, ok := metadata.Rotation[keyName]; ok {
+			fmt.Printf("   Current: %s\n", meta.Current)
+			fmt.Printf("   Versions: %d\n", len(meta.Versions))
+			for _, v := range meta.Versions {
+				marker := " "
+				if v.Label == meta.Current {
+					marker = "*"
+				}
+				fmt.Printf("     %s %s (v%d)\n", marker, v.Label, v.Version)
+			}
+		} else {
+			fmt.Printf("   Label: (not in metadata)\n")
+		}
+
 		fmt.Printf("   Type: %s\n", keyConfig.Type)
 
 		if *verbose {
 			// Try to find the key in HSM
-			key, err := p11ctx.FindKey(nil, []byte(keyConfig.Label))
-			if err != nil || key == nil {
-				fmt.Printf("   Status: ⚠️  NOT FOUND in HSM\n")
-			} else {
-				fmt.Printf("   Status: ✓ Available in HSM\n")
+			if meta, ok := metadata.Rotation[keyName]; ok {
+				for _, v := range meta.Versions {
+					key, err := p11ctx.FindKey(nil, []byte(v.Label))
+					if err != nil || key == nil {
+						fmt.Printf("     %s: ⚠️  NOT FOUND in HSM\n", v.Label)
+					} else {
+						fmt.Printf("     %s: ✓ Available in HSM\n", v.Label)
+					}
+				}
 			}
 		}
 		fmt.Println()
@@ -324,12 +372,28 @@ func exportMetadata(args []string) {
 		KEKs:       make([]KEKMetadata, 0, len(cfg.HSM.Keys)),
 	}
 
+	// Load metadata
+	metadataPath := cfg.HSM.MetadataFile
+	if metadataPath == "" {
+		metadataPath = "metadata.yaml"
+	}
+	metadataFile, err := config.LoadMetadata(metadataPath)
+	if err != nil {
+		log.Printf("Warning: failed to load metadata: %v", err)
+		metadataFile = &config.Metadata{Rotation: make(map[string]config.KeyMetadata)}
+	}
+
 	for keyName, keyConfig := range cfg.HSM.Keys {
 		kek := KEKMetadata{
 			ConfigKey: keyName,
-			Label:     keyConfig.Label,
 			Type:      keyConfig.Type,
 		}
+
+		// Get label from metadata (use current version)
+		if meta, ok := metadataFile.Rotation[keyName]; ok {
+			kek.Label = meta.Current
+		}
+
 		metadata.KEKs = append(metadata.KEKs, kek)
 	}
 

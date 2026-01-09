@@ -8,7 +8,9 @@ go build -o hsm-service .
 
 ## Запуск
 
-### 1. Убедитесь что config.yaml настроен
+### 1. Убедитесь что config.yaml и metadata.yaml настроены
+
+**config.yaml:**
 
 ```yaml
 server:
@@ -19,18 +21,22 @@ server:
     key_path: /app/pki/server/hsm-service.local.key
 
 hsm:
-  library: /usr/lib/softhsm/libsofthsm2.so
-  token_label: hsm-token
+  pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
+  slot_id: hsm-token
+  metadata_file: /app/metadata.yaml
   keys:
-    - label: kek-exchange-v1
-      context: exchange-key
-      active: true
+    exchange-key:
+      type: aes
+      rotation_interval: 2160h  # 90 days
+    2fa:
+      type: aes
+      rotation_interval: 2160h
 
 acl:
   revoked_file: /app/pki/revoked.yaml
   mappings:
-    Trading:
-      - exchange-key
+    Trading: [exchange-key]
+    2FA: [2fa]
 
 rate_limit:
   requests_per_second: 100
@@ -39,6 +45,21 @@ rate_limit:
 logging:
   level: info
   format: json
+```
+
+**metadata.yaml:**
+
+```yaml
+rotation:
+  exchange-key:
+    label: kek-exchange-v1
+    version: 1
+    created_at: '2025-10-11T12:00:00Z'
+  
+  2fa:
+    label: kek-2fa-v1
+    version: 1
+    created_at: '2025-10-11T12:00:00Z'
 ```
 
 ### 2. Установите переменную окружения HSM_PIN

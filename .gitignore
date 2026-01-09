@@ -27,6 +27,10 @@ revoked.yaml
 # SoftHSM tokens
 data/tokens/*
 
+# Dynamic metadata (managed by automation, not by Git)
+metadata.yaml
+metadata.yaml.backup-*
+
 # Environment files
 .env
 .env.local

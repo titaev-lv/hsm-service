@@ -335,35 +335,38 @@ go get golang.org/x/time/rate
 **Estimate:** 2 hours
 
 **Files:**
-- `internal/config/types.go` - структуры конфигурации
-- `internal/config/config.go` - загрузка из YAML + ENV
-- `config.yaml` - основной конфиг
+- `internal/config/types.go` - структуры конфигурации и метаданных
+- `internal/config/config.go` - загрузка config.yaml и metadata.yaml + ENV
+- `config.yaml` - статическая конфигурация (в Git)
+- `metadata.yaml` - динамические метаданные ротации (вне Git)
 
 **config.yaml structure:**
 ```yaml
 server:
   port: 8443
   tls:
-    ca_cert: /app/pki/ca/ca.crt
-    server_cert: /app/pki/server/hsm-service.local.crt
-    server_key: /app/pki/server/hsm-service.local.key
+    ca_path: /app/pki/ca/ca.crt
+    cert_path: /app/pki/server/hsm-service.local.crt
+    key_path: /app/pki/server/hsm-service.local.key
 
 hsm:
-  library: /usr/lib/softhsm/libsofthsm2.so
-  token_label: hsm-token
+  pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
+  slot_id: hsm-token
+  metadata_file: /app/metadata.yaml
   keys:
-    - label: kek-exchange-v1
-      context: exchange-key
-      active: true
-    - label: kek-2fa-v1
-      context: 2fa
-      active: true
+    exchange-key:
+      type: aes
+      rotation_interval: 2160h  # 90 days
+    2fa:
+      type: aes
+      rotation_interval: 2160h
 
 acl:
   revoked_file: /app/pki/revoked.yaml
-  by_ou:
+  mappings:
     Trading: [exchange-key]
     2FA: [2fa]
+    Database: []
 
 rate_limit:
   requests_per_second: 100
@@ -372,6 +375,20 @@ rate_limit:
 logging:
   level: info
   format: json
+```
+
+**metadata.yaml structure:**
+```yaml
+rotation:
+  exchange-key:
+    label: kek-exchange-v1
+    version: 1
+    created_at: '2025-10-11T12:00:00Z'
+  
+  2fa:
+    label: kek-2fa-v1
+    version: 1
+    created_at: '2025-10-11T12:00:00Z'
 ```
 
 **Code structure:**

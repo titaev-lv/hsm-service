@@ -8,12 +8,13 @@ server:
 hsm:
   pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
   slot_id: hsm-token
+  metadata_file: /app/metadata.yaml  # Dynamic rotation metadata
+  max_versions: 3  # Maximum key versions to keep
+  cleanup_after_days: 30  # Auto-delete versions older than N days
   keys:
     exchange-key:
-      label: kek-exchange-v1
       type: aes
     2fa:
-      label: kek-2fa-v1
       type: aes
 
 acl:

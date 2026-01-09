@@ -3,20 +3,40 @@ package hsm
 import (
 	"crypto/cipher"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/ThalesGroup/crypto11"
 	"github.com/titaev-lv/hsm-service/internal/config"
 )
 
+// KeyMetadata holds metadata for a KEK
+type KeyMetadata struct {
+	Label            string
+	CreatedAt        time.Time
+	RotationInterval time.Duration
+	Version          int
+}
+
+// NeedsRotation checks if the key needs rotation based on its metadata
+func (km *KeyMetadata) NeedsRotation() bool {
+	if km.RotationInterval == 0 {
+		return false // No rotation policy configured
+	}
+	nextRotation := km.CreatedAt.Add(km.RotationInterval)
+	return time.Now().After(nextRotation)
+}
+
 // HSMContext represents the PKCS#11 session and cached key handles
 type HSMContext struct {
 	ctx            *crypto11.Context
-	keys           map[string]cipher.AEAD // label -> GCM cipher
-	contextToLabel map[string]string      // context -> label mapping
+	keys           map[string]cipher.AEAD  // label -> GCM cipher
+	contextToLabel map[string]string       // context -> label mapping
+	metadata       map[string]*KeyMetadata // label -> metadata
 }
 
 // InitHSM initializes the PKCS#11 context and loads all configured keys
-func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
+func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSMContext, error) {
 	// 1. Configure crypto11
 	c11Config := &crypto11.Config{
 		Path:       cfg.PKCS11Lib,
@@ -33,35 +53,67 @@ func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
 	// 3. Find and cache all configured KEKs
 	keys := make(map[string]cipher.AEAD)
 	contextToLabel := make(map[string]string)
+	keyMetadata := make(map[string]*KeyMetadata)
+
 	for context, keyConfig := range cfg.Keys {
 		if keyConfig.Type != "aes" {
 			continue // Skip non-AES keys for now
 		}
 
-		// Save context -> label mapping
-		contextToLabel[context] = keyConfig.Label
-
-		// Find key by label
-		secretKey, err := ctx.FindKey(nil, []byte(keyConfig.Label))
-		if err != nil {
+		// Get metadata for this context
+		meta, ok := metadata.Rotation[context]
+		if !ok {
 			ctx.Close()
-			return nil, fmt.Errorf("KEK not found: %s: %w", keyConfig.Label, err)
+			return nil, fmt.Errorf("metadata not found for context: %s", context)
 		}
 
-		if secretKey == nil {
-			ctx.Close()
-			return nil, fmt.Errorf("key %s not found in token", keyConfig.Label)
+		// Save context -> current label mapping
+		contextToLabel[context] = meta.Current
+
+		// Load all versions of the key (for overlap period support)
+		for _, version := range meta.Versions {
+			// Find key by label
+			secretKey, err := ctx.FindKey(nil, []byte(version.Label))
+			if err != nil {
+				log.Printf("Warning: KEK %s not found in HSM: %v", version.Label, err)
+				continue
+			}
+
+			if secretKey == nil {
+				log.Printf("Warning: key %s not found in token", version.Label)
+				continue
+			}
+
+			// Create GCM cipher
+			gcm, err := secretKey.NewGCM()
+			if err != nil {
+				log.Printf("Warning: failed to create GCM for key %s: %v", version.Label, err)
+				continue
+			}
+
+			// Cache the GCM cipher by version.Label (e.g., "kek-exchange-v1", "kek-exchange-v2")
+			keys[version.Label] = gcm
+
+			// Store metadata
+			createdAt := time.Now()
+			if version.CreatedAt != nil {
+				createdAt = *version.CreatedAt
+			}
+
+			keyMetadata[version.Label] = &KeyMetadata{
+				Label:     version.Label,
+				Version:   version.Version,
+				CreatedAt: createdAt,
+			}
+
+			log.Printf("Loaded KEK: %s (version %d)", version.Label, version.Version)
 		}
 
-		// Create GCM cipher
-		gcm, err := secretKey.NewGCM()
-		if err != nil {
+		// Ensure at least the current version was loaded
+		if keys[meta.Current] == nil {
 			ctx.Close()
-			return nil, fmt.Errorf("failed to create GCM for key %s: %w", keyConfig.Label, err)
+			return nil, fmt.Errorf("current KEK not loaded: %s", meta.Current)
 		}
-
-		// Cache the GCM cipher by keyConfig.Label (e.g., "kek-exchange-v1")
-		keys[keyConfig.Label] = gcm
 	}
 
 	if len(keys) == 0 {
@@ -73,6 +125,7 @@ func InitHSM(cfg *config.HSMConfig, pin string) (*HSMContext, error) {
 		ctx:            ctx,
 		keys:           keys,
 		contextToLabel: contextToLabel,
+		metadata:       keyMetadata,
 	}, nil
 }
 
@@ -106,4 +159,24 @@ func (h *HSMContext) GetKeyLabelByContext(context string) (string, error) {
 		return "", fmt.Errorf("no key configured for context: %s", context)
 	}
 	return label, nil
+}
+
+// GetKeyMetadata returns metadata for a key
+func (h *HSMContext) GetKeyMetadata(label string) (*KeyMetadata, error) {
+	meta, exists := h.metadata[label]
+	if !exists {
+		return nil, fmt.Errorf("no metadata for key: %s", label)
+	}
+	return meta, nil
+}
+
+// GetKeysNeedingRotation returns list of keys that need rotation
+func (h *HSMContext) GetKeysNeedingRotation() []string {
+	var needsRotation []string
+	for label, meta := range h.metadata {
+		if meta.NeedsRotation() {
+			needsRotation = append(needsRotation, label)
+		}
+	}
+	return needsRotation
 }

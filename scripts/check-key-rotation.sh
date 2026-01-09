@@ -1,0 +1,228 @@
+#!/bin/bash
+# HSM Key Rotation Monitoring Script
+# Проверяет ключи на необходимость ротации и отправляет оповещения
+# Рекомендуется запускать ежедневно через cron
+
+set -euo pipefail
+
+# Конфигурация
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LOG_FILE="/var/log/hsm-rotation-check.log"
+ALERT_DAYS_BEFORE=14  # Оповещать за 14 дней до истечения
+CRITICAL_DAYS_BEFORE=7  # Критическое оповещение за 7 дней
+
+# Email настройки (опционально)
+ALERT_EMAIL="${HSM_ALERT_EMAIL:-ops@example.com}"
+SEND_EMAIL="${HSM_SEND_EMAIL:-false}"
+
+# Slack webhook (опционально)
+SLACK_WEBHOOK="${HSM_SLACK_WEBHOOK:-}"
+
+# Telegram (опционально)
+TELEGRAM_BOT_TOKEN="${HSM_TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${HSM_TELEGRAM_CHAT_ID:-}"
+
+# Функция логирования
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+# Функция отправки email
+send_email() {
+    local subject="$1"
+    local body="$2"
+    
+    if [ "$SEND_EMAIL" = "true" ]; then
+        echo "$body" | mail -s "$subject" "$ALERT_EMAIL"
+        log "Email sent to $ALERT_EMAIL: $subject"
+    fi
+}
+
+# Функция отправки в Slack
+send_slack() {
+    local message="$1"
+    local level="${2:-info}"  # info, warning, danger
+    
+    if [ -n "$SLACK_WEBHOOK" ]; then
+        local color="good"
+        [ "$level" = "warning" ] && color="warning"
+        [ "$level" = "danger" ] && color="danger"
+        
+        curl -X POST "$SLACK_WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -d "{
+                \"attachments\": [{
+                    \"color\": \"$color\",
+                    \"title\": \"HSM Key Rotation Alert\",
+                    \"text\": \"$message\",
+                    \"footer\": \"HSM Service\",
+                    \"ts\": $(date +%s)
+                }]
+            }" 2>/dev/null || log "Failed to send Slack notification"
+    fi
+}
+
+# Функция отправки в Telegram
+send_telegram() {
+    local message="$1"
+    
+    if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=🔐 HSM Key Rotation Alert
+
+${message}" \
+            -d "parse_mode=HTML" >/dev/null || log "Failed to send Telegram notification"
+    fi
+}
+
+# Функция отправки оповещения (все каналы)
+send_alert() {
+    local message="$1"
+    local level="${2:-info}"
+    
+    log "$message"
+    send_email "HSM Key Rotation Alert - ${level^^}" "$message"
+    send_slack "$message" "$level"
+    send_telegram "$message"
+    
+    # Syslog
+    logger -t hsm-rotation -p user."$level" "$message"
+}
+
+# Проверка, что Docker запущен
+if ! docker info >/dev/null 2>&1; then
+    send_alert "ERROR: Docker is not running" "danger"
+    exit 1
+fi
+
+# Проверка, что контейнер HSM запущен
+if ! docker ps | grep -q hsm-service; then
+    send_alert "ERROR: hsm-service container is not running" "danger"
+    exit 1
+fi
+
+log "Starting HSM key rotation check..."
+
+# Получение статуса ротации
+ROTATION_STATUS=$(docker exec hsm-service /app/hsm-admin rotation-status 2>&1) || {
+    send_alert "ERROR: Failed to get rotation status: $ROTATION_STATUS" "danger"
+    exit 1
+}
+
+# Проверка наличия ключей, требующих ротации
+NEEDS_ROTATION=$(echo "$ROTATION_STATUS" | grep "NEEDS ROTATION" || true)
+
+if [ -n "$NEEDS_ROTATION" ]; then
+    # Критическое оповещение - ключи просрочены!
+    KEYS_OVERDUE=$(echo "$NEEDS_ROTATION" | grep -oP "Context: \K[^[:space:]]+" | tr '\n' ', ' | sed 's/,$//')
+    
+    # Проверка автоматической ротации
+    if [ "$AUTO_ROTATION_ENABLED" = "true" ]; then
+        warning "Keys are overdue - triggering AUTOMATIC ROTATION"
+        
+        send_alert "🔄 AUTOMATIC ROTATION TRIGGERED
+
+Keys needing rotation: $KEYS_OVERDUE
+
+Starting automatic rotation process...
+See logs: /var/log/hsm-rotation.log" "warning"
+        
+        # Запуск автоматической ротации
+        if "$SCRIPT_DIR/rotate-key-auto.sh"; then
+            success "Automatic rotation completed successfully"
+            send_alert "✅ AUTOMATIC ROTATION COMPLETED
+
+Keys rotated: $KEYS_OVERDUE
+
+Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')" "success"
+            exit 0
+        else
+            error "Automatic rotation FAILED - manual intervention required"
+            send_alert "❌ AUTOMATIC ROTATION FAILED
+
+Keys: $KEYS_OVERDUE
+
+MANUAL ACTION REQUIRED:
+1. Check logs: tail -100 /var/log/hsm-rotation.log
+2. Review backups: ls -lh /var/backups/hsm/
+3. Perform manual rotation: sudo -E ./scripts/rotate-key-interactive.sh
+
+See: $PROJECT_DIR/KEY_ROTATION.md" "danger"
+            exit 2
+        fi
+    else
+        # Ручной режим - только оповещение
+        MESSAGE="⚠️ CRITICAL: HSM keys are OVERDUE for rotation!
+
+Keys needing rotation: $KEYS_OVERDUE
+
+Details:
+$NEEDS_ROTATION
+
+Action required:
+1. Review rotation status: docker exec hsm-service /app/hsm-admin rotation-status
+2. Perform rotation: sudo -E ./scripts/rotate-key-interactive.sh
+   OR enable auto-rotation: AUTO_ROTATION_ENABLED=true
+
+See: $PROJECT_DIR/KEY_ROTATION.md for full procedure"
+
+        send_alert "$MESSAGE" "danger"
+        exit 2
+    fi
+fi
+
+# Проверка ключей, близких к истечению (предупреждение за 14 дней)
+DAYS_REMAINING=$(echo "$ROTATION_STATUS" | grep -oP "Status:.*\(\K\d+(?= days remaining)")
+
+if [ -n "$DAYS_REMAINING" ]; then
+    while read -r days; do
+        if [ "$days" -le "$CRITICAL_DAYS_BEFORE" ] && [ "$days" -gt 0 ]; then
+            # Критическое предупреждение - менее 7 дней до истечения
+            KEY_CONTEXT=$(echo "$ROTATION_STATUS" | grep -B 5 "$days days remaining" | grep "Context:" | grep -oP "Context: \K[^[:space:]]+")
+            
+            MESSAGE="⚠️ WARNING: HSM key expiring soon!
+
+Context: $KEY_CONTEXT
+Days remaining: $days
+
+Please schedule key rotation within the next $days days.
+See: $PROJECT_DIR/KEY_ROTATION.md"
+
+            send_alert "$MESSAGE" "warning"
+            
+        elif [ "$days" -le "$ALERT_DAYS_BEFORE" ] && [ "$days" -gt "$CRITICAL_DAYS_BEFORE" ]; then
+            # Обычное предупреждение - менее 14 дней до истечения
+            KEY_CONTEXT=$(echo "$ROTATION_STATUS" | grep -B 5 "$days days remaining" | grep "Context:" | grep -oP "Context: \K[^[:space:]]+")
+            
+            MESSAGE="ℹ️ INFO: HSM key rotation approaching
+
+Context: $KEY_CONTEXT
+Days remaining: $days
+
+Consider scheduling key rotation soon.
+See: $PROJECT_DIR/KEY_ROTATION.md"
+
+            send_alert "$MESSAGE" "info"
+        fi
+    done <<< "$DAYS_REMAINING"
+fi
+
+# Проверка здоровья сервиса
+HEALTH_CHECK=$(curl -sk https://localhost:8443/health 2>&1 || true)
+
+if echo "$HEALTH_CHECK" | grep -q '"status":"healthy"'; then
+    log "HSM service is healthy"
+else
+    send_alert "WARNING: HSM service health check failed: $HEALTH_CHECK" "warning"
+fi
+
+log "HSM key rotation check completed successfully"
+
+# Вывод статуса в stdout для cron email
+echo "HSM Key Rotation Status Check - $(date)"
+echo "========================================"
+echo "$ROTATION_STATUS"
+echo ""
+echo "All checks passed. Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')"

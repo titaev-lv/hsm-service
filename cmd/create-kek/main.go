@@ -5,26 +5,41 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/miekg/pkcs11"
 )
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Println("Usage: create-kek <label> <id-hex> <pin>")
-		fmt.Println("Example: create-kek kek-exchange-v1 01 1234")
+	if len(os.Args) < 3 || len(os.Args) > 4 {
+		fmt.Println("Usage: create-kek <label> <pin> [version]")
+		fmt.Println("Example: create-kek kek-exchange-v1 1234 1")
 		os.Exit(1)
 	}
 
 	label := os.Args[1]
-	idHex := os.Args[2]
-	pin := os.Args[3]
+	pin := os.Args[2]
 
-	// Decode ID from hex
-	id, err := hex.DecodeString(idHex)
-	if err != nil {
-		log.Fatalf("Invalid ID hex: %v", err)
+	version := 1
+	if len(os.Args) == 4 {
+		var err error
+		version, err = strconv.Atoi(os.Args[3])
+		if err != nil {
+			log.Fatalf("Invalid version: %v", err)
+		}
 	}
+
+	// Generate unique ID based on timestamp (8 bytes)
+	// Format: unix timestamp in nanoseconds (last 8 bytes)
+	timestamp := time.Now().UnixNano()
+	id := make([]byte, 8)
+	for i := 0; i < 8; i++ {
+		id[7-i] = byte(timestamp >> (i * 8))
+	}
+	idHex := hex.EncodeToString(id)
+
+	var err error
 
 	// Load PKCS#11 library
 	p := pkcs11.New("/usr/lib/softhsm/libsofthsm2.so")
@@ -61,7 +76,7 @@ func main() {
 	// Generate AES-256 key
 	mechanism := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_GEN, nil)}
 
-	// Key template
+	// Key template (metadata stored in config.yaml, not in HSM)
 	template := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_AES),
@@ -83,5 +98,8 @@ func main() {
 		log.Fatalf("GenerateKey failed: %v", err)
 	}
 
-	fmt.Printf("✓ Created KEK: %s (handle: %d, ID: %s)\n", label, keyHandle, idHex)
+	createdAt := time.Now().Format(time.RFC3339)
+	fmt.Printf("✓ Created KEK: %s (handle: %d, ID: %s, version: %d, created: %s)\n",
+		label, keyHandle, idHex, version, createdAt)
+	fmt.Printf("  Generated unique ID: %s\n", idHex)
 }

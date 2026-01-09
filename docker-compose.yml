@@ -23,8 +23,11 @@ services:
       # PKI certificates (read-only)
       - ./pki:/app/pki:ro
       
-      # Configuration file (read-only)
+      # Configuration file (read-only, GitOps managed)
       - ./config.yaml:/app/config.yaml:ro
+      
+      # Metadata file (writable, managed by automation)
+      - ./metadata.yaml:/app/metadata.yaml:rw
       
       # SoftHSM configuration (read-only)
       - ./softhsm2.conf:/etc/softhsm2.conf:ro

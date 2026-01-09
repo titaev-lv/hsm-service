@@ -57,10 +57,9 @@ if [ "$KEK_COUNT" -eq 0 ]; then
     echo "⚠️  No KEKs found. Creating default KEKs from config.yaml..."
     echo ""
     
-    # Create KEKs using create-kek helper
-    /app/create-kek "kek-exchange-v1" "01" "$TOKEN_PIN" || echo "Failed to create kek-exchange-v1"
-    /app/create-kek "kek-2fa-v1" "02" "$TOKEN_PIN" || echo "Failed to create kek-2fa-v1"
-    /app/create-kek "kek-payment-v1" "03" "$TOKEN_PIN" || echo "Failed to create kek-payment-v1"
+    # Create KEKs using create-kek helper (ID is now auto-generated)
+    /app/create-kek "kek-exchange-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-exchange-v1"
+    /app/create-kek "kek-2fa-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-2fa-v1"
     
     echo ""
     echo "✓ Default KEKs created"
