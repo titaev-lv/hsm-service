@@ -1,9 +1,7 @@
 # Binaries
 hsm-service
-!cmd/hsm-admin
 hsm-admin
 create-kek
-#hsm-admin
 *.exe
 *.dll
 *.so
