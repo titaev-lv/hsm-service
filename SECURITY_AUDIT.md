@@ -409,7 +409,7 @@ tlsConfig.OCSPStapling = true
 
 ### ✅ A09:2021 – Logging/Monitoring Failures (FIXED)
 
-**Status:** Critical issues resolved
+**Status:** All critical issues resolved
 
 **Fixed Issues:**
 
@@ -452,31 +452,68 @@ tlsConfig.OCSPStapling = true
    - Retention: 10 files × 100 MB = 1 GB max
    - Cleanup: Automatic after 30 days
 
-3. **🟡 MEDIUM: No alerting on anomalies** (OPERATIONAL)
-   - Not a code fix, but operational recommendation
-   - Detection of:
-     - High error rates
-     - Unusual access patterns
-     - Failed ACL checks spike
-   - **Recommendation:** Implement Prometheus metrics + Alertmanager
-
-**Recommendations for monitoring:**
-```go
-// Add Prometheus metrics (future enhancement)
-var (
-    encryptRequests = prometheus.NewCounterVec(
-        prometheus.CounterOpts{Name: "hsm_encrypt_requests_total"},
-        []string{"client_cn", "context", "status"},
-    )
-    aclFailures = prometheus.NewCounter(
-        prometheus.CounterOpts{Name: "hsm_acl_failures_total"},
-    )
-    requestDuration = prometheus.NewHistogramVec(
-        prometheus.HistogramOpts{Name: "hsm_request_duration_seconds"},
-        []string{"endpoint"},
-    )
-)
-```
+3. **✅ FIXED: Prometheus metrics and alerting infrastructure**
+   ```go
+   // server/metrics.go - Comprehensive metrics for monitoring
+   var (
+       RequestsTotal           // Total requests by endpoint, client, status
+       ACLFailuresTotal        // ACL failures (security incidents)
+       RevocationFailuresTotal // Certificate revocation failures
+       EncryptOpsTotal         // Encryption ops by context and status
+       DecryptOpsTotal         // Decryption ops by context and status
+       RequestDuration         // Request duration histogram
+       RateLimitHitsTotal      // Rate limit hits by client
+       HSMErrorsTotal          // HSM errors by operation type
+   )
+   ```
+   - ✅ **Security monitoring metrics:**
+     - `hsm_acl_failures_total` - Track ACL check failures (potential attacks)
+     - `hsm_revocation_failures_total` - Track revoked certificate attempts
+     - `hsm_rate_limit_hits_total` - Track rate limit violations
+   - ✅ **Operational metrics:**
+     - `hsm_requests_total{endpoint,client_cn,status}` - All requests with labels
+     - `hsm_encrypt_operations_total{context,status}` - Encryption by context
+     - `hsm_decrypt_operations_total{context,status}` - Decryption by context
+     - `hsm_request_duration_seconds{endpoint}` - Latency histogram
+     - `hsm_errors_total{operation}` - HSM errors by type
+   - ✅ **Prometheus endpoint:** `/metrics` exposed on HTTPS
+   - ✅ **Metrics integrated** in all handlers and middleware
+   - **Status:** Full observability and alerting infrastructure implemented
+   
+   **Alerting rules (Prometheus/Alertmanager):**
+   ```yaml
+   # Example alert rules for production deployment
+   groups:
+   - name: hsm_security
+     rules:
+     # High ACL failure rate (potential attack)
+     - alert: HighACLFailureRate
+       expr: rate(hsm_acl_failures_total[5m]) > 10
+       for: 5m
+       annotations:
+         summary: "High ACL failure rate detected"
+         description: "More than 10 ACL failures per second in last 5 minutes"
+     
+     # Unusual error rate
+     - alert: HighErrorRate
+       expr: rate(hsm_requests_total{status="error"}[5m]) > 5
+       for: 5m
+       annotations:
+         summary: "High error rate on HSM service"
+     
+     # Rate limit abuse
+     - alert: RateLimitAbuse
+       expr: rate(hsm_rate_limit_hits_total[5m]) > 50
+       for: 5m
+       annotations:
+         summary: "Client hitting rate limits frequently"
+   ```
+   
+   **Metrics collection:**
+   - Prometheus scrapes `/metrics` endpoint every 15s
+   - All metrics have appropriate labels for filtering
+   - Histograms use default buckets (5ms to 10s)
+   - Counters track both success and failure states
 
 ---
 

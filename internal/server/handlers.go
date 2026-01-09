@@ -87,6 +87,9 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 				"context", req.Context,
 				"error", err,
 			)
+			// Metrics: track ACL failure (security monitoring)
+			RecordACLFailure()
+			RecordRequest("/encrypt", clientCN, "acl_denied")
 			respondError(w, http.StatusForbidden, err.Error())
 			return
 		}
@@ -126,9 +129,17 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 				"context", req.Context,
 				"error", err,
 			)
+			// Metrics: track HSM error
+			RecordHSMError("encrypt")
+			RecordEncryptOp(req.Context, "failure")
+			RecordRequest("/encrypt", clientCN, "error")
 			respondError(w, http.StatusInternalServerError, "encryption failed")
 			return
 		}
+
+		// Metrics: track successful encryption
+		RecordEncryptOp(req.Context, "success")
+		RecordRequest("/encrypt", clientCN, "success")
 
 		// 7. Respond
 		resp := EncryptResponse{
@@ -175,6 +186,9 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 				"context", req.Context,
 				"error", err,
 			)
+			// Metrics: track ACL failure (security monitoring)
+			RecordACLFailure()
+			RecordRequest("/decrypt", clientCN, "acl_denied")
 			respondError(w, http.StatusForbidden, err.Error())
 			return
 		}
@@ -202,6 +216,10 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 				"key_id", req.KeyID,
 				"error", err,
 			)
+			// Metrics: track HSM error
+			RecordHSMError("decrypt")
+			RecordDecryptOp(req.Context, "failure")
+			RecordRequest("/decrypt", clientCN, "error")
 			// Don't expose internal error details
 			respondError(w, http.StatusBadRequest, "decryption failed")
 			return
@@ -212,6 +230,10 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 				plaintext[i] = 0
 			}
 		}()
+
+		// Metrics: track successful decryption
+		RecordDecryptOp(req.Context, "success")
+		RecordRequest("/decrypt", clientCN, "success")
 
 		// 7. Respond
 		resp := DecryptResponse{

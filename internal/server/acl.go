@@ -86,6 +86,8 @@ func (a *ACLChecker) CheckAccess(cert *x509.Certificate, context string) error {
 	a.revokedMutex.RUnlock()
 
 	if revoked {
+		// Metrics: track revocation failure
+		RecordRevocationFailure()
 		// Don't expose CN in error (information disclosure)
 		return errors.New("certificate revoked")
 	}

@@ -28,6 +28,10 @@ func AuditLogMiddleware(next http.Handler) http.Handler {
 		// Call next handler
 		next.ServeHTTP(w, r)
 
+		// Record request duration metric
+		duration := time.Since(start).Seconds()
+		RequestDuration.WithLabelValues(r.URL.Path).Observe(duration)
+
 		// Log audit event
 		AuditLogger().Info("request",
 			"method", r.Method,
@@ -166,6 +170,8 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 					"client_cn", clientCN,
 					"path", r.URL.Path,
 				)
+				// Metrics: track rate limit hit
+				RecordRateLimitHit(clientCN)
 				w.Header().Set("Retry-After", "1")
 				respondError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/titaev-lv/hsm-service/internal/config"
 	"github.com/titaev-lv/hsm-service/internal/hsm"
 )
@@ -71,6 +72,9 @@ func NewServer(cfg *config.ServerConfig, hsmCtx *hsm.HSMContext, aclChecker *ACL
 	mux.HandleFunc("/encrypt", EncryptHandler(hsmCtx, aclChecker))
 	mux.HandleFunc("/decrypt", DecryptHandler(hsmCtx, aclChecker))
 	mux.HandleFunc("/health", HealthHandler(hsmCtx))
+
+	// Register Prometheus metrics endpoint (A09:2021 monitoring requirement)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// 5. Apply middleware stack (rate limit -> audit -> recovery -> request log)
 	handler := RateLimitMiddleware(rateLimiter)(
