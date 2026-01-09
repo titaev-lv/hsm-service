@@ -94,6 +94,12 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			respondError(w, http.StatusBadRequest, "invalid base64 plaintext")
 			return
 		}
+		// Zero plaintext memory after use (security: prevent memory dumps)
+		defer func() {
+			for i := range plaintext {
+				plaintext[i] = 0
+			}
+		}()
 
 		// 5. Build AAD (Additional Authenticated Data)
 		aad := hsm.BuildAAD(req.Context, clientCN)
@@ -173,6 +179,12 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			respondError(w, http.StatusBadRequest, "invalid base64 ciphertext")
 			return
 		}
+		// Zero ciphertext memory after use (security: prevent memory dumps)
+		defer func() {
+			for i := range ciphertext {
+				ciphertext[i] = 0
+			}
+		}()
 
 		// 5. Build AAD (must match encryption AAD)
 		aad := hsm.BuildAAD(req.Context, clientCN)
@@ -190,6 +202,12 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			respondError(w, http.StatusBadRequest, "decryption failed")
 			return
 		}
+		// Zero plaintext memory after use (security: prevent memory dumps)
+		defer func() {
+			for i := range plaintext {
+				plaintext[i] = 0
+			}
+		}()
 
 		// 7. Respond
 		resp := DecryptResponse{

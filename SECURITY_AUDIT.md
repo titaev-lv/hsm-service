@@ -39,14 +39,24 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
    - Violates PCI DSS Requirement 3.6.4
    - **Risk:** Long-term key exposure increases attack surface
 
-2. **🟠 HIGH: Plaintext in memory**
+2. **✅ FIXED: Plaintext in memory**
    ```go
-   // handlers.go:93
+   // handlers.go:93-100
    plaintext, err := base64.StdEncoding.DecodeString(req.Plaintext)
-   // Plaintext stays in memory until GC
+   if err != nil {
+       respondError(w, http.StatusBadRequest, "invalid base64 plaintext")
+       return
+   }
+   // Zero plaintext memory after use (security: prevent memory dumps)
+   defer func() {
+       for i := range plaintext {
+           plaintext[i] = 0
+       }
+   }()
    ```
-   - No memory zeroing after use
-   - **Risk:** Memory dumps could expose data
+   - ✅ Memory zeroed after use in both EncryptHandler and DecryptHandler
+   - ✅ Applied to plaintext and ciphertext buffers
+   - **Status:** Mitigated memory dump risk
 
 3. **🟡 MEDIUM: AAD construction predictable**
    ```go
