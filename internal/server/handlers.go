@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -112,7 +111,8 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 				"context", req.Context,
 				"error", err,
 			)
-			respondError(w, http.StatusBadRequest, fmt.Sprintf("no key for context: %s", req.Context))
+			// Don't expose user-controlled context in error response (information disclosure)
+			respondError(w, http.StatusBadRequest, "invalid context")
 			return
 		}
 

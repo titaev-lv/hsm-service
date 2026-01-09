@@ -92,30 +92,34 @@ The HSM service implements several strong security controls (mTLS, TLS 1.3, rate
 
 ---
 
-### 🟢 A03:2021 – Injection (LOW RISK)
+### ✅ A03:2021 – Injection (FIXED)
 
-**Status:** Well protected
+**Status:** Information disclosure vulnerabilities resolved
 
 **Strengths:**
 - ✅ No SQL/NoSQL usage
 - ✅ JSON parsing with type safety
 - ✅ Base64 decoding with validation
 - ✅ No shell commands from user input
+- ✅ Generic error messages (no user input leakage)
 
-**Minor Issue:**
-```go
-// handlers.go:107
-fmt.Sprintf("no key for context: %s", req.Context)
-```
-- User-controlled string in error message
-- **Risk:** Information disclosure
+**Fixed Issues:**
+1. **✅ Context in error messages** 
+   ```go
+   // Before: fmt.Sprintf("no key for context: %s", req.Context)
+   // After: "invalid context"  // Generic, no user data exposed
+   ```
 
-**Recommendation:**
-```go
-respondError(w, http.StatusBadRequest, "invalid context")
-// Log full details separately
-slog.Error("invalid context", "context", req.Context, "client", clientCN)
-```
+2. **✅ ACL error messages sanitized**
+   ```go
+   // Before: fmt.Errorf("certificate revoked: %s", cn)
+   // Before: fmt.Errorf("OU %s not allowed for context %s", ou, context)
+   // After: errors.New("certificate revoked")
+   // After: errors.New("access denied: insufficient permissions")
+   ```
+   - Detailed information logged server-side only
+   - Generic errors prevent information disclosure
+   - Attackers can't enumerate valid contexts/OUs
 
 ---
 
