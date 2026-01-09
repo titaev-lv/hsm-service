@@ -407,47 +407,74 @@ tlsConfig.OCSPStapling = true
 
 ---
 
-### 🟡 A09:2021 – Logging/Monitoring Failures (MEDIUM)
+### ✅ A09:2021 – Logging/Monitoring Failures (FIXED)
 
-**Issues Found:**
+**Status:** Critical issues resolved
 
-1. **🟠 HIGH: Sensitive data in logs**
+**Fixed Issues:**
+
+1. **✅ FIXED: Sensitive data in logs**
    ```go
-   // handlers.go:69
-   slog.Warn("invalid JSON in encrypt request", "error", err)
+   // handlers.go:70, 158
+   // Before: slog.Warn("invalid JSON in encrypt request", "error", err)
+   // After: slog.Warn("invalid JSON in request", "path", r.URL.Path, "method", r.Method)
    ```
-   - Error might contain plaintext from JSON
+   - ✅ Removed error details that may contain plaintext from malformed JSON
+   - ✅ Log only safe metadata (path, method)
+   - ✅ Prevents sensitive data leakage in logs
+   - **Status:** Information disclosure via logs prevented
 
-2. **🟡 MEDIUM: No log rotation**
-   - Logs grow unbounded
-   - **Risk:** Disk exhaustion
+2. **✅ FIXED: Log rotation implemented**
+   ```go
+   // main.go:18-30
+   logWriter := &lumberjack.Logger{
+       Filename:   "/var/log/hsm-service/hsm-service.log",
+       MaxSize:    100, // MB per file
+       MaxBackups: 10,  // Keep 10 old log files
+       MaxAge:     30,  // Keep logs for 30 days
+       Compress:   true, // Compress rotated logs
+   }
+   
+   multiWriter := io.MultiWriter(os.Stdout, logWriter)
+   logger := slog.New(slog.NewJSONHandler(multiWriter, nil))
+   slog.SetDefault(logger)
+   ```
+   - ✅ Automatic log rotation at 100MB per file
+   - ✅ Keeps maximum 10 backup files
+   - ✅ Auto-deletion after 30 days (compliance retention)
+   - ✅ Compression of old logs (disk space optimization)
+   - ✅ Logs to both file and stdout (Docker/Kubernetes compatibility)
+   - **Status:** Disk exhaustion risk mitigated
+   
+   **Configuration:**
+   - Log directory: `/var/log/hsm-service/`
+   - Max size per file: 100 MB
+   - Retention: 10 files × 100 MB = 1 GB max
+   - Cleanup: Automatic after 30 days
 
-3. **🟡 MEDIUM: No alerting on anomalies**
-   - No detection of:
+3. **🟡 MEDIUM: No alerting on anomalies** (OPERATIONAL)
+   - Not a code fix, but operational recommendation
+   - Detection of:
      - High error rates
      - Unusual access patterns
      - Failed ACL checks spike
+   - **Recommendation:** Implement Prometheus metrics + Alertmanager
 
-**Recommendations:**
+**Recommendations for monitoring:**
 ```go
-// 1. Sanitize logs
-slog.Warn("invalid JSON in request", "path", r.URL.Path)  // No error details
-
-// 2. Add log rotation (use lumberjack)
-import "gopkg.in/natefinch/lumberjack.v2"
-
-logger := &lumberjack.Logger{
-    Filename:   "/var/log/hsm-service.log",
-    MaxSize:    100, // MB
-    MaxBackups: 10,
-    MaxAge:     30, // days
-    Compress:   true,
-}
-
-// 3. Add metrics
+// Add Prometheus metrics (future enhancement)
 var (
-    encryptRequests = prometheus.NewCounterVec(...)
-    aclFailures     = prometheus.NewCounter(...)
+    encryptRequests = prometheus.NewCounterVec(
+        prometheus.CounterOpts{Name: "hsm_encrypt_requests_total"},
+        []string{"client_cn", "context", "status"},
+    )
+    aclFailures = prometheus.NewCounter(
+        prometheus.CounterOpts{Name: "hsm_acl_failures_total"},
+    )
+    requestDuration = prometheus.NewHistogramVec(
+        prometheus.HistogramOpts{Name: "hsm_request_duration_seconds"},
+        []string{"endpoint"},
+    )
 )
 ```
 

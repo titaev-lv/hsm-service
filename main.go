@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,9 +11,29 @@ import (
 	"github.com/titaev-lv/hsm-service/internal/config"
 	"github.com/titaev-lv/hsm-service/internal/hsm"
 	"github.com/titaev-lv/hsm-service/internal/server"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
+	// 0. Setup log rotation (A09:2021 security requirement)
+	logWriter := &lumberjack.Logger{
+		Filename:   "/var/log/hsm-service/hsm-service.log",
+		MaxSize:    100, // MB
+		MaxBackups: 10,  // Keep 10 old log files
+		MaxAge:     30,  // Keep logs for 30 days
+		Compress:   true,
+	}
+
+	// Use both file and stdout for logs
+	multiWriter := io.MultiWriter(os.Stdout, logWriter)
+	logger := slog.New(slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
+
+	// Also configure standard log package for compatibility
+	log.SetOutput(multiWriter)
+
 	// 1. Load configuration
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
