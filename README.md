@@ -78,10 +78,25 @@ HSM Service покрывает критические требования:
 **Проблема**: Нужно хранить sensitive данные (PII, платежные данные, пароли) в БД
 
 **Решение**:
-```
-Application → HSM Service (encrypt with KEK) → Store DEK in DB
-Application ← HSM Service (decrypt with KEK) ← Retrieve DEK from DB
-Application uses DEK to encrypt/decrypt actual data
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant HSM as HSM Service
+    participant DB as Database
+    
+    Note over App,DB: Encrypt Flow
+    App->>HSM: POST /encrypt<br/>(plaintext: DEK, context: data-encryption)
+    HSM->>HSM: Encrypt DEK with KEK
+    HSM-->>App: ciphertext: encrypted_DEK
+    App->>DB: Store encrypted_DEK
+    
+    Note over App,DB: Decrypt Flow
+    DB-->>App: Retrieve encrypted_DEK
+    App->>HSM: POST /decrypt<br/>(ciphertext: encrypted_DEK)
+    HSM->>HSM: Decrypt with KEK
+    HSM-->>App: plaintext: DEK
+    App->>App: Use DEK to encrypt/decrypt data
 ```
 
 **Применимо для**:
@@ -98,10 +113,20 @@ Application uses DEK to encrypt/decrypt actual data
 
 **Решение**: Централизованное управление ключами через HSM Service
 
-```
-Trading Service (OU=Trading) → HSM → encrypt/decrypt exchange-key context
-2FA Service (OU=2FA) → HSM → encrypt/decrypt 2fa context
-Billing Service (OU=Billing) → HSM → encrypt/decrypt billing context
+```mermaid
+graph LR
+    TS[Trading Service<br/>OU=Trading] -->|encrypt/decrypt<br/>context: exchange-key| HSM[HSM Service]
+    TFA[2FA Service<br/>OU=2FA] -->|encrypt/decrypt<br/>context: 2fa| HSM
+    BS[Billing Service<br/>OU=Billing] -->|encrypt/decrypt<br/>context: billing| HSM
+    
+    HSM --> KEK1[KEK: exchange-key]
+    HSM --> KEK2[KEK: 2fa]
+    HSM --> KEK3[KEK: billing]
+    
+    style HSM fill:#e1f5ff
+    style KEK1 fill:#ffe1e1
+    style KEK2 fill:#ffe1e1
+    style KEK3 fill:#ffe1e1
 ```
 
 **Преимущества**:
@@ -118,9 +143,17 @@ Billing Service (OU=Billing) → HSM → encrypt/decrypt billing context
 
 **Решение**: Шифрование secrets через HSM Service перед сохранением
 
-```
-Secret → HSM Service (encrypt) → Store encrypted in Vault/DB
-Secret ← HSM Service (decrypt) ← Retrieve encrypted from Vault/DB
+```mermaid
+flowchart LR
+    S[Secret] -->|1. Encrypt| HSM[HSM Service]
+    HSM -->|2. encrypted_secret| V[(Vault/DB)]
+    
+    V -->|3. Retrieve| HSM2[HSM Service]
+    HSM2 -->|4. Decrypt| S2[Secret]
+    
+    style HSM fill:#e1f5ff
+    style HSM2 fill:#e1f5ff
+    style V fill:#fff4e1
 ```
 
 **Применимо для**:
@@ -183,10 +216,22 @@ Secret ← HSM Service (decrypt) ← Retrieve encrypted from Vault/DB
 
 **Решение**: Dedicated context для каждого tenant
 
-```
-Tenant A → HSM Service (context: tenant-a-data)
-Tenant B → HSM Service (context: tenant-b-data)
-Tenant C → HSM Service (context: tenant-c-data)
+```mermaid
+graph TD
+    TA[Tenant A] -->|context: tenant-a-data| HSM[HSM Service]
+    TB[Tenant B] -->|context: tenant-b-data| HSM
+    TC[Tenant C] -->|context: tenant-c-data| HSM
+    
+    HSM --> ACL{ACL Engine}
+    ACL --> KA[KEK: tenant-a]
+    ACL --> KB[KEK: tenant-b]
+    ACL --> KC[KEK: tenant-c]
+    
+    style HSM fill:#e1f5ff
+    style ACL fill:#e1ffe1
+    style KA fill:#ffe1e1
+    style KB fill:#ffe1e1
+    style KC fill:#ffe1e1
 ```
 
 **ACL гарантирует**: Tenant A не может расшифровать данные Tenant B
@@ -204,21 +249,28 @@ Tenant C → HSM Service (context: tenant-c-data)
 
 **Решение через HSM Service**:
 
-```
-# При регистрации 2FA
-User → Web App: Enable 2FA
-Web App → HSM Service: POST /encrypt (context: 2fa-totp)
-  payload: {"plaintext": "JBSWY3DPEHPK3PXP"}  # TOTP secret
-HSM Service → Web App: {"ciphertext": "enc_abc123..."}
-Web App → Database: Store encrypted TOTP secret
-
-# При проверке 2FA кода
-User → Web App: Enter 2FA code "123456"
-Web App ← Database: Retrieve encrypted TOTP secret
-Web App → HSM Service: POST /decrypt (context: 2fa-totp)
-  payload: {"ciphertext": "enc_abc123..."}
-HSM Service → Web App: {"plaintext": "JBSWY3DPEHPK3PXP"}
-Web App: Generate TOTP from secret and verify
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant W as Web App
+    participant H as HSM Service
+    participant D as Database
+    
+    Note over U,D: 2FA Registration
+    U->>W: Enable 2FA
+    W->>H: POST /encrypt<br/>context: 2fa-totp<br/>plaintext: TOTP_seed
+    H->>H: Encrypt with KEK
+    H-->>W: ciphertext: enc_abc123...
+    W->>D: Store encrypted TOTP secret
+    
+    Note over U,D: 2FA Verification
+    U->>W: Enter code "123456"
+    D-->>W: encrypted TOTP secret
+    W->>H: POST /decrypt<br/>context: 2fa-totp<br/>ciphertext: enc_abc123...
+    H->>H: Decrypt with KEK
+    H-->>W: plaintext: TOTP_seed
+    W->>W: Generate TOTP & verify
+    W-->>U: ✅ Authorized
 ```
 
 **Защита**:
@@ -241,15 +293,26 @@ Web App: Generate TOTP from secret and verify
 
 **Решение**: Централизованное хранение signing keys в HSM
 
-```
-# JWT signing flow
-Auth Service → HSM: encrypt(user_session_data, context: jwt-signing)
-Auth Service → Client: Return JWT with encrypted payload
-
-# JWT verification flow
-API Gateway ← Client: JWT token
-API Gateway → HSM: decrypt(jwt_payload, context: jwt-signing)
-API Gateway: Verify signature and authorize request
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AS as Auth Service
+    participant AG as API Gateway
+    participant H as HSM Service
+    
+    Note over C,H: JWT Signing
+    C->>AS: Login request
+    AS->>H: POST /encrypt<br/>context: jwt-signing<br/>plaintext: session_data
+    H-->>AS: encrypted payload
+    AS->>AS: Create JWT with encrypted payload
+    AS-->>C: JWT token
+    
+    Note over C,H: JWT Verification
+    C->>AG: API request + JWT
+    AG->>H: POST /decrypt<br/>context: jwt-signing<br/>ciphertext: jwt_payload
+    H-->>AG: decrypted session_data
+    AG->>AG: Verify & authorize
+    AG-->>C: API response
 ```
 
 **Преимущества**:
@@ -266,17 +329,31 @@ API Gateway: Verify signature and authorize request
 
 **Решение**: Client-side encryption через HSM Service
 
-```
-User uploads file → App: Generate random DEK
-App → HSM: encrypt(DEK, context: documents)
-App → S3: Store encrypted file + encrypted DEK as metadata
-App → Database: Store file_id + encrypted_DEK reference
-
-# При скачивании
-User requests file → App ← Database: encrypted_DEK
-App → HSM: decrypt(encrypted_DEK, context: documents)
-App ← S3: Encrypted file
-App: Decrypt file with DEK → User
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as App
+    participant H as HSM Service
+    participant S as S3/MinIO
+    participant D as Database
+    
+    Note over U,D: File Upload
+    U->>A: Upload file
+    A->>A: Generate random DEK
+    A->>H: POST /encrypt<br/>context: documents<br/>plaintext: DEK
+    H-->>A: encrypted_DEK
+    A->>A: Encrypt file with DEK
+    A->>S: Store encrypted file
+    A->>D: Store file_id + encrypted_DEK
+    
+    Note over U,D: File Download
+    U->>A: Request file
+    D-->>A: encrypted_DEK
+    A->>H: POST /decrypt<br/>context: documents<br/>ciphertext: encrypted_DEK
+    H-->>A: plaintext: DEK
+    S-->>A: Encrypted file
+    A->>A: Decrypt file with DEK
+    A-->>U: File content
 ```
 
 **Use cases**:
