@@ -34,12 +34,20 @@ func TestACLAutoReload(t *testing.T) {
 		},
 	}
 
-	checker, err := NewACLChecker(cfg)
-	if err != nil {
+	// Create ACL checker WITHOUT starting auto-reload
+	checker := &ACLChecker{
+		config:         cfg,
+		revoked:        make(map[string]bool),
+		reloadInterval: 100 * time.Millisecond, // Fast interval for testing
+		stopReload:     make(chan struct{}),
+	}
+
+	// Load initial data
+	if err := checker.LoadRevoked(); err != nil {
 		t.Fatal(err)
 	}
-	// Override reload interval for fast testing
-	checker.reloadInterval = 100 * time.Millisecond
+
+	// Start auto-reload only once
 	checker.StartAutoReload()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

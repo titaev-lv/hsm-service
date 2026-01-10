@@ -161,13 +161,16 @@ hsm-service/
 │   ├── hsm/                    # PKCS#11 и криптография
 │   │   ├── pkcs11.go           # Инициализация SoftHSM
 │   │   ├── crypto.go           # Encrypt/Decrypt логика
-│   │   └── crypto_test.go      # Тесты криптографии
+│   │   ├── crypto_test.go      # Тесты криптографии
+│   │   ├── key_manager.go      # 🔥 NEW: KeyManager с hot reload
+│   │   ├── key_manager_test.go # Тесты KeyManager
+│   │   └── interface.go        # CryptoProvider интерфейс
 │   │
 │   ├── server/                 # HTTP сервер
 │   │   ├── server.go           # HTTP server setup
 │   │   ├── handlers.go         # /encrypt, /decrypt endpoints
 │   │   ├── handlers_test.go    # Тесты handlers
-│   │   ├── acl.go              # ACL проверки по OU
+│   │   ├── acl.go              # ACL проверки по OU + hot reload
 │   │   ├── acl_test.go         # Тесты ACL
 │   │   ├── acl_reload_test.go  # Тесты hot reload ACL
 │   │   ├── middleware.go       # Rate limit, audit log
@@ -196,6 +199,7 @@ hsm-service/
 │   ├── rotate-key-interactive.sh # Интерактивная ротация
 │   ├── cleanup-old-keys.sh     # Очистка старых ключей
 │   ├── check-key-rotation.sh   # Мониторинг статуса ротации
+│   ├── test-hot-reload.sh      # 🔥 NEW: Тест KEK hot reload
 │   ├── full-integration-test.sh # Интеграционные тесты
 │   └── README.md               # Описание скриптов
 │
@@ -235,9 +239,7 @@ hsm-service/
 ├── PRODUCTION_DEBIAN.md        # Production на Debian
 ├── TROUBLESHOOTING.md          # Решение проблем
 ├── TEST_PLAN.md                # План тестирования
-├── HOT_RELOAD_SUMMARY.md       # Hot reload функциональность
 ├── DOCS_INDEX.md               # Индекс документации
-├── DOCUMENTATION_SUMMARY.md    # Сводка документации
 └── LICENSE                     # Лицензия
 ```
 
@@ -606,9 +608,14 @@ hsm-admin cleanup exchange-key --version 1
 - ✅ **Persistent PKCS#11 Session** - нет повторной инициализации
 - ✅ **Production Ready** - для нагруженных систем с 50+ клиентами
 
-**Примечание:** 
-- Hot reload для `revoked.yaml` уже реализован (30 сек)
-- Hot reload для `metadata.yaml` и KEK - **КРИТИЧНО для production**, требуется реализация
+**Статус реализации (Phase 4):**
+- ✅ Hot reload для `revoked.yaml` - **РЕАЛИЗОВАНО** (30 сек interval)
+- ✅ Hot reload для `metadata.yaml` и KEK - **РЕАЛИЗОВАНО** (30 сек interval)
+- ✅ KeyManager с thread-safe reload - **РЕАЛИЗОВАНО**
+- ✅ Race detector clean - **РЕАЛИЗОВАНО**
+- ✅ Integration tests - **РЕАЛИЗОВАНО** (scripts/test-hot-reload.sh)
+
+Подробнее см. [KEY_ROTATION.md](KEY_ROTATION.md) и [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
 
 ---
 
@@ -780,7 +787,10 @@ EOF
 # 3. Сертификат блокируется и больше не может подключиться
 ```
 
-**Примечание:** Hot reload работает только для `revoked.yaml`. Для изменений в `metadata.yaml` или конфигурации ключей требуется restart сервиса.
+**Hot Reload статус:**
+- ✅ `revoked.yaml` - автоматическая перезагрузка каждые 30 секунд
+- ✅ `metadata.yaml` (KEK) - автоматическая перезагрузка каждые 30 секунд (Phase 4)
+- ❌ `config.yaml` - требуется restart сервиса
 
 ---
 

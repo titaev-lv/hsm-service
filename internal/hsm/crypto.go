@@ -18,6 +18,11 @@ var (
 	ErrDecryptionFailed = errors.New("decryption failed")
 )
 
+// ReadRandom fills the buffer with cryptographically secure random bytes
+func ReadRandom(buf []byte) (int, error) {
+	return rand.Read(buf)
+}
+
 // BuildAAD constructs Additional Authenticated Data from context and client CN
 // Uses SHA-256 hashing to prevent AAD collisions from separator ambiguity
 // BuildAAD constructs Additional Authenticated Data from context and client CN

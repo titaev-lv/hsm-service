@@ -52,7 +52,7 @@ func respondError(w http.ResponseWriter, status int, message string) {
 }
 
 // EncryptHandler handles /encrypt requests
-func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.HandlerFunc {
+func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST
 		if r.Method != http.MethodPost {
@@ -107,22 +107,10 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 			}
 		}()
 
-		// 5. Get key label for context
-		keyID, err := hsmCtx.GetKeyLabelByContext(req.Context)
-		if err != nil {
-			slog.Error("no key found for context",
-				"client_cn", clientCN,
-				"context", req.Context,
-				"error", err,
-			)
-			// Don't expose user-controlled context in error response (information disclosure)
-			respondError(w, http.StatusBadRequest, "invalid context")
-			return
-		}
-
-		// 6. Encrypt with context and clientCN (AAD constructed internally)
+		// 5. Encrypt with context and clientCN (AAD constructed internally)
 		// Security: Encrypt() will build AAD from context+clientCN to ensure consistency
-		ciphertext, err := hsmCtx.Encrypt(plaintext, req.Context, clientCN, keyID)
+		// KeyManager returns both ciphertext and keyID (current active version)
+		ciphertext, keyID, err := keyManager.Encrypt(plaintext, req.Context, clientCN)
 		if err != nil {
 			slog.Error("encryption failed",
 				"client_cn", clientCN,
@@ -151,7 +139,7 @@ func EncryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 }
 
 // DecryptHandler handles /decrypt requests
-func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.HandlerFunc {
+func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST
 		if r.Method != http.MethodPost {
@@ -208,7 +196,7 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 
 		// 5. Decrypt with context and clientCN (AAD reconstructed internally)
 		// Security: Decrypt() will rebuild AAD from context+clientCN to prevent AAD tampering
-		plaintext, err := hsmCtx.Decrypt(ciphertext, req.Context, clientCN, req.KeyID)
+		plaintext, err := keyManager.Decrypt(ciphertext, req.Context, clientCN, req.KeyID)
 		if err != nil {
 			slog.Warn("decryption failed",
 				"client_cn", clientCN,
@@ -244,7 +232,7 @@ func DecryptHandler(hsmCtx *hsm.HSMContext, aclChecker *ACLChecker) http.Handler
 }
 
 // HealthHandler handles /health requests
-func HealthHandler(hsmCtx *hsm.HSMContext) http.HandlerFunc {
+func HealthHandler(keyManager hsm.CryptoProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := HealthResponse{
 			Status:       "healthy",
@@ -253,8 +241,8 @@ func HealthHandler(hsmCtx *hsm.HSMContext) http.HandlerFunc {
 		}
 
 		// Check each KEK
-		for _, label := range hsmCtx.GetKeyLabels() {
-			if hsmCtx.HasKey(label) {
+		for _, label := range keyManager.GetKeyLabels() {
+			if keyManager.HasKey(label) {
 				status.KEKStatus[label] = "available"
 			} else {
 				status.KEKStatus[label] = "unavailable"

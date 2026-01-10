@@ -735,7 +735,6 @@ go test ./internal/...
 | Документ | Описание | Время |
 |----------|----------|-------|
 | [KEY_ROTATION.md](KEY_ROTATION.md) | Процедуры ротации ключей | 15 мин |
-| [HOT_RELOAD_SUMMARY.md](HOT_RELOAD_SUMMARY.md) | Auto-reload revoked.yaml | 5 мин |
 | [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md) | Механизм отзыва сертификатов | 10 мин |
 | [pki/README.md](pki/README.md) | Управление PKI | 15 мин |
 

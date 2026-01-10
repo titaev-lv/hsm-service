@@ -4,6 +4,42 @@
 
 Этот документ описывает процедуру ротации KEK (Key Encryption Key) для HSM Service. Ротация ключей — критически важная практика безопасности, требуемая стандартом PCI DSS Requirement 3.6.4.
 
+## 🔥 Zero-Downtime Rotation (Phase 4+)
+
+**С версии Phase 4 HSM service поддерживает автоматическую hot reload** ключей без перезагрузки сервиса.
+
+### До Phase 4 (старый способ)
+```bash
+hsm-admin rotate exchange-key
+docker compose restart hsm-service  # ❌ DOWNTIME для всех клиентов!
+```
+
+### После Phase 4 (текущий способ)
+```bash
+hsm-admin rotate exchange-key
+# ✅ Сервис автоматически перезагрузит KEK в течение 30 секунд
+# ✅ ZERO DOWNTIME - все клиенты остаются подключенными
+```
+
+**Как это работает:**
+1. **Background monitor** проверяет `metadata.yaml` каждые 30 секунд
+2. **Обнаружено изменение?** → Загрузить и валидировать новые метаданные
+3. **Загрузить новые KEKs** из HSM (через существующую PKCS#11 сессию)
+4. **Atomic swap** - все ключи обновляются одновременно
+5. **Старые ключи** остаются доступными для расшифровки
+
+**Мониторинг hot reload:**
+```bash
+# Наблюдать за событиями reload
+docker compose logs -f hsm-service | grep "reload"
+
+# Успешная перезагрузка:
+# {"level":"INFO","msg":"KEK hot reload successful","contexts":2,"total_keys":3}
+
+# Ошибка перезагрузки (старые ключи сохранены):
+# {"level":"WARN","msg":"metadata reload failed - keeping old keys"}
+```
+
 ## Политика ротации
 
 - **Интервал по умолчанию**: 90 дней (2160 часов)
@@ -82,21 +118,51 @@ Created config backup: config.yaml.backup-20260109-143000
   New key: kek-exchange-v2 (version 2)
 
 ⚠️  IMPORTANT:
-  1. Restart the HSM service to load the new key
-  2. Re-encrypt all data encrypted with the old key
+  1. Wait 30 seconds for automatic hot reload (NO RESTART NEEDED)
+  2. Re-encrypt all data encrypted with the old key  
   3. After 7 days overlap period, delete the old key:
-     hsm-admin delete-kek --label kek-exchange-v1 --confirm
+     hsm-admin cleanup exchange-key --version 1
 ```
 
-### Шаг 3: Перезапуск сервиса
+### Шаг 3: Автоматическая Hot Reload (Zero-Downtime)
+
+**✅ ВАЖНО**: С версии Phase 4 сервис **НЕ требует перезагрузки** после ротации ключей!
+
+HSM service автоматически перезагружает metadata.yaml каждые 30 секунд без downtime.
 
 ```bash
-docker compose restart hsm-service
+# ❌ СТАРЫЙ СПОСОБ (до Phase 4):
+docker compose restart hsm-service  # Downtime для всех клиентов!
+
+# ✅ НОВЫЙ СПОСОБ (Phase 4+):
+# Ничего не делать - сервис автоматически перезагрузит KEK в течение 30 секунд
+echo "⏳ Ожидание автоматической hot reload (30 секунд)..."
+sleep 35
+
+# Проверить логи для подтверждения успешной перезагрузки
+docker compose logs --since 40s hsm-service | grep "KEK hot reload"
 ```
 
-Проверка загрузки нового ключа:
+Expected output:
+```
+{"time":"2026-01-10T20:00:15Z","level":"INFO","msg":"metadata file changed","path":"/app/metadata.yaml"}
+{"time":"2026-01-10T20:00:15Z","level":"INFO","msg":"KEK hot reload successful","contexts":2,"total_keys":3}
+```
+
+Verify new key is active:
 ```bash
 curl -sk https://localhost:8443/health | jq
+```
+
+**Benefits of hot reload:**
+- ✅ Zero downtime for 50+ connected clients
+- ✅ No active request interruptions
+- ✅ Automatic detection of metadata changes
+- ✅ Old keys remain available for decryption
+
+**Note:** If you need immediate reload (< 30s), restart is still supported:
+```bash
+docker compose restart hsm-service  # Forces immediate reload
 ```
 
 Ожидаемый вывод:

@@ -16,14 +16,14 @@ import (
 // Server represents the HSM HTTP server
 type Server struct {
 	httpServer  *http.Server
-	hsmCtx      *hsm.HSMContext
+	keyManager  *hsm.KeyManager
 	aclChecker  *ACLChecker
 	rateLimiter *RateLimiter
 	config      *config.ServerConfig
 }
 
 // NewServer creates a new HSM server with TLS and mTLS configuration
-func NewServer(cfg *config.ServerConfig, hsmCtx *hsm.HSMContext, aclChecker *ACLChecker, rateLimiter *RateLimiter) (*Server, error) {
+func NewServer(cfg *config.ServerConfig, keyManager *hsm.KeyManager, aclChecker *ACLChecker, rateLimiter *RateLimiter) (*Server, error) {
 	// 1. Load server certificate
 	serverCert, err := tls.LoadX509KeyPair(
 		cfg.TLS.CertPath,
@@ -69,9 +69,9 @@ func NewServer(cfg *config.ServerConfig, hsmCtx *hsm.HSMContext, aclChecker *ACL
 	mux := http.NewServeMux()
 
 	// Register endpoints
-	mux.HandleFunc("/encrypt", EncryptHandler(hsmCtx, aclChecker))
-	mux.HandleFunc("/decrypt", DecryptHandler(hsmCtx, aclChecker))
-	mux.HandleFunc("/health", HealthHandler(hsmCtx))
+	mux.HandleFunc("/encrypt", EncryptHandler(keyManager, aclChecker))
+	mux.HandleFunc("/decrypt", DecryptHandler(keyManager, aclChecker))
+	mux.HandleFunc("/health", HealthHandler(keyManager))
 
 	// Register Prometheus metrics endpoint (A09:2021 monitoring requirement)
 	mux.Handle("/metrics", promhttp.Handler())
@@ -100,7 +100,7 @@ func NewServer(cfg *config.ServerConfig, hsmCtx *hsm.HSMContext, aclChecker *ACL
 
 	return &Server{
 		httpServer:  httpServer,
-		hsmCtx:      hsmCtx,
+		keyManager:  keyManager,
 		aclChecker:  aclChecker,
 		rateLimiter: rateLimiter,
 		config:      cfg,
@@ -115,11 +115,6 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown() error {
-	// Close HSM context
-	if s.hsmCtx != nil {
-		if err := s.hsmCtx.Close(); err != nil {
-			return fmt.Errorf("failed to close HSM context: %w", err)
-		}
-	}
+	// KeyManager closing is handled in main.go shutdown sequence
 	return nil
 }

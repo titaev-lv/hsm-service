@@ -65,17 +65,27 @@ func main() {
 	}
 	// Note: Close HSM context manually in shutdown handler to avoid panic
 
-	// 4a. Auto-cleanup old key versions (PCI DSS compliance)
+	// 4a. Create KeyManager with hot reload capability
+	keyManager, err := hsm.NewKeyManager(hsmCtx.GetContext(), &cfg.HSM, metadata)
+	if err != nil {
+		log.Fatalf("Failed to create key manager: %v", err)
+	}
+
+	// 4b. Start auto-reload for metadata.yaml (30 seconds interval)
+	keyManager.StartAutoReload(30 * time.Second)
+	log.Println("✓ Started metadata hot reload (30s interval)")
+
+	// 4c. Auto-cleanup old key versions (PCI DSS compliance)
 	if err := performAutoCleanup(&cfg.HSM, metadata); err != nil {
 		log.Printf("⚠️  Warning: auto-cleanup failed: %v", err)
 	}
 
-	// 4b. Check for keys needing rotation
-	keysNeedingRotation := hsmCtx.GetKeysNeedingRotation()
+	// 4d. Check for keys needing rotation
+	keysNeedingRotation := keyManager.GetKeysNeedingRotation()
 	if len(keysNeedingRotation) > 0 {
 		log.Printf("⚠️  WARNING: The following keys need rotation:")
 		for _, label := range keysNeedingRotation {
-			meta, _ := hsmCtx.GetKeyMetadata(label)
+			meta, _ := keyManager.GetKeyMetadata(label)
 			log.Printf("  - %s (created: %s, rotation interval: %s, version: %d)",
 				label, meta.CreatedAt.Format("2006-01-02"), meta.RotationInterval, meta.Version)
 		}
@@ -95,7 +105,7 @@ func main() {
 	)
 
 	// 6. Create server with all components
-	srv, err := server.NewServer(&cfg.Server, hsmCtx, aclChecker, rateLimiter)
+	srv, err := server.NewServer(&cfg.Server, keyManager, aclChecker, rateLimiter)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
@@ -124,28 +134,34 @@ func main() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		// 1. Stop ACL auto-reload
+		// 1. Stop metadata auto-reload
+		log.Println("Stopping metadata auto-reload...")
+		if err := keyManager.StopAutoReload(shutdownCtx); err != nil {
+			log.Printf("Warning: metadata auto-reload stop timeout: %v", err)
+		}
+
+		// 2. Stop ACL auto-reload
 		log.Println("Stopping ACL auto-reload...")
 		if err := aclChecker.StopAutoReload(shutdownCtx); err != nil {
 			log.Printf("Warning: ACL auto-reload stop timeout: %v", err)
 		}
 
-		// 2. Stop HTTP server
+		// 3. Stop HTTP server
 		log.Println("Stopping HTTP server...")
 		if err := srv.Shutdown(); err != nil {
 			log.Printf("Error during shutdown: %v", err)
 		}
 
-		// 3. Close HSM context with panic recovery
-		log.Println("Closing HSM context...")
+		// 4. Close KeyManager (which closes HSM context)
+		log.Println("Closing KeyManager...")
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("Recovered from panic during HSM cleanup: %v", r)
+					log.Printf("Recovered from panic during KeyManager cleanup: %v", r)
 				}
 			}()
-			if err := hsmCtx.Close(); err != nil {
-				log.Printf("Error closing HSM context: %v", err)
+			if err := keyManager.Close(); err != nil {
+				log.Printf("Error closing KeyManager: %v", err)
 			}
 		}()
 	}

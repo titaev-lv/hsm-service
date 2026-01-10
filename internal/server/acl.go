@@ -125,9 +125,13 @@ func (a *ACLChecker) TryReload() error {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	// Check if file was modified
+	// Check if file was modified (protected read)
 	modTime := info.ModTime()
-	if !modTime.After(a.lastModTime) {
+	a.revokedMutex.RLock()
+	lastMod := a.lastModTime
+	a.revokedMutex.RUnlock()
+
+	if !modTime.After(lastMod) {
 		// File not changed
 		return nil
 	}
@@ -140,11 +144,15 @@ func (a *ACLChecker) TryReload() error {
 		return err
 	}
 
-	// Update modification time on success
+	// Update modification time on success (protected write)
+	a.revokedMutex.Lock()
 	a.lastModTime = modTime
+	revokedCount := len(a.revoked)
+	a.revokedMutex.Unlock()
+
 	slog.Info("revoked.yaml reloaded successfully",
 		"path", a.config.RevokedFile,
-		"count", len(a.revoked))
+		"count", revokedCount)
 
 	return nil
 }
@@ -212,8 +220,10 @@ func (a *ACLChecker) LoadRevoked() error {
 	if err != nil {
 		// If file doesn't exist, start with empty list
 		if os.IsNotExist(err) {
+			a.revokedMutex.Lock()
 			a.revoked = make(map[string]bool)
 			a.lastModTime = time.Time{}
+			a.revokedMutex.Unlock()
 			return nil
 		}
 		return fmt.Errorf("failed to read revoked file: %w", err)
@@ -230,6 +240,7 @@ func (a *ACLChecker) LoadRevoked() error {
 	}
 
 	// Build revoked map
+	a.revokedMutex.Lock()
 	a.revoked = make(map[string]bool)
 	for _, cert := range revokedList.Revoked {
 		a.revoked[cert.CN] = true
@@ -239,6 +250,7 @@ func (a *ACLChecker) LoadRevoked() error {
 	if info, err := os.Stat(a.config.RevokedFile); err == nil {
 		a.lastModTime = info.ModTime()
 	}
+	a.revokedMutex.Unlock()
 
 	return nil
 }

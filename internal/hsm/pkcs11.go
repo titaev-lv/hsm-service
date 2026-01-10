@@ -167,6 +167,11 @@ func (h *HSMContext) Close() error {
 	return nil
 }
 
+// GetContext returns the underlying crypto11 context
+func (h *HSMContext) GetContext() *crypto11.Context {
+	return h.ctx
+}
+
 // GetKeyLabels returns all available key labels
 func (h *HSMContext) GetKeyLabels() []string {
 	labels := make([]string, 0, len(h.keys))
