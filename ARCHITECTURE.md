@@ -463,15 +463,152 @@ KEK Lifecycle:
 kek-exchange-v1:  [ACTIVE]    - используется для новых encrypt
 kek-exchange-v2:  [PENDING]   - создан, но не активен
 kek-2fa-v1:       [ACTIVE]
-
-# Процесс ротации:
-1. Создать новую версию ключа: `hsm-admin rotate exchange-key`
-2. Автоматически обновляется metadata.yaml (label: kek-exchange-v2, version: 2)
-3. Restart HSM service для применения изменений
-4. Новые encrypt используют v2, старые decrypt работают с v1
-5. Фоновое перешифрование данных в клиентских сервисах
-6. После завершения удалить старый ключ: `hsm-admin cleanup exchange-key`
 ```
+
+### Hot Reload для KEK и Metadata (Zero-Downtime Rotation)
+
+**Проблема текущей реализации:**
+- ❌ Restart сервиса требует downtime для всех 50+ клиентов
+- ❌ Невозможность graceful rotation в production
+- ❌ Прерывание активных операций
+- ❌ Single point of failure при обновлении
+
+**Требуемое решение - Zero-Downtime KEK Reload:**
+
+```go
+type KeyManager struct {
+    ctx           crypto11.Context  // Persistent PKCS#11 session
+    keys          map[string]*KeyHandle
+    keysMutex     sync.RWMutex
+    
+    metadata      *MetadataConfig
+    metadataMutex sync.RWMutex
+    metadataFile  string
+    lastModTime   time.Time
+}
+
+// Периодическая проверка metadata.yaml (каждые 30 секунд)
+func (km *KeyManager) AutoReloadMetadata(interval time.Duration) {
+    ticker := time.NewTicker(interval)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-ticker.C:
+            if km.metadataChanged() {
+                km.ReloadKeysFromMetadata()
+            }
+        case <-km.stopChan:
+            return
+        }
+    }
+}
+
+// Загрузка новых KEK без разрыва сессии
+func (km *KeyManager) ReloadKeysFromMetadata() error {
+    // 1. Read metadata.yaml
+    newMetadata, err := loadMetadata(km.metadataFile)
+    if err != nil {
+        return err // Keep old data
+    }
+    
+    // 2. Load NEW keys from HSM (не закрывая старые)
+    newKeys := make(map[string]*KeyHandle)
+    for context, meta := range newMetadata.Rotation {
+        handle, err := km.ctx.FindKey(nil, []byte(meta.Label))
+        if err != nil {
+            return err // Rollback, keep old data
+        }
+        newKeys[context] = &KeyHandle{
+            Handle:  handle,
+            Label:   meta.Label,
+            Version: meta.Version,
+        }
+    }
+    
+    // 3. Atomic swap (все или ничего)
+    km.keysMutex.Lock()
+    oldKeys := km.keys
+    km.keys = newKeys
+    km.keysMutex.Unlock()
+    
+    km.metadataMutex.Lock()
+    km.metadata = newMetadata
+    km.metadataMutex.Unlock()
+    
+    // 4. Cleanup old handles (опционально, можно оставить в памяти)
+    // Old handles still valid for ongoing decrypt operations
+    
+    slog.Info("KEK hot reload successful", 
+        "contexts", len(newKeys))
+    return nil
+}
+
+// Encrypt использует текущую активную версию
+func (km *KeyManager) Encrypt(context string, plaintext []byte) ([]byte, error) {
+    km.keysMutex.RLock()
+    keyHandle, exists := km.keys[context]
+    km.keysMutex.RUnlock()
+    
+    if !exists {
+        return nil, ErrKeyNotFound
+    }
+    
+    // Use current active version from metadata
+    return encryptAESGCM(keyHandle.Handle, plaintext)
+}
+
+// Decrypt работает с любой версией (по key_id из request)
+func (km *KeyManager) Decrypt(keyID string, ciphertext []byte) ([]byte, error) {
+    // Find key by label (может быть старая версия)
+    handle, err := km.ctx.FindKey(nil, []byte(keyID))
+    if err != nil {
+        return nil, ErrKeyNotFound
+    }
+    
+    return decryptAESGCM(handle, ciphertext)
+}
+```
+
+**Процесс ротации с Hot Reload:**
+
+```bash
+# 1. Создать новую версию ключа
+hsm-admin rotate exchange-key
+# Output: Created kek-exchange-v2, updated metadata.yaml
+
+# 2. Metadata.yaml обновлен автоматически:
+# rotation:
+#   exchange-key:
+#     label: kek-exchange-v2
+#     version: 2
+#     created_at: '2026-01-10T15:30:00Z'
+
+# 3. HSM Service автоматически перезагружает metadata.yaml в течение 30 сек
+#    - Загружает kek-exchange-v2 из HSM
+#    - Атомарно переключается на новую версию
+#    - Старые ключи остаются доступны для decrypt
+#    - ZERO DOWNTIME, клиенты не видят прерываний
+
+# 4. Новые encrypt используют v2, старые decrypt работают с v1
+
+# 5. Фоновое перешифрование в клиентских сервисах (недели/месяцы)
+
+# 6. Удаление старого ключа после завершения миграции
+hsm-admin cleanup exchange-key --version 1
+# Проверяет, что нет активных decrypt с v1 (опционально)
+```
+
+**Преимущества:**
+- ✅ **Zero Downtime** - клиенты не видят перезапуска
+- ✅ **Graceful Rotation** - старые и новые ключи доступны одновременно
+- ✅ **Atomic Switch** - переключение на новую версию мгновенное
+- ✅ **Persistent PKCS#11 Session** - нет повторной инициализации
+- ✅ **Production Ready** - для нагруженных систем с 50+ клиентами
+
+**Примечание:** 
+- Hot reload для `revoked.yaml` уже реализован (30 сек)
+- Hot reload для `metadata.yaml` и KEK - **КРИТИЧНО для production**, требуется реализация
 
 ---
 
@@ -622,20 +759,28 @@ revoked:
 
 **Загрузка:**
 - При старте сервиса
-- Периодическая перезагрузка (hot reload)
-- API endpoint для reload (опционально)
+- **Hot reload каждые 30 секунд** (автоматическая проверка modTime файла)
+- Проверка только при изменении файла (эффективно)
+- Атомарное обновление с валидацией (старые данные сохраняются при ошибке)
 
 **Процесс отзыва:**
 
 ```bash
-# 1. Добавить в revoked.yaml
-echo "  - cn: compromised-service" >> pki/revoked.yaml
+# 1. Добавить запись в revoked.yaml
+cat >> pki/revoked.yaml << EOF
+  - cn: "compromised-service"
+    serial: "1A:2B:3C:4D"
+    revoked_date: "$(date -Iseconds)"
+    reason: "compromised"
+EOF
 
-# 2. Перезагрузить HSM service (или hot reload)
-kill -HUP <hsm-service-pid>
+# 2. Сервис автоматически перезагрузит файл в течение 30 секунд
+# (hot reload реализован, перезапуск НЕ требуется)
 
-# 3. Сертификат больше не может подключиться
+# 3. Сертификат блокируется и больше не может подключиться
 ```
+
+**Примечание:** Hot reload работает только для `revoked.yaml`. Для изменений в `metadata.yaml` или конфигурации ключей требуется restart сервиса.
 
 ---
 

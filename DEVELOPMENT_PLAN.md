@@ -1444,18 +1444,283 @@ curl -X POST https://localhost:8443/encrypt \
 1. ✅ ~~Prometheus metrics~~ - COMPLETED (internal/server/metrics.go)
 2. ✅ ~~Hot reload для revoked.yaml~~ - COMPLETED (automatic 30s reload with validation)
 3. ✅ ~~Graceful shutdown~~ - COMPLETED (main.go)
-4. ⬜ HA deployment (active-passive)
-5. ✅ ~~KEK rotation automation~~ - COMPLETED (hsm-admin rotate)
-6. ⬜ CRL support (вместо revoked.yaml)
-7. ⬜ Request tracing (OpenTelemetry)
-8. ⬜ Performance optimization
-9. ✅ ~~Log rotation~~ - COMPLETED (lumberjack)
-10. ✅ ~~Memory security (zeroing)~~ - COMPLETED
-11. ✅ ~~Request size limits~~ - COMPLETED (1MB MaxBytesReader)
-12. ✅ ~~Server timeouts~~ - COMPLETED (Slowloris protection)
-13. ✅ ~~Rate limiter cleanup~~ - COMPLETED (memory leak prevention)
-14. ✅ ~~KEK integrity verification~~ - COMPLETED (checksums)
-15. ⬜ OCSP stapling for certificate revocation
+4. 🔴 **Hot reload для metadata.yaml и KEK** - CRITICAL FOR PRODUCTION (zero-downtime rotation)
+5. ⬜ HA deployment (active-passive)
+6. ✅ ~~KEK rotation automation~~ - COMPLETED (hsm-admin rotate)
+7. ⬜ CRL support (вместо revoked.yaml)
+8. ⬜ Request tracing (OpenTelemetry)
+9. ⬜ Performance optimization
+10. ✅ ~~Log rotation~~ - COMPLETED (lumberjack)
+11. ✅ ~~Memory security (zeroing)~~ - COMPLETED
+12. ✅ ~~Request size limits~~ - COMPLETED (1MB MaxBytesReader)
+13. ✅ ~~Server timeouts~~ - COMPLETED (Slowloris protection)
+14. ✅ ~~Rate limiter cleanup~~ - COMPLETED (memory leak prevention)
+15. ✅ ~~KEK integrity verification~~ - COMPLETED (checksums)
+16. ⬜ OCSP stapling for certificate revocation
+
+---
+
+## Phase 4: Production-Critical - KEK Hot Reload
+
+**Priority:** 🔴 CRITICAL  
+**Effort:** 8-12 hours  
+**Reason:** Restart недопустим для нагруженных систем с 50+ клиентами
+
+### Problem Statement
+
+**Current limitation:**
+```bash
+# Текущий процесс ротации
+hsm-admin rotate exchange-key   # создает kek-exchange-v2
+docker compose restart hsm-service  # ❌ DOWNTIME для всех клиентов!
+```
+
+**Impact:**
+- ❌ Все 50+ клиентов теряют соединение
+- ❌ Активные операции прерываются
+- ❌ Single point of failure при обновлении
+- ❌ Невозможность graceful rotation
+
+### Implementation - Zero-Downtime KEK Reload
+
+#### Task 4.1: KeyManager с Hot Reload
+**File:** `internal/hsm/key_manager.go`  
+**Effort:** 4 hours
+
+**Implementation:**
+
+```go
+package hsm
+
+type KeyManager struct {
+    ctx           crypto11.Context  // Persistent PKCS#11 session
+    keys          map[string]*KeyHandle
+    keysMutex     sync.RWMutex
+    
+    metadata      *config.MetadataConfig
+    metadataMutex sync.RWMutex
+    metadataFile  string
+    lastModTime   time.Time
+    
+    stopReload    chan struct{}
+    reloadWg      sync.WaitGroup
+}
+
+type KeyHandle struct {
+    Handle  crypto11.SecretKey
+    Label   string
+    Version int
+}
+
+// Автоматическая проверка metadata.yaml каждые 30 секунд
+func (km *KeyManager) StartAutoReload(interval time.Duration) {
+    km.reloadWg.Add(1)
+    go func() {
+        defer km.reloadWg.Done()
+        ticker := time.NewTicker(interval)
+        defer ticker.Stop()
+        
+        for {
+            select {
+            case <-ticker.C:
+                if km.metadataChanged() {
+                    if err := km.ReloadKeysFromMetadata(); err != nil {
+                        slog.Error("metadata reload failed", "error", err)
+                    }
+                }
+            case <-km.stopReload:
+                return
+            }
+        }
+    }()
+}
+
+// Проверка изменения metadata.yaml
+func (km *KeyManager) metadataChanged() bool {
+    info, err := os.Stat(km.metadataFile)
+    if err != nil {
+        return false
+    }
+    
+    if info.ModTime().After(km.lastModTime) {
+        km.lastModTime = info.ModTime()
+        return true
+    }
+    return false
+}
+
+// Загрузка новых KEK без разрыва PKCS#11 сессии
+func (km *KeyManager) ReloadKeysFromMetadata() error {
+    // 1. Read metadata.yaml
+    newMetadata, err := config.LoadMetadata(km.metadataFile)
+    if err != nil {
+        slog.Warn("metadata reload skipped", "error", err)
+        return err // Keep old data
+    }
+    
+    // 2. Load NEW keys from HSM (не закрывая старые)
+    newKeys := make(map[string]*KeyHandle)
+    for context, meta := range newMetadata.Rotation {
+        handle, err := km.ctx.FindKey(nil, []byte(meta.Label))
+        if err != nil {
+            slog.Error("key not found in HSM", 
+                "context", context, "label", meta.Label)
+            return err // Rollback, keep old data
+        }
+        newKeys[context] = &KeyHandle{
+            Handle:  handle,
+            Label:   meta.Label,
+            Version: meta.Version,
+        }
+    }
+    
+    // 3. Atomic swap (все или ничего)
+    km.keysMutex.Lock()
+    oldKeys := km.keys
+    km.keys = newKeys
+    km.keysMutex.Unlock()
+    
+    km.metadataMutex.Lock()
+    km.metadata = newMetadata
+    km.metadataMutex.Unlock()
+    
+    slog.Info("KEK hot reload successful", 
+        "contexts", len(newKeys),
+        "old_count", len(oldKeys))
+    return nil
+}
+
+// Graceful shutdown
+func (km *KeyManager) StopAutoReload(ctx context.Context) error {
+    close(km.stopReload)
+    
+    done := make(chan struct{})
+    go func() {
+        km.reloadWg.Wait()
+        close(done)
+    }()
+    
+    select {
+    case <-done:
+        return nil
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+}
+```
+
+#### Task 4.2: Integration в main.go
+**File:** `main.go`  
+**Effort:** 2 hours
+
+```go
+// Инициализация KeyManager
+keyManager, err := hsm.NewKeyManager(hsmCtx, cfg.HSM.MetadataFile)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Start hot reload для metadata.yaml и KEK
+keyManager.StartAutoReload(30 * time.Second)
+
+// Graceful shutdown
+shutdown := make(chan os.Signal, 1)
+signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+<-shutdown
+
+ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+defer cancel()
+
+// Stop auto reload
+if err := keyManager.StopAutoReload(ctx); err != nil {
+    slog.Error("key manager shutdown timeout", "error", err)
+}
+```
+
+#### Task 4.3: Unit Tests
+**File:** `internal/hsm/key_manager_test.go`  
+**Effort:** 3 hours
+
+**Test scenarios:**
+1. ✅ Hot reload успешно загружает новые KEK
+2. ✅ Старые ключи остаются доступны для decrypt
+3. ✅ Битый metadata.yaml не ломает сервис
+4. ✅ Concurrent access безопасен (race detector)
+5. ✅ Graceful shutdown останавливает reload
+6. ✅ Atomic swap - нет частичных обновлений
+
+#### Task 4.4: Integration Test
+**File:** `scripts/test-hot-reload.sh`  
+**Effort:** 2 hours
+
+```bash
+#!/bin/bash
+set -e
+
+echo "🔥 Testing KEK Hot Reload"
+
+# 1. Start HSM service
+docker compose up -d hsm-service
+sleep 5
+
+# 2. Encrypt with v1
+curl -X POST https://localhost:8443/encrypt \
+  --cert pki/client/test.crt --key pki/client/test.key \
+  -d '{"context":"exchange-key","plaintext":"dGVzdA=="}'
+
+# Store ciphertext
+CIPHERTEXT=$(cat response.json | jq -r .ciphertext)
+
+# 3. Rotate key (creates v2)
+./hsm-admin rotate exchange-key
+
+# 4. Wait for hot reload (35 seconds)
+echo "⏳ Waiting for hot reload..."
+sleep 35
+
+# 5. Verify v2 is used for NEW encrypt
+curl -X POST https://localhost:8443/encrypt \
+  --cert pki/client/test.crt --key pki/client/test.key \
+  -d '{"context":"exchange-key","plaintext":"dGVzdA=="}'
+
+KEY_ID=$(cat response2.json | jq -r .key_id)
+if [[ "$KEY_ID" != "kek-exchange-v2" ]]; then
+  echo "❌ Hot reload failed: still using old key"
+  exit 1
+fi
+
+# 6. Verify OLD ciphertext still decrypts (v1 still available)
+curl -X POST https://localhost:8443/decrypt \
+  --cert pki/client/test.crt --key pki/client/test.key \
+  -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$CIPHERTEXT\",\"key_id\":\"kek-exchange-v1\"}"
+
+if [[ $? -eq 0 ]]; then
+  echo "✅ Hot reload successful: v2 active, v1 still decrypts"
+else
+  echo "❌ Hot reload failed: v1 decrypt broken"
+  exit 1
+fi
+
+# 7. Check logs for reload event
+docker compose logs hsm-service | grep "KEK hot reload successful"
+
+echo "✅ All tests passed!"
+```
+
+#### Task 4.5: Documentation Update
+**Files:** `KEY_ROTATION.md`, `ARCHITECTURE.md`  
+**Effort:** 1 hour
+
+**Update process:**
+```bash
+# OLD (with downtime):
+hsm-admin rotate exchange-key
+docker compose restart hsm-service  # ❌
+
+# NEW (zero downtime):
+hsm-admin rotate exchange-key
+# Wait 30 seconds, service reloads automatically ✅
+```
 
 ---
 
