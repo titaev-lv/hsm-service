@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/titaev-lv/hsm-service/internal/config"
@@ -28,11 +29,27 @@ func rotateKeyCommand(args []string) error {
 	}
 	log.Printf("Config loaded successfully")
 
-	// 2. Load metadata
+	// 2. Get metadata path
 	metadataPath := cfg.HSM.MetadataFile
 	if metadataPath == "" {
 		metadataPath = "metadata.yaml"
 	}
+
+	// 3. Acquire exclusive lock on metadata file to prevent concurrent rotations
+	lockFile, err := os.OpenFile(metadataPath+".lock", os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create lock file: %w", err)
+	}
+	defer lockFile.Close()
+	defer os.Remove(metadataPath + ".lock")
+
+	// Acquire exclusive lock (blocks if another rotation is in progress)
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+
+	// 4. Load metadata (after acquiring lock)
 	log.Printf("Loading metadata from: %s", metadataPath)
 	metadata, err := config.LoadMetadata(metadataPath)
 	if err != nil {
@@ -40,14 +57,14 @@ func rotateKeyCommand(args []string) error {
 	}
 	log.Printf("Loaded metadata with %d contexts", len(metadata.Rotation))
 
-	// 3. Find the key in metadata by context
+	// 5. Find the key in metadata by context
 	keyMeta, found := metadata.Rotation[contextName]
 	if !found {
 		log.Printf("Available contexts: %v", getKeys(metadata.Rotation))
 		return fmt.Errorf("key %s not found in metadata", contextName)
 	}
 
-	// 4. Get current version info
+	// 6. Get current version info
 	if len(keyMeta.Versions) == 0 {
 		return fmt.Errorf("no versions found for context: %s", contextName)
 	}
@@ -64,8 +81,16 @@ func rotateKeyCommand(args []string) error {
 		return fmt.Errorf("current version %s not found in versions list", keyMeta.Current)
 	}
 
-	// Generate new version
-	newVersion := currentVersion.Version + 1
+	// Find the highest version number among all versions
+	highestVersion := 0
+	for _, v := range keyMeta.Versions {
+		if v.Version > highestVersion {
+			highestVersion = v.Version
+		}
+	}
+
+	// Generate new version (increment from highest, not current)
+	newVersion := highestVersion + 1
 
 	// Parse label to extract base name and version
 	// Example: kek-exchange-v1 -> kek-exchange-v2
@@ -78,13 +103,20 @@ func rotateKeyCommand(args []string) error {
 	baseName := parts[0]
 	newLabel := fmt.Sprintf("%s-v%d", baseName, newVersion)
 
-	// 5. Get HSM PIN
+	// Check if this version already exists
+	for _, v := range keyMeta.Versions {
+		if v.Label == newLabel {
+			return fmt.Errorf("version %s already exists, cannot create duplicate", newLabel)
+		}
+	}
+
+	// 7. Get HSM PIN
 	hsmPIN := os.Getenv("HSM_PIN")
 	if hsmPIN == "" {
 		return fmt.Errorf("HSM_PIN environment variable not set")
 	}
 
-	// 6. Create new KEK using create-kek utility (ID is now auto-generated)
+	// 8. Create new KEK using create-kek utility (ID is now auto-generated)
 	cmd := fmt.Sprintf("/app/create-kek %s %s %d", newLabel, hsmPIN, newVersion)
 
 	log.Printf("Creating new KEK: %s", newLabel)
@@ -92,7 +124,7 @@ func rotateKeyCommand(args []string) error {
 		return fmt.Errorf("failed to create new KEK: %w", err)
 	}
 
-	// 7. Add new version to metadata
+	// 9. Add new version to metadata
 	now := time.Now()
 	newKeyVersion := config.KeyVersion{
 		Label:     newLabel,
@@ -106,7 +138,7 @@ func rotateKeyCommand(args []string) error {
 
 	metadata.Rotation[contextName] = keyMeta
 
-	// 8. Backup old metadata
+	// 10. Backup old metadata
 	backupPath := fmt.Sprintf("metadata.yaml.backup-%s", time.Now().Format("20060102-150405"))
 	if err := copyFile(metadataPath, backupPath); err != nil {
 		log.Printf("Warning: failed to create backup: %v", err)
@@ -114,14 +146,27 @@ func rotateKeyCommand(args []string) error {
 		log.Printf("Created metadata backup: %s", backupPath)
 	}
 
-	// 9. Write updated metadata
+	// 11. Write updated metadata with explicit sync
 	data, err := yaml.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metadataPath, data, 0644); err != nil {
+	// Open file for writing
+	f, err := os.OpenFile(metadataPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open metadata for writing: %w", err)
+	}
+	defer f.Close()
+
+	// Write data
+	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	// Force sync to disk before closing
+	if err := f.Sync(); err != nil {
+		log.Printf("Warning: failed to sync metadata to disk: %v", err)
 	}
 
 	log.Printf("✓ Key rotation completed:")

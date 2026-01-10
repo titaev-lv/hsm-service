@@ -132,50 +132,67 @@ print_success "Server certificate exists"
 
 print_test "Request client certificate details"
 echo ""
-echo -e "${BLUE}Please provide client certificate details for testing:${NC}"
-echo ""
 
-# Request client certificate name with validation
-while true; do
-    read -p "Client certificate name (default: hsm-trading-client-1): " CLIENT_CERT_NAME
-    # Use default if empty
-    if [ -z "$CLIENT_CERT_NAME" ]; then
-        CLIENT_CERT_NAME="hsm-trading-client-1"
+# Try default certificate first
+DEFAULT_CLIENT_CERT_NAME="hsm-trading-client-1"
+DEFAULT_CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${DEFAULT_CLIENT_CERT_NAME}.crt"
+DEFAULT_CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${DEFAULT_CLIENT_CERT_NAME}.key"
+
+# Check if default certificate exists
+if [ -f "$DEFAULT_CLIENT_CERT_PATH" ] && [ -f "$DEFAULT_CLIENT_KEY_PATH" ]; then
+    CLIENT_CERT_NAME="$DEFAULT_CLIENT_CERT_NAME"
+    CLIENT_CERT_PATH="$DEFAULT_CLIENT_CERT_PATH"
+    CLIENT_KEY_PATH="$DEFAULT_CLIENT_KEY_PATH"
+    echo "Using default certificate: $CLIENT_CERT_NAME"
+else
+    # Request certificate name interactively
+    echo -e "${BLUE}Please provide client certificate details for testing:${NC}"
+    echo ""
+    
+    # Request client certificate name with validation
+    while true; do
+        read -p "Client certificate name (default: hsm-trading-client-1): " CLIENT_CERT_NAME
+        # Use default if empty
+        if [ -z "$CLIENT_CERT_NAME" ]; then
+            CLIENT_CERT_NAME="hsm-trading-client-1"
+        fi
+        # Trim whitespace
+        CLIENT_CERT_NAME=$(echo "$CLIENT_CERT_NAME" | xargs)
+        # Validate not empty after trimming
+        if [ -n "$CLIENT_CERT_NAME" ]; then
+            break
+        fi
+        echo -e "${RED}Certificate name cannot be empty${NC}"
+    done
+
+    echo "Using certificate: $CLIENT_CERT_NAME"
+    echo ""
+
+    # Build paths
+    CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.crt"
+    CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.key"
+
+    # Check if custom paths are needed
+    if [ ! -f "$CLIENT_CERT_PATH" ]; then
+        echo -e "${YELLOW}Certificate not found at default location: $CLIENT_CERT_PATH${NC}"
+        read -p "Enter full path to client certificate: " CLIENT_CERT_PATH
     fi
-    # Trim whitespace
-    CLIENT_CERT_NAME=$(echo "$CLIENT_CERT_NAME" | xargs)
-    # Validate not empty after trimming
-    if [ -n "$CLIENT_CERT_NAME" ]; then
-        break
+
+    if [ ! -f "$CLIENT_KEY_PATH" ]; then
+        echo -e "${YELLOW}Key not found at default location: $CLIENT_KEY_PATH${NC}"
+        read -p "Enter full path to client key: " CLIENT_KEY_PATH
     fi
-    echo -e "${RED}Certificate name cannot be empty${NC}"
-done
 
-echo "Using certificate: $CLIENT_CERT_NAME"
+    # Validate files exist
+    if [ ! -f "$CLIENT_CERT_PATH" ]; then
+        print_error "Client certificate not found: $CLIENT_CERT_PATH"
+    fi
+    if [ ! -f "$CLIENT_KEY_PATH" ]; then
+        print_error "Client key not found: $CLIENT_KEY_PATH"
+    fi
+fi
+
 echo ""
-
-# Build paths
-CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.crt"
-CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.key"
-
-# Check if custom paths are needed
-if [ ! -f "$CLIENT_CERT_PATH" ]; then
-    echo -e "${YELLOW}Certificate not found at default location: $CLIENT_CERT_PATH${NC}"
-    read -p "Enter full path to client certificate: " CLIENT_CERT_PATH
-fi
-
-if [ ! -f "$CLIENT_KEY_PATH" ]; then
-    echo -e "${YELLOW}Key not found at default location: $CLIENT_KEY_PATH${NC}"
-    read -p "Enter full path to client key: " CLIENT_KEY_PATH
-fi
-
-# Validate files exist
-if [ ! -f "$CLIENT_CERT_PATH" ]; then
-    print_error "Client certificate not found: $CLIENT_CERT_PATH"
-fi
-if [ ! -f "$CLIENT_KEY_PATH" ]; then
-    print_error "Client key not found: $CLIENT_KEY_PATH"
-fi
 
 print_success "Client certificate verified: $CLIENT_CERT_NAME"
 
@@ -209,7 +226,8 @@ print_header "PHASE 5: Start Service"
 
 print_test "Start services with docker-compose"
 cd "$PROJECT_ROOT"
-if ! docker compose -f "$COMPOSE_FILE" up -d > /tmp/docker-compose-up.log 2>&1; then
+# Force recreate container to use new image (if build was done)
+if ! docker compose -f "$COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
     cat /tmp/docker-compose-up.log
     print_error "docker-compose up failed (see /tmp/docker-compose-up.log)"
 fi
@@ -413,6 +431,8 @@ if ! docker exec hsm-service /app/hsm-admin rotate exchange-key > /tmp/rotation.
     cat /tmp/rotation.log
     print_error "Key rotation failed (see /tmp/rotation.log)"
 fi
+# Force sync: copy metadata from container to host
+docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
 print_success "Key rotation completed"
 
 print_test "Test 8.3: Verify metadata.yaml updated"
@@ -495,10 +515,7 @@ print_success "New encryption uses v2 key"
 # ==========================================
 print_header "PHASE 9.5: KEK Hot Reload (Zero-Downtime)"
 
-print_test "Test 9.5.1: Backup metadata and modify (simulate rotation)"
-# Backup current metadata
-cp "$PROJECT_ROOT/metadata.yaml" "$PROJECT_ROOT/metadata.yaml.backup-hotreload"
-
+print_test "Test 9.5.1: Modify metadata to trigger hot reload"
 # Modify metadata (add comment to trigger modTime change)
 echo "# Hot reload test - $(date)" >> "$PROJECT_ROOT/metadata.yaml"
 print_success "Modified metadata.yaml"
@@ -527,17 +544,17 @@ HOT_RELOAD_ENCRYPT=$(curl -s --connect-timeout 10 --max-time 15 \
 
 if ! echo "$HOT_RELOAD_ENCRYPT" | grep -q "ciphertext"; then
     echo "Response: $HOT_RELOAD_ENCRYPT"
-    # Restore metadata before failing
-    mv "$PROJECT_ROOT/metadata.yaml.backup-hotreload" "$PROJECT_ROOT/metadata.yaml"
+    # Clean up test comment before failing
+    sed -i '/# Hot reload test -/d' "$PROJECT_ROOT/metadata.yaml"
     print_error "Encryption failed after metadata modification (hot reload issue)"
 fi
 print_success "Encryption works without service restart (zero-downtime verified)"
 
-# Restore original metadata
-mv "$PROJECT_ROOT/metadata.yaml.backup-hotreload" "$PROJECT_ROOT/metadata.yaml"
-print_info "Restored original metadata.yaml"
+# Remove test comment from metadata (preserve all other content)
+sed -i '/# Hot reload test -/d' "$PROJECT_ROOT/metadata.yaml"
+print_info "Cleaned up test comment from metadata.yaml"
 
-# Wait for reload back to original state
+# Wait for reload back to current state
 sleep 35
 
 # ==========================================
@@ -547,23 +564,33 @@ print_header "PHASE 10: Key Lifecycle Management (PCI DSS)"
 
 print_test "Test 10.1: Simulate multiple rotations (create v3, v4)"
 # Rotate to v3
-docker exec hsm-service /app/hsm-admin rotate exchange-key > /dev/null 2>&1
-docker stop hsm-service > /dev/null 2>&1
-sleep 2
-docker start hsm-service > /dev/null 2>&1
-sleep 7
+echo "=== Rotating to v3 ==="
+if ! docker exec hsm-service /app/hsm-admin rotate exchange-key; then
+    print_error "Failed to rotate to v3"
+fi
+# Force sync: copy metadata from container to host
+docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+# Wait for automatic hot reload (service monitors every 30s)
+echo "Waiting for hot reload (35 seconds)..."
+sleep 35
+
 # Rotate to v4
-docker exec hsm-service /app/hsm-admin rotate exchange-key > /dev/null 2>&1
-docker stop hsm-service > /dev/null 2>&1
-sleep 2
-docker start hsm-service > /dev/null 2>&1
-sleep 7
+echo "=== Rotating to v4 ==="
+if ! docker exec hsm-service /app/hsm-admin rotate exchange-key; then
+    print_error "Failed to rotate to v4"
+fi
+# Force sync: copy metadata from container to host
+docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+echo "Waiting for hot reload (35 seconds)..."
+sleep 35
 print_success "Rotated to v3 and v4"
 
 print_test "Test 10.2: Verify 4 versions exist"
-VERSION_COUNT=$(grep -c "label: kek-exchange-v" "$PROJECT_ROOT/metadata.yaml")
+# Read metadata from container (source of truth)
+VERSION_COUNT=$(docker exec hsm-service grep -c "label: kek-exchange-v" /app/metadata.yaml)
 if [ "$VERSION_COUNT" -ne 4 ]; then
-    cat "$PROJECT_ROOT/metadata.yaml"
+    echo "Metadata in container:"
+    docker exec hsm-service cat /app/metadata.yaml
     print_error "Expected 4 versions, got $VERSION_COUNT"
 fi
 print_success "4 versions exist (v1, v2, v3, v4)"
