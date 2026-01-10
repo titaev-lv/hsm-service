@@ -797,8 +797,7 @@ go test ./internal/...
 
 ## 🤝 Поддержка
 
-- [Issues](https://github.com/your-org/hsm-service/issues)
-- Email: ops@company.com
+- Email: titaev@gmail.com
 
 ## 📄 Лицензия
 
