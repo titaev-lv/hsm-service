@@ -450,7 +450,7 @@
 
 **Рекомендуется**:
 1. Прочитать [DOCS_INDEX.md](DOCS_INDEX.md) для навигации
-2. Начать с [QUICKSTART.md](QUICKSTART.md) для первого знакомства
+2. Начать с [PKI_SETUP.md](PKI_SETUP.md) для настройки PKI, затем [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) для первого знакомства
 3. Изучить [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) перед production deployment
 4. Настроить monitoring по [MONITORING.md](MONITORING.md)
 5. Настроить backups по [BACKUP_RESTORE.md](BACKUP_RESTORE.md)

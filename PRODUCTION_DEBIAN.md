@@ -1,6 +1,6 @@
-# 🚀 HSM Service - Production Deployment (Debian 13)
+# 🏭 HSM Service - Production Deployment (Debian 13)
 
-> **Для DevOps**: Полная инструкция по развертыванию HSM Service на Debian 13 Trixie с настройкой nftables firewall
+> **Для DevOps**: Развертывание HSM Service на Debian 13 Trixie с nftables firewall
 
 ## Оглавление
 
@@ -8,7 +8,7 @@
 - [Подготовка сервера](#подготовка-сервера)
 - [Установка зависимостей](#установка-зависимостей)
 - [Установка SoftHSM](#установка-softhsm)
-- [Установка Go и сборка приложения](#установка-go-и-сборка-приложения)
+- [Развертывание бинарников](#развертывание-бинарников)
 - [Настройка PKI](#настройка-pki)
 - [Конфигурация сервиса](#конфигурация-сервиса)
 - [Systemd service setup](#systemd-service-setup)
@@ -52,7 +52,7 @@ apt update
 apt upgrade -y
 
 # Install basic tools
-apt install -y curl wget git vim sudo ufw
+apt install -y curl wget git vim sudo
 ```
 
 ### 2. Создание пользователя для сервиса
@@ -100,27 +100,7 @@ pkcs11-tool --version
 # pkcs11-tool 0.23.0
 ```
 
-### 2. Установка Go 1.22+
-
-```bash
-# Download Go
-cd /tmp
-wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
-
-# Extract
-rm -rf /usr/local/go
-tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
-
-# Add to PATH
-echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
-source /etc/profile
-
-# Verify
-go version
-# go version go1.22.0 linux/amd64
-```
-
-### 3. Установка дополнительных утилит
+### 2. Установка дополнительных утилит
 
 ```bash
 # Prometheus node_exporter (опционально)
@@ -138,96 +118,86 @@ apt install -y fail2ban
 
 ---
 
-## Установка HSM Service
+## Развертывание бинарников
 
-### 1. Клонирование репозитория
+> **⚠️ ВАЖНО**: Предполагается что бинарники уже собраны на build-сервере. На production сервере НЕ устанавливаем Go и НЕ компилируем код.
 
-```bash
-# Switch to hsm user
-su - hsm
-
-# Clone repository
-cd /opt/hsm-service
-git clone <repository-url> .
-
-# Or copy from build server
-# scp -r /path/to/hsm-service hsm@server:/opt/hsm-service/
-```
-
-### 2. Сборка приложения
-
-```bash
-cd /opt/hsm-service
-
-# Download dependencies
-go mod download
-
-# Build main service
-go build -o hsm-service .
-
-# Build admin CLI
-go build -o hsm-admin ./cmd/hsm-admin
-
-# Verify binaries
-./hsm-service --version
-./hsm-admin --help
-```
-
-### 3. Создание директорий
+### 1. Создание директорий
 
 ```bash
 # Create directories
+sudo mkdir -p /opt/hsm-service/bin
 sudo mkdir -p /var/lib/softhsm/tokens
 sudo mkdir -p /var/log/hsm-service
 sudo mkdir -p /etc/hsm-service
 
 # Set ownership
+sudo chown -R hsm:hsm /opt/hsm-service
 sudo chown -R hsm:hsm /var/lib/softhsm/tokens
 sudo chown -R hsm:hsm /var/log/hsm-service
 sudo chown -R hsm:hsm /etc/hsm-service
 
 # Set permissions
+sudo chmod 755 /opt/hsm-service
 sudo chmod 700 /var/lib/softhsm/tokens
 sudo chmod 755 /var/log/hsm-service
 sudo chmod 755 /etc/hsm-service
+```
+
+### 2. Копирование бинарников
+
+```bash
+# Скопировать с build-сервера (с вашего CI/CD или локально)
+scp hsm-service hsm@production-server:/opt/hsm-service/bin/
+scp hsm-admin hsm@production-server:/opt/hsm-service/bin/
+
+# Установить права выполнения
+ssh hsm@production-server "chmod +x /opt/hsm-service/bin/hsm-service /opt/hsm-service/bin/hsm-admin"
+
+# Проверка
+ssh hsm@production-server "/opt/hsm-service/bin/hsm-service --version"
 ```
 
 ---
 
 ## Настройка PKI
 
-### Вариант 1: Генерация тестовых сертификатов
+> **📖 Детальная инструкция**: См. [PKI_SETUP.md](PKI_SETUP.md) для создания CA и генерации сертификатов
+
+### Копирование существующих сертификатов
 
 ```bash
-cd /opt/hsm-service/pki
-./scripts/generate-all.sh
-```
-
-### Вариант 2: Использование существующей PKI
-
-```bash
-# Copy certificates from your PKI
+# Создать директории
 sudo mkdir -p /etc/hsm-service/pki/{ca,server,client}
 
-# CA certificate
+# Скопировать сертификаты с CA-сервера или локально
 sudo cp /path/to/ca.crt /etc/hsm-service/pki/ca/
-
-# Server certificate
-sudo cp /path/to/server.crt /etc/hsm-service/pki/server/
-sudo cp /path/to/server.key /etc/hsm-service/pki/server/
-
-# Client certificates (for testing)
-sudo cp /path/to/client*.crt /etc/hsm-service/pki/client/
-sudo cp /path/to/client*.key /etc/hsm-service/pki/client/
+sudo cp /path/to/hsm-service.crt /etc/hsm-service/pki/server/
+sudo cp /path/to/hsm-service.key /etc/hsm-service/pki/server/
+sudo cp /path/to/client*.crt /etc/hsm-service/pki/client/  # для тестирования
 
 # Set ownership
 sudo chown -R hsm:hsm /etc/hsm-service/pki
 
-# Set permissions (private keys!)
+# Set permissions (КРИТИЧЕСКИ ВАЖНО!)
 sudo chmod 600 /etc/hsm-service/pki/server/*.key
 sudo chmod 600 /etc/hsm-service/pki/client/*.key
 sudo chmod 644 /etc/hsm-service/pki/ca/*.crt
 sudo chmod 644 /etc/hsm-service/pki/server/*.crt
+sudo chmod 644 /etc/hsm-service/pki/client/*.crt
+```
+
+**Проверка**:
+```bash
+# Проверить серверный сертификат
+openssl verify -CAfile /etc/hsm-service/pki/ca/ca.crt /etc/hsm-service/pki/server/hsm-service.crt
+# /etc/hsm-service/pki/server/hsm-service.crt: OK
+
+# Проверить клиентский сертификат
+openssl verify -CAfile /etc/hsm-service/pki/ca/ca.crt /etc/hsm-service/pki/client/trading-service-1.crt
+# /etc/hsm-service/pki/client/trading-service-1.crt: OK
+```
+
 ```
 
 ---
@@ -238,10 +208,10 @@ sudo chmod 644 /etc/hsm-service/pki/server/*.crt
 
 ```bash
 # Edit SoftHSM config
-sudo nano /etc/softhsm2.conf
+sudo nano /etc/softhsm/softhsm2.conf
 ```
 
-**Содержимое `/etc/softhsm2.conf`**:
+**Содержимое `/etc/softhsm/softhsm2.conf`**:
 ```ini
 # SoftHSM v2 configuration file
 
@@ -262,8 +232,8 @@ softhsm2-util --init-token \
   --so-pin 5678 \
   --pin 1234
 
-# ВАЖНО: Запишите PIN в безопасное место!
-# Production: используйте сильные PIN'ы!
+# ВАЖНО: Используйте сильные PIN'ы на production!
+# Запишите PIN в безопасное место (KMS, Vault)
 
 # Verify
 softhsm2-util --show-slots
@@ -273,7 +243,7 @@ softhsm2-util --show-slots
 
 ```bash
 # Copy config template
-sudo cp /opt/hsm-service/config.yaml /etc/hsm-service/config.yaml
+sudo cp /opt/hsm-service/config.yaml.example /etc/hsm-service/config.yaml
 
 # Edit configuration
 sudo nano /etc/hsm-service/config.yaml
@@ -361,11 +331,10 @@ cd /opt/hsm-service
 export HSM_PIN=1234  # Ваш PIN!
 
 # Create KEKs
-./hsm-admin create-kek --label kek-exchange-v1 --context exchange-key
-./hsm-admin create-kek --label kek-2fa-v1 --context 2fa
+/opt/hsm-service/bin/hsm-admin init-keys
 
 # Verify
-./hsm-admin list-kek
+/opt/hsm-service/bin/hsm-admin list-kek
 ```
 
 ---
@@ -397,7 +366,7 @@ Environment="SLOT_LABEL=hsm-token"
 EnvironmentFile=-/etc/hsm-service/environment
 
 # Binary
-ExecStart=/opt/hsm-service/hsm-service
+ExecStart=/opt/hsm-service/bin/hsm-service
 
 # Restart policy
 Restart=on-failure
@@ -960,7 +929,8 @@ sudo journalctl -u hsm-service -f
 
 ## Дополнительные ресурсы
 
-- [QUICKSTART.md](QUICKSTART.md) - Быстрый старт
+- [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) - Быстрый старт (Docker)
+- [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md) - Быстрый старт (Native binary)
 - [API.md](API.md) - API документация
 - [MONITORING.md](MONITORING.md) - Мониторинг и алерты
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security audit

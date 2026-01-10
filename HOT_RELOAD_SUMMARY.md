@@ -167,7 +167,7 @@ ok      github.com/titaev-lv/hsm-service/internal/server  0.412s
    - Monitoring and troubleshooting guide
    - Comparison with SIGHUP approach
 
-5. **RUN.md** (+50 lines)
+5. **QUICKSTART_NATIVE.md** (previously RUN.md) (+50 lines)
    - Added auto-reload section
    - Validation examples
    - Log format documentation

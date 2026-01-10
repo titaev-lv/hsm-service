@@ -996,7 +996,9 @@ journalctl -u hsm-service | jq -r '.client_cn' | sort | uniq -c | sort -rn
 
 ## Additional Resources
 
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
+- [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) - Quick start guide (Docker)
+- [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md) - Quick start guide (Native binary)
+- [PKI_SETUP.md](PKI_SETUP.md) - PKI setup guide
 - [API.md](API.md) - API documentation
 - [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) - Production deployment
 - [MONITORING.md](MONITORING.md) - Monitoring and alerting

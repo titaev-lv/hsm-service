@@ -696,7 +696,8 @@ docker-compose exec hsm-service /app/hsm-admin cleanup-old-versions --dry-run
 
 ## Ссылки
 
-- [QUICKSTART.md](QUICKSTART.md) - Быстрый старт для новичков
+- [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) - Быстрый старт для новичков (Docker)
+- [PKI_SETUP.md](PKI_SETUP.md) - Настройка PKI
 - [API.md](API.md) - API документация
 - [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) - Production deployment
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Решение проблем
