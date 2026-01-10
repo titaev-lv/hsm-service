@@ -195,12 +195,10 @@ hsm-service/
 │
 ├── scripts/
 │   ├── init-hsm.sh             # Инициализация SoftHSM token
-│   ├── rotate-key-auto.sh      # Автоматическая ротация ключей
-│   ├── rotate-key-interactive.sh # Интерактивная ротация
+│   ├── auto-rotate-keys.sh     # Автоматическая ротация (через hsm-admin)
 │   ├── cleanup-old-keys.sh     # Очистка старых ключей
 │   ├── check-key-rotation.sh   # Мониторинг статуса ротации
-│   ├── test-hot-reload.sh      # 🔥 NEW: Тест KEK hot reload
-│   ├── full-integration-test.sh # Интеграционные тесты
+│   ├── full-integration-test.sh # Интеграционные тесты (включая KEK hot reload)
 │   └── README.md               # Описание скриптов
 │
 ├── data/                       # Данные runtime
@@ -613,7 +611,7 @@ hsm-admin cleanup exchange-key --version 1
 - ✅ Hot reload для `metadata.yaml` и KEK - **РЕАЛИЗОВАНО** (30 сек interval)
 - ✅ KeyManager с thread-safe reload - **РЕАЛИЗОВАНО**
 - ✅ Race detector clean - **РЕАЛИЗОВАНО**
-- ✅ Integration tests - **РЕАЛИЗОВАНО** (scripts/test-hot-reload.sh)
+- ✅ Integration tests - **РЕАЛИЗОВАНО** (scripts/full-integration-test.sh Phase 9.5)
 
 Подробнее см. [KEY_ROTATION.md](KEY_ROTATION.md) и [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
 

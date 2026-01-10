@@ -389,7 +389,7 @@ hsm-service/
 │
 ├── scripts/
 │   ├── init-hsm.sh
-│   ├── rotate-key-auto.sh
+│   ├── auto-rotate-keys.sh
 │   ├── cleanup-old-keys.sh
 │   └── check-key-rotation.sh
 │

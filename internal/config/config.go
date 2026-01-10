@@ -46,6 +46,20 @@ func LoadMetadata(path string) (*Metadata, error) {
 	return &meta, nil
 }
 
+// SaveMetadata saves key rotation metadata to metadata.yaml
+func SaveMetadata(path string, meta *Metadata) error {
+	data, err := yaml.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshal metadata to YAML: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write metadata file: %w", err)
+	}
+
+	return nil
+}
+
 // applyEnvOverrides applies environment variable overrides to configuration
 func applyEnvOverrides(cfg *Config) {
 	// Server overrides

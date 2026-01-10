@@ -62,163 +62,58 @@ HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK
 0 9 * * * cd /home/user/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-cron.log 2>&1
 ```
 
-### 2. rotate-key-interactive.sh
+### 2. auto-rotate-keys.sh
 
-**Назначение:** Интерактивная ротация ключа с подтверждением на каждом шаге
+**Назначение:** Автоматическая ротация ключей через `hsm-admin` + KeyManager hot reload (Phase 4)
 
 **Функции:**
-- Пошаговая ротация с подтверждением пользователя
-- Автоматическое резервное копирование (config + HSM token)
-- Создание нового ключа
-- Обновление конфигурации для overlap period
-- Проверка здоровья сервиса
-- Откат при ошибках
+- Проверяет ключи, требующие ротации (через `hsm-admin rotation-status`)
+- Выполняет ротацию каждого ключа (через `hsm-admin rotate`)
+- KeyManager автоматически обнаруживает изменения в `metadata.yaml` (в течение 30 секунд)
+- Zero downtime - сервис не перезапускается!
+- Поддержка dry-run режима
+- Логирование всех операций
 
 **Использование:**
 
 ```bash
-# Установка HSM PIN
-export HSM_PIN=1234
+# Проверка, какие ключи будут ротированы (dry run)
+DRY_RUN=true ./scripts/auto-rotate-keys.sh
 
-# Запуск интерактивной ротации
-sudo -E ./scripts/rotate-key-interactive.sh
-```
+# Выполнение автоматической ротации
+./scripts/auto-rotate-keys.sh
 
-**Пример сессии:**
-
-```
-==========================================
-   HSM Key Rotation - Interactive Mode
-==========================================
-
-ℹ Step 1: Checking current rotation status...
-Key Rotation Status:
-====================
-⚠️  Context: exchange-key
-  Label:             kek-exchange-v1
-  Status:            NEEDS ROTATION (2 days overdue)
-
-❓ Continue with rotation? (yes/no): yes
-
-ℹ Step 2: Select key to rotate
-Enter the key label to rotate (e.g., kek-exchange-v1):
-kek-exchange-v1
-
-ℹ Old key: kek-exchange-v1 (version 1)
-ℹ New key: kek-exchange-v2 (version 2)
-
-❓ Proceed with rotation from v1 to v2? (yes/no): yes
-
-ℹ Step 3: Creating backups...
-✓ Config backed up to: /var/backups/hsm/config.yaml.20260109-120000
-✓ HSM token backed up to: /var/backups/hsm/token.20260109-120000.tar.gz
-
-ℹ Step 4: Creating new KEK...
-✓ Created KEK: kek-exchange-v2 (handle: 3, ID: 02, version: 2)
-
-ℹ Step 5: Updating configuration for overlap period...
-✓ Config updated: exchange-key -> kek-exchange-v2 (v2)
-✓ Old key preserved: exchange-key-old -> kek-exchange-v1
-
-ℹ Step 6: Restarting HSM service...
-✓ Service restarted successfully and is healthy
-
-==========================================
-✓ KEY ROTATION COMPLETED
-==========================================
-
-OVERLAP PERIOD (7 days) - Both keys are active:
-  • New encryptions will use: kek-exchange-v2
-  • Old data can be decrypted with: kek-exchange-v1
-
-NEXT STEPS:
-1. ✓ New key created and loaded
-2. ⚠  Re-encrypt all data encrypted with kek-exchange-v1
-3. ⏰ Wait 7 days for overlap period
-4. ⚠  Delete old key after verification
-```
-rotate-key-auto.sh
-
-**Назначение:** Полностью автоматическая ротация ключей без взаимодействия с пользователем
-
-**Функции:**
-- Полный цикл ротации без подтверждений пользователя
-- Автоматическое резервное копирование
-- Создание нового ключа
-- Обновление конфигурации
-- Перезапуск сервиса
-- Проверка здоровья с автоматическим откатом при ошибках
-- Отправка оповещений о начале и завершении
-- Автоматическая очистка старых ключей (если AUTO_CLEANUP_ENABLED=true)
-
-**Использование:**
-
-```bash
-# ВАЖНО: Установка флагов безопасности
-export AUTO_ROTATION_ENABLED=true  # Обязательно!
-export AUTO_CLEANUP_ENABLED=true   # Опционально (автоудаление старых ключей)
-export HSM_PIN=1234
-
-# Запуск автоматической ротации
-sudo -E ./scripts/rotate-key-auto.sh
-```
-
-**Настройки безопасности:**
-
-```bash
-# Максимальный возраст ключа для автоматической ротации (защита от очень старых ключей)
-export MAX_ROTATION_AGE_DAYS=100  # По умолчанию 100 дней (макс 10 дней просрочки)
-
-# Период overlap для старых ключей
-export OVERLAP_PERIOD_DAYS=7  # По умолчанию 7 дней
+# С пользовательским путём к логу
+HSM_ROTATION_LOG=/var/log/my-rotation.log ./scripts/auto-rotate-keys.sh
 ```
 
 **Пример вывода:**
 
 ```
-==========================================
-HSM Automatic Key Rotation - Starting
-==========================================
-
-✓ Prerequisites check passed
-ℹ Keys needing rotation:
-kek-exchange-v1
-
-ℹ Starting automatic rotation for key: kek-exchange-v1
-ℹ Rotation plan: kek-exchange-v1 (v1) → kek-exchange-v2 (v2)
-ℹ Key age: 92 days
-
-🔄 [Slack/Email/Telegram] Starting automatic rotation: kek-exchange-v1 → kek-exchange-v2
-
-ℹ Creating backups...
-✓ Backups created: config=/var/backups/hsm/config.yaml.20260109-150000, token=...
-
-ℹ Creating new KEK: kek-exchange-v2
-✓ New KEK created: kek-exchange-v2
-
-ℹ Updating configuration for overlap period...
-✓ Configuration updated for overlap period
-
-ℹ Restarting HSM service...
-✓ Service is healthy
-✓ Both keys verified in HSM
-
-✅ [Slack/Email/Telegram] AUTO-ROTATION COMPLETED
-    Key rotated: kek-exchange-v1 → kek-exchange-v2
-    ...
-
-✓ Rotation completed: kek-exchange-v1 → kek-exchange-v2
+ℹ Checking keys requiring rotation...
+ℹ Keys requiring rotation:
+  - exchange-key
+ℹ Rotating key context: exchange-key
+✓ Rotation completed: exchange-key
+ℹ KeyManager will automatically reload keys within 30 seconds
 
 ==========================================
 Auto-rotation summary:
   Successful: 1
   Failed: 0
 ==========================================
+✓ All rotations completed successfully
 ```
 
-### 4. cleanup-old-keys.sh
+**Преимущества перед старыми скриптами:**
+- ✅ Простота: ~100 строк вместо 900
+- ✅ Использует hsm-admin (единая кодовая база)
+- ✅ Zero downtime (hot reload через KeyManager)
+- ✅ Не требует HSM_PIN (hsm-admin управляет)
+- ✅ Работает с metadata.yaml (Phase 4)
 
-**Назначение:** Удаление старых ключей после завершения overlap period (интерактивный режим)
+### 3. cleanup-old-keys.sh
+
 **Назначение:** Удаление старых ключей после завершения overlap period
 
 **Функции:**
@@ -249,68 +144,63 @@ Checking key: kek-exchange-v1
   Context: exchange-key-old
   Created: 2025-10-09T10:30:00Z
   Age: 92 days
-Режим 1: Полностью автоматическая ротация (рекомендуется)
+Режим 1: Автоматическая ротация через cron (рекомендуется)
 
 ```bash
 # /etc/cron.d/hsm-rotation
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/XXX
-HSM_SEND_EMAIL=true
-HSM_ALERT_EMAIL=ops@company.com
 
-# АВТОМАТИЧЕСКАЯ РОТАЦИЯ: проверка + автоматическое выполнение ротации
-AUTO_ROTATION_ENABLED=true
-AUTO_CLEANUP_ENABLED=true
-HSM_PIN=********  # Используйте secrets manager!
+# Автоматическая ротация каждый день в 2:00 AM
+0 2 * * * root cd /opt/hsm-service && ./scripts/auto-rotate-keys.sh >> /var/log/hsm-auto-rotation.log 2>&1
 
-# Проверка ротации каждый день в 2:00 AM (с автоматической ротацией при необходимости)
-0 2 * * * root cd /opt/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-rotation-check.log 2>&1
+# Мониторинг (проверка + оповещения) в 9:00 AM
+0 9 * * * root cd /opt/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-rotation-check.log 2>&1
 
 # Еженедельная проверка здоровья
 0 10 * * 1 root docker exec hsm-service /app/hsm-admin rotation-status >> /var/log/hsm-weekly-status.log 2>&1
 ```
 
-**Как это работает:**
-1. Каждую ночь в 2:00 AM запускается `check-key-rotation.sh`
-2. Если ключи просрочены и `AUTO_ROTATION_ENABLED=true`, автоматически запускается `rotate-key-auto.sh`
-3. Ротация выполняется полностью автоматически:
-   - Создаются бэкапы
-   - Генерируется новый ключ
-   - Обновляется конфигурация
-   - Перезапускается сервис
-   - Проверяется здоровье
-4. После 7 дней (OVERLAP_PERIOD_DAYS), если `AUTO_CLEANUP_ENABLED=true`, старые ключи автоматически удаляются
-5. Вы получаете оповещения в Slack/Email/Telegram о начале и завершении ротации
+**Как это работает (Phase 4):**
+1. **2:00 AM**: `auto-rotate-keys.sh` проверяет ключи и ротирует при необходимости
+2. **hsm-admin rotate** создаёт новый ключ и обновляет `metadata.yaml`
+3. **KeyManager** автоматически обнаруживает изменения в течение 30 секунд
+4. **Zero downtime** - сервис перезагружает ключи без перезапуска!
+5. **9:00 AM**: `check-key-rotation.sh` отправляет статус в Slack/Email
 
-**Преимущества:**
-- ✅ Нет необходимости в ручном вмешательстве
-- ✅ Ротация происходит в нерабочее время (2:00 AM)
-- ✅ Автоматический откат при ошибках
-- ✅ Полное логирование и мониторинг
-- ✅ Соответствие PCI DSS без человеческого фактора
+**Преимущества Phase 4:**
+- ✅ Zero downtime (hot reload, без перезапуска сервиса)
+- ✅ Простота: использует hsm-admin (одна кодовая база)
+- ✅ Не требует HSM_PIN в crontab
+- ✅ Автоматическое обнаружение изменений (30 секунд)
+- ✅ Thread-safe atomic swap всех ключей
 
-**Требования:**
-- HSM_PIN должен храниться в secrets manager (не в crontab!)
-- Настроенные оповещения (Slack/Email/Telegram)
-- Тестирование на dev/staging окружении
-
-### Режим 2: Только мониторинг + ручная ротация
+### Режим 2: Только мониторинг (без автоматической ротации)
 
 ```bash
 # /etc/cron.d/hsm-rotation
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/XXX
-HSM_SEND_EMAIL=true
-HSM_ALERT_EMAIL=ops@company.com
 
-# AUTO_ROTATION_ENABLED не установлен (или =false) - только мониторинг
+# Только проверка и оповещения в 9:00 (без ротации)
+0 9 * * * root cd /opt/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-rotation-check.log 2>&1
+```
 
-# Проверка ротации каждый день в 9:00 (только оповещения)
-==========================================
-Cleanup completed
-==========================================
+**Ручная ротация при получении оповещения:**
+```bash
+# 1. Проверить статус
+docker exec hsm-service /app/hsm-admin rotation-status
+
+# 2. Ротировать ключ
+docker exec hsm-service /app/hsm-admin rotate exchange-key
+
+# 3. KeyManager автоматически перезагрузит ключи (30 секунд)
+docker compose logs -f hsm-service | grep "reload"
+
+# 4. Через 7 дней - очистить старые версии
+docker exec hsm-service /app/hsm-admin cleanup-old-versions
 ```
 
 ## Установка
@@ -345,51 +235,36 @@ sudo crontab -e
 #### Email (требует postfix/sendmail)
 
 ```bash
-# Установка mailutilв ручном режиме (когда получено оповещение)
+# Установка mailutil**Процесс ротации (Phase 4 - Zero Downtime):**
 
-1. **День 0 - Получение оповещения:**
-   ```
-   ⚠️ WARNING: HSM key expiring soon!
-   Context: exchange-key
-   Days remaining: 7
-   ```
-
-2. **День 1 - Планирование:**
-   - Согласовать окно обслуживания с командой
-   - Уведомить пользователей о maintenance window
-   - Подготовить rollback plan
-
-3. **День 2 - Выполнение ротации:**
-   
-   **Вариант A: Интерактивная ротация (рекомендуется для первого раза)**
+1. **Автоматическая ротация** (рекомендуется):
    ```bash
-   export HSM_PIN=your_pin
-   sudo -E ./scripts/rotate-key-interactive.sh
-   ```
-   
-   **Вариант B: Полностью автоматическая (для опытных администраторов)**
-   ```bash
-   export AUTO_ROTATION_ENABLED=true
-   export HSM_PIN=your_pin
-   sudo -E ./scripts/rotate-key-auto.sh
+   # Настройте cron для auto-rotate-keys.sh (см. выше)
+   # Ротация выполнится автоматически + zero downtime!
    ```
 
-4. **День 2-9 - Overlap period:**
-   - Мониторинг сервиса
-   - Перешифрование данных приложениями
-   - Проверка логов на ошибки
-
-5. **День 9 - Очистка:**
-   
-   **Вариант A: Ручная очистка**
+2. **Ручная ротация** (если нужен контроль):
    ```bash
-   sudo ./scripts/cleanup-old-keys.sh
+   # Шаг 1: Проверить статус
+   docker exec hsm-service /app/hsm-admin rotation-status
+   
+   # Шаг 2: Ротировать ключ
+   docker exec hsm-service /app/hsm-admin rotate exchange-key
+   
+   # Шаг 3: Подождать автоматической перезагрузки (30 секунд)
+   docker compose logs -f hsm-service | grep "reload"
+   # Выход: "KEK hot reload successful"
+   
+   # Шаг 4: Через 7 дней - очистить старые версии
+   docker exec hsm-service /app/hsm-admin cleanup-old-versions
    ```
-   
-   **Вариант B: Автоматическая очистка**
-   ```bash
-   # Если при ротации был установлен AUTO_CLEANUP_ENABLED=true,
-   # очистка произойдет автоматически через 7 днейion
+
+**Преимущества Phase 4:**
+- ✅ Одна команда: `hsm-admin rotate exchange-key`
+- ✅ Zero downtime (KeyManager hot reload)
+- ✅ Не нужен HSM_PIN в скриптах
+- ✅ Автоматическое обновление через metadata.yaml
+- ✅ Thread-safe операции
 
 ### Ежедневная автоматизация
 

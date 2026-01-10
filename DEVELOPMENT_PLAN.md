@@ -1650,7 +1650,7 @@ if err := keyManager.StopAutoReload(ctx); err != nil {
 6. ✅ Atomic swap - нет частичных обновлений
 
 #### Task 4.4: Integration Test
-**File:** `scripts/test-hot-reload.sh`  
+**File:** `scripts/full-integration-test.sh` (Phase 9.5)  
 **Effort:** 2 hours
 
 ```bash
