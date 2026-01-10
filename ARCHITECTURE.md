@@ -62,20 +62,31 @@ graph TB
     WEB -.->|mTLS<br/>stores encrypted secrets| DB2
 ```
 
-### Проблема, которую решаем
+### Ключевые преимущества
 
-**До внедрения HSM:**
-- KEK хранились в конфигах распределенных сервисов
-- Каждый сервис имел локальную копию KEK
-- Невозможность централизованной ротации ключей
-- Высокий риск компрометации при утечке конфига
+**Безопасность ключей:**
+- ✅ KEK НИКОГДА не покидает HSM (CKA_EXTRACTABLE=false)
+- ✅ Защита от компрометации при утечке конфигов
+- ✅ Физическая изоляция криптографических операций
+- ✅ Атрибуты ключей запрещают экспорт
 
-**После внедрения HSM:**
-- ✅ KEK НИКОГДА не покидает HSM
-- ✅ Централизованное управление ключами
-- ✅ Простая ротация KEK без обновления сервисов
-- ✅ Аудит всех криптографических операций
-- ✅ mTLS + ACL для авторизации
+**Централизованное управление:**
+- ✅ Единая точка управления всеми KEK
+- ✅ Простая ротация ключей без обновления клиентских сервисов
+- ✅ Унифицированная политика безопасности
+- ✅ Централизованный аудит криптографических операций
+
+**Разграничение доступа:**
+- ✅ mTLS с взаимной аутентификацией
+- ✅ ACL на основе OU (Organizational Unit) в сертификатах
+- ✅ Управление отозванными сертификатами (revoked.yaml)
+- ✅ Контекстная изоляция (context binding через AAD)
+
+**Масштабируемость:**
+- ✅ Поддержка множества распределенных сервисов
+- ✅ Независимая ротация ключей для разных контекстов
+- ✅ Версионирование KEK с обратной совместимостью
+- ✅ Возможность горизонтального масштабирования (Phase 2)
 
 ---
 
@@ -130,45 +141,66 @@ graph LR
 ```
 hsm-service/
 ├── cmd/
+│   ├── create-kek/             # CLI утилита для создания KEK
+│   │   ├── main.go
+│   │   └── README.md
+│   │
 │   └── hsm-admin/              # CLI утилита для управления KEK
-│       └── main.go
+│       ├── main.go
+│       ├── rotate.go           # Ротация ключей
+│       ├── cleanup.go          # Очистка старых ключей
+│       ├── checksums.go        # Проверка целостности
+│       └── README.md
 │
 ├── internal/
 │   ├── config/                 # Конфигурация
 │   │   ├── config.go           # Загрузка config.yaml и metadata.yaml
+│   │   ├── config_test.go      # Тесты конфигурации
 │   │   └── types.go            # Типы конфигурации и метаданных
 │   │
 │   ├── hsm/                    # PKCS#11 и криптография
 │   │   ├── pkcs11.go           # Инициализация SoftHSM
 │   │   ├── crypto.go           # Encrypt/Decrypt логика
-│   │   ├── kek.go              # Управление KEK
-│   │   └── types.go            # Криптографические типы
+│   │   └── crypto_test.go      # Тесты криптографии
 │   │
 │   ├── server/                 # HTTP сервер
 │   │   ├── server.go           # HTTP server setup
 │   │   ├── handlers.go         # /encrypt, /decrypt endpoints
+│   │   ├── handlers_test.go    # Тесты handlers
 │   │   ├── acl.go              # ACL проверки по OU
+│   │   ├── acl_test.go         # Тесты ACL
+│   │   ├── acl_reload_test.go  # Тесты hot reload ACL
 │   │   ├── middleware.go       # Rate limit, audit log
-│   │   └── types.go            # Request/Response структуры
+│   │   ├── middleware_test.go  # Тесты middleware
+│   │   ├── logger.go           # Audit logging
+│   │   ├── logger_test.go      # Тесты logger
+│   │   └── metrics.go          # Prometheus метрики
 │   │
-│   └── revocation/             # Управление отозванными сертификатами
-│       ├── crl.go              # Certificate Revocation List
-│       └── loader.go           # Загрузка revoked.yaml
+│   └── revocation/             # Управление отозванными сертификатами (пусто)
 │
 ├── pki/                        # PKI инфраструктура
 │   ├── ca/                     # CA сертификаты
 │   ├── server/                 # Серверные сертификаты
 │   ├── client/                 # Клиентские сертификаты
 │   ├── scripts/                # Скрипты для PKI
+│   │   ├── issue-client-cert.sh
+│   │   ├── issue-server-cert.sh
+│   │   └── revoke-cert.sh
 │   ├── inventory.yaml          # Список всех сертификатов
-│   └── revoked.yaml            # Список отозванных сертификатов
+│   ├── revoked.yaml            # Список отозванных сертификатов
+│   └── README.md               # PKI документация
 │
 ├── scripts/
 │   ├── init-hsm.sh             # Инициализация SoftHSM token
 │   ├── rotate-key-auto.sh      # Автоматическая ротация ключей
 │   ├── rotate-key-interactive.sh # Интерактивная ротация
 │   ├── cleanup-old-keys.sh     # Очистка старых ключей
-│   └── check-key-rotation.sh   # Мониторинг статуса ротации
+│   ├── check-key-rotation.sh   # Мониторинг статуса ротации
+│   ├── full-integration-test.sh # Интеграционные тесты
+│   └── README.md               # Описание скриптов
+│
+├── data/                       # Данные runtime
+│   └── tokens/                 # SoftHSM токены (persist)
 │
 ├── config.yaml                 # Статическая конфигурация (в Git)
 ├── metadata.yaml               # Динамические метаданные ротации (вне Git)
@@ -176,13 +208,37 @@ hsm-service/
 ├── softhsm2.conf              # SoftHSM конфигурация
 ├── Dockerfile
 ├── docker-compose.yml
+├── .dockerignore
+├── .gitignore
+├── .env.example
 ├── go.mod
 ├── go.sum
 ├── main.go                     # Entry point
-├── ARCHITECTURE.md             # Этот файл
+│
+├── ARCHITECTURE.md             # Этот файл - архитектурная документация
 ├── TECHNICAL_SPEC.md           # Техническое задание
 ├── DEVELOPMENT_PLAN.md         # План разработки
-└── README.md                   # Основная документация
+├── README.md                   # Основная документация
+├── API.md                      # API документация
+├── PKI_SETUP.md                # Настройка PKI
+├── KEY_ROTATION.md             # Документация по ротации ключей
+├── CLI_TOOLS.md                # Документация CLI утилит
+├── MONITORING.md               # Мониторинг и метрики
+├── SECURITY_AUDIT.md           # Аудит безопасности
+├── BACKUP_RESTORE.md           # Backup и восстановление
+├── REVOCATION_RELOAD.md        # Hot reload отозванных сертификатов
+├── DOCKER.md                   # Docker документация
+├── DOCKER_COMPOSE.md           # Docker Compose документация
+├── DOCKER_DEV.md               # Docker для разработки
+├── QUICKSTART_DOCKER.md        # Быстрый старт с Docker
+├── QUICKSTART_NATIVE.md        # Быстрый старт нативно
+├── PRODUCTION_DEBIAN.md        # Production на Debian
+├── TROUBLESHOOTING.md          # Решение проблем
+├── TEST_PLAN.md                # План тестирования
+├── HOT_RELOAD_SUMMARY.md       # Hot reload функциональность
+├── DOCS_INDEX.md               # Индекс документации
+├── DOCUMENTATION_SUMMARY.md    # Сводка документации
+└── LICENSE                     # Лицензия
 ```
 
 ---
