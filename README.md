@@ -78,10 +78,25 @@ HSM Service покрывает критические требования:
 **Проблема**: Нужно хранить sensitive данные (PII, платежные данные, пароли) в БД
 
 **Решение**:
-```
-Application → HSM Service (encrypt with KEK) → Store DEK in DB
-Application ← HSM Service (decrypt with KEK) ← Retrieve DEK from DB
-Application uses DEK to encrypt/decrypt actual data
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant HSM as HSM Service
+    participant DB as Database
+    
+    Note over App,DB: Encrypt Flow
+    App->>HSM: POST /encrypt<br/>(plaintext: DEK, context: data-encryption)
+    HSM->>HSM: Encrypt DEK with KEK
+    HSM-->>App: ciphertext: encrypted_DEK
+    App->>DB: Store encrypted_DEK
+    
+    Note over App,DB: Decrypt Flow
+    DB-->>App: Retrieve encrypted_DEK
+    App->>HSM: POST /decrypt<br/>(ciphertext: encrypted_DEK)
+    HSM->>HSM: Decrypt with KEK
+    HSM-->>App: plaintext: DEK
+    App->>App: Use DEK to encrypt/decrypt data
 ```
 
 **Применимо для**:
