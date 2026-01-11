@@ -312,7 +312,7 @@ go test ./...
 go test -cover ./...
 
 # Интеграционные тесты
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 ```
 
 Подробнее: [TEST_PLAN.md](TEST_PLAN.md)

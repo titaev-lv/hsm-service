@@ -1,0 +1,46 @@
+goos: linux
+goarch: amd64
+pkg: github.com/titaev-lv/hsm-service/internal/hsm
+cpu: AMD Ryzen 9 5950X 16-Core Processor            
+BenchmarkEncryption-32              	12081844	       285.1 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12910189	       284.7 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12640964	       285.5 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12488059	       285.4 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12882997	       283.7 ns/op	     144 B/op	       3 allocs/op
+BenchmarkDecryption-32              	16931527	       210.3 ns/op	      96 B/op	       2 allocs/op
+BenchmarkDecryption-32              	17237734	       209.6 ns/op	      96 B/op	       2 allocs/op
+BenchmarkDecryption-32              	17133296	       211.2 ns/op	      96 B/op	       2 allocs/op
+BenchmarkDecryption-32              	17349494	       209.5 ns/op	      96 B/op	       2 allocs/op
+BenchmarkDecryption-32              	16717262	       210.0 ns/op	      96 B/op	       2 allocs/op
+BenchmarkConcurrentEncryption-32    	86260058	        49.56 ns/op	     112 B/op	       3 allocs/op
+BenchmarkConcurrentEncryption-32    	71121466	        50.63 ns/op	     112 B/op	       3 allocs/op
+BenchmarkConcurrentEncryption-32    	68163313	        51.34 ns/op	     112 B/op	       3 allocs/op
+BenchmarkConcurrentEncryption-32    	71287737	        51.02 ns/op	     112 B/op	       3 allocs/op
+BenchmarkConcurrentEncryption-32    	67650795	        51.39 ns/op	     112 B/op	       3 allocs/op
+BenchmarkBuildAAD-32                	37176624	        93.95 ns/op	      32 B/op	       1 allocs/op
+BenchmarkBuildAAD-32                	37275039	        94.12 ns/op	      32 B/op	       1 allocs/op
+BenchmarkBuildAAD-32                	38807168	        93.81 ns/op	      32 B/op	       1 allocs/op
+BenchmarkBuildAAD-32                	37782440	        94.62 ns/op	      32 B/op	       1 allocs/op
+BenchmarkBuildAAD-32                	35850896	        95.47 ns/op	      32 B/op	       1 allocs/op
+BenchmarkKeyManagerEncrypt-32       	10951764	       333.4 ns/op	     160 B/op	       3 allocs/op
+BenchmarkKeyManagerEncrypt-32       	10694137	       331.1 ns/op	     160 B/op	       3 allocs/op
+BenchmarkKeyManagerEncrypt-32       	10980204	       327.7 ns/op	     160 B/op	       3 allocs/op
+BenchmarkKeyManagerEncrypt-32       	10912922	       329.1 ns/op	     160 B/op	       3 allocs/op
+BenchmarkKeyManagerEncrypt-32       	10724065	       327.3 ns/op	     160 B/op	       3 allocs/op
+BenchmarkKeyManagerDecrypt-32       	14471966	       244.5 ns/op	     112 B/op	       2 allocs/op
+BenchmarkKeyManagerDecrypt-32       	14770700	       244.1 ns/op	     112 B/op	       2 allocs/op
+BenchmarkKeyManagerDecrypt-32       	14682369	       243.7 ns/op	     112 B/op	       2 allocs/op
+BenchmarkKeyManagerDecrypt-32       	14658529	       245.4 ns/op	     112 B/op	       2 allocs/op
+BenchmarkKeyManagerDecrypt-32       	14755665	       244.4 ns/op	     112 B/op	       2 allocs/op
+BenchmarkKeyManagerConcurrent-32    	30095347	       118.8 ns/op	     176 B/op	       5 allocs/op
+BenchmarkKeyManagerConcurrent-32    	29564972	       119.6 ns/op	     176 B/op	       5 allocs/op
+BenchmarkKeyManagerConcurrent-32    	30156122	       119.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkKeyManagerConcurrent-32    	31554732	       119.4 ns/op	     176 B/op	       5 allocs/op
+BenchmarkKeyManagerConcurrent-32    	30332221	       118.8 ns/op	     176 B/op	       5 allocs/op
+BenchmarkNeedsRotation-32           	82845272	        42.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNeedsRotation-32           	78669759	        41.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNeedsRotation-32           	84145770	        41.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNeedsRotation-32           	85344564	        41.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNeedsRotation-32           	82362794	        42.04 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/titaev-lv/hsm-service/internal/hsm	150.220s

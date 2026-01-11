@@ -26,7 +26,7 @@ go test -run TestRateLimiter_BurstHandling ./internal/server/
 go test -bench=. -benchmem ./internal/hsm/
 
 # Integration тесты
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 ```
 
 ## По категориям
@@ -172,10 +172,10 @@ go build
 
 ```bash
 # Полный E2E тест (34 теста)
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 
 # С debug выводом
-DEBUG=1 ./scripts/full-integration-test.sh
+DEBUG=1 ./tests/integration/full-integration-test.sh
 
 # Только hot reload тест (Phase 9.5)
 # (смотри full-integration-test.sh строки 493-548)

@@ -37,8 +37,7 @@ type HSMConfig struct {
 
 // KeyConfig defines individual key configuration (static)
 type KeyConfig struct {
-	Type             string        `yaml:"type"`                        // "aes" or "rsa"
-	RotationInterval time.Duration `yaml:"rotation_interval,omitempty"` // Default: 90 days
+	Type string `yaml:"type"` // "aes" or "rsa"
 }
 
 // KeyVersion represents a single version of a key
@@ -51,8 +50,9 @@ type KeyVersion struct {
 
 // KeyMetadata defines dynamic key rotation metadata
 type KeyMetadata struct {
-	Current  string       `yaml:"current"`  // Current active version label
-	Versions []KeyVersion `yaml:"versions"` // All versions (for overlap period)
+	Current              string       `yaml:"current"`                          // Current active version label
+	RotationIntervalDays int          `yaml:"rotation_interval_days,omitempty"` // Rotation interval in days (e.g., 90 for PCI DSS)
+	Versions             []KeyVersion `yaml:"versions"`                         // All versions (for overlap period)
 }
 
 // Metadata represents the metadata.yaml structure

@@ -600,16 +600,23 @@ hsm:
   keys:
     exchange-key:
       type: aes
-      rotation_interval: 2160h  # 90 days
     2fa:
       type: aes
-      rotation_interval: 2160h
 
 acl:
   revoked_file: /app/pki/revoked.yaml
   mappings:
     Trading: [exchange-key]
     2FA: [2fa]
+```
+
+**Rotation policy** настраивается в `metadata.yaml`:
+```yaml
+rotation:
+  exchange-key:
+    rotation_interval_days: 90  # PCI DSS compliant
+    current: kek-exchange-v1
+    versions: [...]
 ```
 
 ### metadata.yaml
@@ -696,7 +703,7 @@ services:
 go test ./internal/...
 
 # Integration tests
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 ```
 
 ---

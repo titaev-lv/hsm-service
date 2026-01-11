@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"testing"
-	"time"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -160,8 +159,7 @@ func TestValidateConfig(t *testing.T) {
 					MetadataFile: "/app/metadata.yaml",
 					Keys: map[string]KeyConfig{
 						"test": {
-							Type:             "aes",
-							RotationInterval: 90 * 24 * time.Hour,
+							Type: "aes",
 						},
 					},
 				},
@@ -208,8 +206,7 @@ func TestValidateConfig(t *testing.T) {
 					MetadataFile: "/app/metadata.yaml",
 					Keys: map[string]KeyConfig{
 						"test": {
-							Type:             "invalid",
-							RotationInterval: 90 * 24 * time.Hour,
+							Type: "invalid",
 						},
 					},
 				},

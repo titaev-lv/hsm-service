@@ -1,7 +1,8 @@
-# Binaries
-hsm-service
-hsm-admin
-create-kek
+# Binaries (in root and cmd directories, not source files)
+/hsm-service
+/create-kek
+/cmd/create-kek/create-kek
+/cmd/hsm-admin/hsm-admin
 *.exe
 *.dll
 *.so

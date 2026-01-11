@@ -250,7 +250,7 @@ echo "SGVsbG8gV29ybGQh" | base64 -d
 go test ./...
 
 # Integration тесты
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 
 # Подробнее в TEST_PLAN.md
 ```

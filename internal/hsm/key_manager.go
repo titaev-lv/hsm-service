@@ -122,11 +122,18 @@ func (km *KeyManager) loadKeys(metadata *config.Metadata) error {
 				createdAt = *version.CreatedAt
 			}
 
+			// Get rotation interval from metadata (with fallback to 90 days)
+			rotationIntervalDays := meta.RotationIntervalDays
+			if rotationIntervalDays == 0 {
+				rotationIntervalDays = 90 // Default: 90 days (PCI DSS compliant)
+			}
+			rotationInterval := time.Duration(rotationIntervalDays) * 24 * time.Hour
+
 			newMetadata[version.Label] = &KeyMetadata{
 				Label:            version.Label,
 				Version:          version.Version,
 				CreatedAt:        createdAt,
-				RotationInterval: keyConfig.RotationInterval,
+				RotationInterval: rotationInterval,
 			}
 
 			slog.Info("Loaded KEK",

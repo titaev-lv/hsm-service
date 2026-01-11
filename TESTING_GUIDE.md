@@ -3,12 +3,13 @@
 ## 📚 Оглавление
 
 1. [Быстрый старт](#быстрый-старт)
-2. [Типы тестов](#типы-тестов)
-3. [Запуск тестов](#запуск-тестов)
-4. [Анализ результатов](#анализ-результатов)
-5. [Coverage](#coverage)
-6. [Benchmarks](#benchmarks)
-7. [Troubleshooting](#troubleshooting)
+2. [Требования и установка](#требования-и-установка)
+3. [Типы тестов](#типы-тестов)
+4. [Запуск тестов](#запуск-тестов)
+5. [Анализ результатов](#анализ-результатов)
+6. [Coverage](#coverage)
+7. [Benchmarks](#benchmarks)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -30,6 +31,22 @@ go test -race ./...
 go test -short ./...
 ```
 
+### Запуск полного test suite
+
+```bash
+# Все тесты (Unit + Integration + E2E + Security)
+./tests/run-all-tests.sh
+
+# Только integration tests
+./tests/integration/full-integration-test.sh
+
+# Только E2E scenarios
+./tests/e2e/run-all.sh
+
+# Только security scans
+./tests/security/security-scan.sh
+```
+
 ### Проверка coverage
 
 ```bash
@@ -40,6 +57,70 @@ go test -cover ./...
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out -o coverage.html
 firefox coverage.html  # или ваш браузер
+```
+
+---
+
+## 🛠 Требования и установка
+
+### Базовые требования
+
+**Обязательно**:
+- Go 1.22+ (`go version`)
+- Docker 20.10+ (`docker --version`)
+- Docker Compose v2.0+ (`docker compose version`)
+
+**Для integration тестов**:
+- curl
+- openssl
+- bash 4.0+
+
+### Security Tools (рекомендуется)
+
+Установите security tools для полного security audit:
+
+```bash
+# Go security tools
+go install github.com/securego/gosec/v2/cmd/gosec@latest
+go install honnef.co/go/tools/cmd/staticcheck@latest
+go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Добавьте в PATH (если не добавлено)
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+**Trivy** (container scanner):
+
+Ubuntu/Debian:
+```bash
+sudo apt-get install wget apt-transport-https gnupg lsb-release
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update
+sudo apt-get install trivy
+```
+
+Arch Linux:
+```bash
+sudo pacman -S trivy
+```
+
+macOS:
+```bash
+brew install trivy
+```
+
+### Проверка установки
+
+```bash
+# Проверить все tools
+gosec --version
+staticcheck -version
+govulncheck -version
+trivy --version
+
+# Если установлено - security scan будет полностью работать
+./tests/security/security-scan.sh
 ```
 
 ---
@@ -74,15 +155,15 @@ go test -run TestRotateKey_CreateNewVersion ./internal/hsm/
 **Что тестируют**: Взаимодействие компонентов, API endpoints
 
 **Файлы**:
-- `scripts/full-integration-test.sh` - E2E тесты с Docker
+- `tests/integration/full-integration-test.sh` - E2E тесты с Docker
 
 **Запуск**:
 ```bash
 # Полный integration test (34 теста)
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 
 # С детальным выводом
-DEBUG=1 ./scripts/full-integration-test.sh
+DEBUG=1 ./tests/integration/full-integration-test.sh
 ```
 
 ### 3. HSM-dependent Tests
@@ -100,7 +181,7 @@ DEBUG=1 ./scripts/full-integration-test.sh
 docker compose up -d
 
 # Запускаем integration тесты
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 ```
 
 ---
@@ -446,7 +527,7 @@ go test -short -race ./...
 
 ```bash
 # Финальная проверка
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 ```
 
 ### 5. Профилируйте critical path
@@ -482,7 +563,7 @@ go test -cover -run TestMyNewFunction ./internal/hsm/
 go test -v -race ./...
 
 # 7. Integration тест
-./scripts/full-integration-test.sh
+./tests/integration/full-integration-test.sh
 ```
 
 ### Пример 2: Отладка проблемы

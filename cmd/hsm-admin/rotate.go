@@ -235,8 +235,11 @@ func checkRotationStatusCommand() error {
 	fmt.Println("====================")
 
 	for context, keyMeta := range metadata.Rotation {
-		// Get rotation interval from config
-		keyConfig := cfg.HSM.Keys[context]
+		// Get rotation interval from metadata (with fallback to 90 days)
+		rotationIntervalDays := keyMeta.RotationIntervalDays
+		if rotationIntervalDays == 0 {
+			rotationIntervalDays = 90 // Default: 90 days (PCI DSS compliant)
+		}
 
 		// Get current version info
 		var currentVersion *config.KeyVersion
@@ -258,11 +261,7 @@ func checkRotationStatusCommand() error {
 			createdAt = *currentVersion.CreatedAt
 		}
 
-		rotationInterval := 90 * 24 * time.Hour
-		if keyConfig.RotationInterval > 0 {
-			rotationInterval = keyConfig.RotationInterval
-		}
-
+		rotationInterval := time.Duration(rotationIntervalDays) * 24 * time.Hour
 		nextRotation := createdAt.Add(rotationInterval)
 		daysUntilRotation := int(time.Until(nextRotation).Hours() / 24)
 

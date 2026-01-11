@@ -611,7 +611,7 @@ hsm-admin cleanup exchange-key --version 1
 - ✅ Hot reload для `metadata.yaml` и KEK - **РЕАЛИЗОВАНО** (30 сек interval)
 - ✅ KeyManager с thread-safe reload - **РЕАЛИЗОВАНО**
 - ✅ Race detector clean - **РЕАЛИЗОВАНО**
-- ✅ Integration tests - **РЕАЛИЗОВАНО** (scripts/full-integration-test.sh Phase 9.5)
+- ✅ Integration tests - **РЕАЛИЗОВАНО** (tests/integration/full-integration-test.sh Phase 9.5)
 
 Подробнее см. [KEY_ROTATION.md](KEY_ROTATION.md) и [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
 

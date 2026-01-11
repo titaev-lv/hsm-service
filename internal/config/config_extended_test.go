@@ -33,8 +33,7 @@ func TestConfig_Validation(t *testing.T) {
 					MetadataFile: "metadata.yaml",
 					Keys: map[string]KeyConfig{
 						"test-key": {
-							Type:             "aes",
-							RotationInterval: 2160 * time.Hour,
+							Type: "aes",
 						},
 					},
 				},

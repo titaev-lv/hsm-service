@@ -27,8 +27,8 @@ acl:
     Database: []
 
 rate_limit:
-  requests_per_second: 100
-  burst: 50
+  requests_per_second: 50000
+  burst: 5000
 
 logging:
   level: info

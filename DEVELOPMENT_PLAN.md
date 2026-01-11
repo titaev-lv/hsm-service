@@ -1326,7 +1326,7 @@ curl -X POST https://localhost:8443/encrypt \
 
 **Deliverables:**
 - [x] Все тесты проходят (31 integration tests)
-- [x] Documented в scripts/full-integration-test.sh
+- [x] Documented в tests/integration/full-integration-test.sh
 - [x] Automated testing framework
 - [x] Coverage includes rotation lifecycle
 
@@ -1650,7 +1650,7 @@ if err := keyManager.StopAutoReload(ctx); err != nil {
 6. ✅ Atomic swap - нет частичных обновлений
 
 #### Task 4.4: Integration Test
-**File:** `scripts/full-integration-test.sh` (Phase 9.5)  
+**File:** `tests/integration/full-integration-test.sh` (Phase 9.5)  
 **Effort:** 2 hours
 
 ```bash

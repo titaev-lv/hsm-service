@@ -936,3 +936,74 @@ sudo journalctl -u hsm-service -f
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security audit
 - [KEY_ROTATION.md](KEY_ROTATION.md) - Ротация ключей
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Решение проблем
+- [tests/performance/README.md](tests/performance/README.md) - Performance тестирование
+
+---
+
+## Performance Testing Production
+
+### Базовая проверка (безопасно)
+
+```bash
+# 1. Smoke test - минимальная нагрузка
+HSM_URL=https://your-prod-server.com:8443 \
+CLIENT_CERT=/path/to/prod-client.crt \
+CLIENT_KEY=/path/to/prod-client.key \
+./tests/performance/smoke-test.sh
+```
+
+**Результат**: Проверяет health, encrypt, decrypt. Занимает ~5 секунд.
+
+---
+
+### Quick Load Test (умеренная нагрузка)
+
+```bash
+# 2. Quick test - 20 concurrent users, 2 минуты
+HSM_URL=https://your-prod-server.com:8443 \
+CLIENT_CERT=/path/to/prod-client.crt \
+CLIENT_KEY=/path/to/prod-client.key \
+k6 run tests/performance/load-test-quick.js
+```
+
+**Результат**: ~3500 запросов за 2 минуты. Безопасно для production.
+
+---
+
+### Full Load Test (⚠️ требует согласования)
+
+```bash
+# 3. Full test - 22 минуты, до 200 concurrent users
+HSM_URL=https://your-prod-server.com:8443 \
+CLIENT_CERT=/path/to/prod-client.crt \
+CLIENT_KEY=/path/to/prod-client.key \
+k6 run tests/performance/load-test.js
+```
+
+**⚠️ Внимание**: Выполнять только в maintenance window или согласовать с командой.
+
+---
+
+### Stress Testing (⚠️ ТОЛЬКО в maintenance window)
+
+```bash
+# 4. Stress test - поиск breaking point
+HSM_URL=https://your-prod-server.com:8443 \
+CLIENT_CERT=/path/to/prod-client.crt \
+CLIENT_KEY=/path/to/prod-client.key \
+./tests/performance/stress-test.sh incremental
+```
+
+**⚠️ Внимание**: Может создать значительную нагрузку. Только с разрешения!
+
+---
+
+### Рекомендуемая последовательность
+
+1. **Перед каждым тестом**: Уведомите команду
+2. **Первый раз**: smoke → quick (в нерабочее время)
+3. **Регулярно**: smoke test (мониторинг деградации)
+4. **Периодически**: full load (quarterly, в maintenance window)
+5. **Редко**: stress test (capacity planning, в maintenance window)
+
+**Документация**: См. [tests/performance/README.md](tests/performance/README.md)

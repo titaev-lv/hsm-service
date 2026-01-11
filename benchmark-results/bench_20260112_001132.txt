@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: github.com/titaev-lv/hsm-service/internal/hsm
+cpu: AMD Ryzen 9 5950X 16-Core Processor            
+BenchmarkEncryption-32              	11980672	       286.7 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12664041	       287.3 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12502057	       287.0 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12520850	       285.5 ns/op	     144 B/op	       3 allocs/op
+BenchmarkEncryption-32              	12497193	       287.6 ns/op	     144 B/op	       3 allocs/op
+BenchmarkDecryption-32              	
