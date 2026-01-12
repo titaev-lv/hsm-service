@@ -576,7 +576,7 @@ cat stress-results/*.txt
 - Trading (7.5k) + 2FA (7.5k) параллельно
 - Результат: 100% success оба ✅
 
-**Результаты** (подробнее в [EXTREME_TEST_RESULTS.md](../EXTREME_TEST_RESULTS.md)):
+**Результаты** (подробнее в [EXTREME_TEST_RESULTS.md](EXTREME_TEST_RESULTS.md)):
 - Breaking point: НЕ НАЙДЕН до 100k req/s
 - Sustained throughput: 20-21k req/s
 - P95 latency: 99ms
