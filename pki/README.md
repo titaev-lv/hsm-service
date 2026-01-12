@@ -517,5 +517,5 @@ After setting up PKI:
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
 - [TECHNICAL_SPEC.md](../TECHNICAL_SPEC.md) - Technical specification
-- [DEVELOPMENT_PLAN.md](../DEVELOPMENT_PLAN.md) - Development roadmap
+- [README.md](../README.md) - Main documentation
 - OpenSSL documentation: https://www.openssl.org/docs/

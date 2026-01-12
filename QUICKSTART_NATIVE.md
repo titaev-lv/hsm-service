@@ -315,7 +315,7 @@ go test -cover ./...
 ./tests/integration/full-integration-test.sh
 ```
 
-Подробнее: [TEST_PLAN.md](TEST_PLAN.md)
+Подробнее: [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ---
 

@@ -252,7 +252,7 @@ go test ./...
 # Integration тесты
 ./tests/integration/full-integration-test.sh
 
-# Подробнее в TEST_PLAN.md
+# Подробнее в TESTING_GUIDE.md
 ```
 
 ---
@@ -358,7 +358,7 @@ curl -k https://localhost:8443/metrics \
 | [MONITORING.md](MONITORING.md) | Prometheus + Grafana setup |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Решение проблем |
 | [CLI_TOOLS.md](CLI_TOOLS.md) | hsm-admin command reference |
-| [TEST_PLAN.md](TEST_PLAN.md) | Тестирование (Unit, E2E, Security) |
+| [TESTING_GUIDE.md](TESTING_GUIDE.md) | Руководство по тестированию |
 
 **Готово!** Ваш HSM Service запущен и готов к работе 🚀
   -d '{

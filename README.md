@@ -802,9 +802,10 @@ go test ./internal/...
 | Документ | Описание | Время |
 |----------|----------|-------|
 | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | Backup и DR | 10 мин |
-| [TEST_PLAN.md](TEST_PLAN.md) | План тестирования | 20 мин |
+| [TESTING_GUIDE.md](TESTING_GUIDE.md) | Руководство по тестированию | 20 мин |
+| [EXTREME_TEST_RESULTS.md](EXTREME_TEST_RESULTS.md) | Результаты нагрузочного тестирования | 15 мин |
 
-**Всего 21 документ**, ~17,000 строк, полное покрытие от quick start до production deployment.
+**Всего 20 документов**, ~15,000 строк, полное покрытие от quick start до production deployment.
 
 ---
 

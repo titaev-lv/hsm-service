@@ -219,7 +219,6 @@ hsm-service/
 │
 ├── ARCHITECTURE.md             # Этот файл - архитектурная документация
 ├── TECHNICAL_SPEC.md           # Техническое задание
-├── DEVELOPMENT_PLAN.md         # План разработки
 ├── README.md                   # Основная документация
 ├── API.md                      # API документация
 ├── PKI_SETUP.md                # Настройка PKI
@@ -228,7 +227,6 @@ hsm-service/
 ├── MONITORING.md               # Мониторинг и метрики
 ├── SECURITY_AUDIT.md           # Аудит безопасности
 ├── BACKUP_RESTORE.md           # Backup и восстановление
-├── REVOCATION_RELOAD.md        # Hot reload отозванных сертификатов
 ├── DOCKER.md                   # Docker документация
 ├── DOCKER_COMPOSE.md           # Docker Compose документация
 ├── DOCKER_DEV.md               # Docker для разработки
@@ -236,7 +234,8 @@ hsm-service/
 ├── QUICKSTART_NATIVE.md        # Быстрый старт нативно
 ├── PRODUCTION_DEBIAN.md        # Production на Debian
 ├── TROUBLESHOOTING.md          # Решение проблем
-├── TEST_PLAN.md                # План тестирования
+├── TESTING_GUIDE.md            # Руководство по тестированию
+├── EXTREME_TEST_RESULTS.md     # Результаты нагрузочного тестирования
 ├── DOCS_INDEX.md               # Индекс документации
 └── LICENSE                     # Лицензия
 ```

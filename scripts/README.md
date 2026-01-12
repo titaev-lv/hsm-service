@@ -533,4 +533,4 @@ pip3 install pyyaml
 
 - [KEY_ROTATION.md](../KEY_ROTATION.md) - Детальная документация по ротации
 - [SECURITY_AUDIT.md](../SECURITY_AUDIT.md) - Аудит безопасности
-- [DEVELOPMENT_PLAN.md](../DEVELOPMENT_PLAN.md) - План разработки
+- [CLI_TOOLS.md](../CLI_TOOLS.md) - hsm-admin команды
