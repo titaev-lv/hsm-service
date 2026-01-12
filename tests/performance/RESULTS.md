@@ -160,7 +160,7 @@ hsm-service   0.00%     12.11MiB / 512MiB     2.37%
 
 - **Quick Start**: [QUICKSTART.md](QUICKSTART.md)
 - **Full Guide**: [README.md](README.md)
-- **Testing Guide**: [../../TESTING_GUIDE.md](../../TESTING_GUIDE.md)
+- **Testing Guide**: [../README.md](../README.md)
 
 ---
 

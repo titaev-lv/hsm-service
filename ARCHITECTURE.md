@@ -234,7 +234,7 @@ hsm-service/
 ├── QUICKSTART_NATIVE.md        # Быстрый старт нативно
 ├── PRODUCTION_DEBIAN.md        # Production на Debian
 ├── TROUBLESHOOTING.md          # Решение проблем
-├── TESTING_GUIDE.md            # Руководство по тестированию
+├── tests/README.md             # Руководство по тестированию
 ├── EXTREME_TEST_RESULTS.md     # Результаты нагрузочного тестирования
 ├── DOCS_INDEX.md               # Индекс документации
 └── LICENSE                     # Лицензия

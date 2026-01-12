@@ -97,7 +97,7 @@
 | [pki/README.md](pki/README.md) | Продвинутое управление PKI | DevOps/Security | 20 мин |
 | [CLI_TOOLS.md](CLI_TOOLS.md) | hsm-admin команды | DevOps | 10 мин |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Решение проблем | DevOps/Backend | 15 мин |
-| [TESTING_GUIDE.md](TESTING_GUIDE.md) | Руководство по тестированию | QA/DevOps | 20 мин |
+| [tests/README.md](tests/README.md) | Руководство по тестированию | QA/DevOps | 20 мин |
 | [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) | Техническое задание (reference) | Architect | 60 мин |
 
 ---
@@ -155,7 +155,7 @@
 | REVOCATION_RELOAD.md | ✅ Готов | ✅ Актуален | 🇷🇺 Русский |
 | CLI_TOOLS.md | ✅ Готов | ✅ Актуален | 🇷🇺 Русский |
 | TROUBLESHOOTING.md | ✅ Готов | ✅ Актуален | 🇷🇺 Русский |
-| TESTING_GUIDE.md | ✅ Готов | ✅ Актуален | 🇷🇺 Русский |
+| tests/README.md | ✅ Готов | ✅ Актуален | 🇷🇺 Русский |
 | TECHNICAL_SPEC.md | ✅ Готов | ⚠️ Частично устарел | 🇷🇺 Русский |
 | pki/README.md | ✅ Готов | ✅ Актуален | 🇷🇺 Русский |
 

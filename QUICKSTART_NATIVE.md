@@ -315,7 +315,7 @@ go test -cover ./...
 ./tests/integration/full-integration-test.sh
 ```
 
-Подробнее: [TESTING_GUIDE.md](TESTING_GUIDE.md)
+Подробнее: [tests/README.md](tests/README.md)
 
 ---
 
