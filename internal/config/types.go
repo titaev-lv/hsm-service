@@ -13,8 +13,9 @@ type Config struct {
 
 // ServerConfig defines HTTP server configuration
 type ServerConfig struct {
-	Port string    `yaml:"port"`
-	TLS  TLSConfig `yaml:"tls"`
+	Port  string       `yaml:"port"`
+	TLS   TLSConfig    `yaml:"tls"`
+	HTTP2 *HTTP2Config `yaml:"http2,omitempty"` // HTTP/2 configuration (optional)
 }
 
 // TLSConfig defines TLS certificate paths

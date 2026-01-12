@@ -48,11 +48,26 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '4.0'
+          memory: 1024M
         reservations:
-          cpus: '0.25'
-          memory: 128M
+          cpus: '0.5'
+          memory: 512M
+    
+    # Network tuning (Phase 2 optimization)
+    sysctls:
+      - net.core.somaxconn=8192              # Connection queue size
+      - net.ipv4.tcp_tw_reuse=1              # Reuse TIME_WAIT sockets (prevents port exhaustion)
+      - net.ipv4.ip_local_port_range=1024 65535  # Expand ephemeral port range
+    
+    # File descriptor and process limits (Phase 2 optimization)
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 4096
+        hard: 4096
     
     # Security options
     security_opt:
