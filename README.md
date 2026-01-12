@@ -5,6 +5,99 @@ Enterprise-grade HSM (Hardware Security Module) сервис для центра
 
 ---
 
+## 🏗️ Архитектура
+
+> **📖 Полная документация**: См. [ARCHITECTURE.md](ARCHITECTURE.md) для детального технического описания, компонентов и data flow
+
+### Контекст использования
+
+```mermaid
+graph TB
+    subgraph "Распределенные сервисы"
+        TS1[Trading Service 1<br/>OU=Trading]
+        TS2[Trading Service 2<br/>OU=Trading]
+        WEB[Web 2FA Service<br/>OU=2FA]
+        MOB[Mobile 2FA App<br/>OU=2FA]
+    end
+    
+    subgraph "HSM Service"
+        API[HTTPS API :8443<br/>mTLS Required]
+        ACL[ACL Engine<br/>OU-based]
+        CRYPTO[Crypto Engine<br/>AES-256-GCM]
+        
+        subgraph "SoftHSM v2"
+            KEK1[kek-exchange-v1<br/>AES-256]
+            KEK2[kek-2fa-v1<br/>AES-256]
+        end
+    end
+    
+    subgraph "Databases"
+        DB1[(Trading DB<br/>encrypted DEKs)]
+        DB2[(2FA DB<br/>encrypted secrets)]
+    end
+    
+    TS1 -->|mTLS| API
+    TS2 -->|mTLS| API
+    WEB -->|mTLS| API
+    MOB -->|mTLS| API
+    
+    API --> ACL
+    ACL --> CRYPTO
+    CRYPTO --> KEK1
+    CRYPTO --> KEK2
+    
+    TS1 -.->|mTLS<br/>stores encrypted DEKs| DB1
+    TS2 -.->|mTLS<br/>stores encrypted DEKs| DB1
+    WEB -.->|mTLS<br/>stores encrypted secrets| DB2
+```
+
+**Ключевые принципы**:
+- 🔒 KEK никогда не покидают HSM
+- 🔐 Все соединения - mTLS (clients ↔ HSM, services ↔ DB)
+- 🎯 ACL изолирует contexts по Organizational Unit
+- 🔄 Zero-downtime ротация ключей
+- 📊 Полный аудит всех операций
+
+### Разделение конфигурации
+
+Сервис использует двухфайловую архитектуру конфигурации для совместимости с GitOps/IaC:
+
+**config.yaml** (статическая конфигурация, в Git)
+- Типы ключей и политики ротации
+- ACL правила и маппинг OU → contexts
+- Настройки сервера и HSM
+- Монтируется read-only (`:ro`)
+
+**metadata.yaml** (динамические метаданные, вне Git)
+- **Текущая активная версия** (`current`) для каждого контекста
+- **Массив всех версий** (`versions`) - поддержка overlap period
+- Временные метки создания и номера версий
+- Обновляется автоматически при ротации
+- Монтируется read-write (`:rw`)
+
+Пример структуры metadata.yaml:
+```yaml
+rotation:
+  exchange-key:
+    current: kek-exchange-v2      # Активная версия для новых операций
+    versions:
+      - label: kek-exchange-v1    # Старая версия (для расшифровки)
+        version: 1
+        created_at: '2026-01-09T00:00:00Z'
+      - label: kek-exchange-v2    # Новая версия
+        version: 2
+        created_at: '2026-01-16T10:30:00Z'
+```
+
+Это обеспечивает:
+- ✅ **GitOps совместимость** (Ansible/Terraform не конфликтует с автоматической ротацией)
+- ✅ **Immutable Infrastructure** (config.yaml read-only)
+- ✅ **Key Overlap Period** (множественные версии ключей доступны одновременно)
+- ✅ **Zero-downtime rotation** (старые данные расшифровываются v1, новые шифруются v2)
+- ✅ **Простой rollback** (изменяется только metadata.yaml)
+
+---
+
 ## 💡 Зачем это нужно?
 
 ### Проблема: Ключи шифрования везде
@@ -395,99 +488,6 @@ $$ LANGUAGE plpgsql;
 - ✅ Transparent encryption/decryption
 - ✅ Централизованная ротация ключей
 - ✅ Поддержка legacy систем
-
----
-
-## 🏗️ Архитектура
-
-> **📖 Полная документация**: См. [ARCHITECTURE.md](ARCHITECTURE.md) для детального технического описания, компонентов и data flow
-
-### Контекст использования
-
-```mermaid
-graph TB
-    subgraph "Распределенные сервисы"
-        TS1[Trading Service 1<br/>OU=Trading]
-        TS2[Trading Service 2<br/>OU=Trading]
-        WEB[Web 2FA Service<br/>OU=2FA]
-        MOB[Mobile 2FA App<br/>OU=2FA]
-    end
-    
-    subgraph "HSM Service"
-        API[HTTPS API :8443<br/>mTLS Required]
-        ACL[ACL Engine<br/>OU-based]
-        CRYPTO[Crypto Engine<br/>AES-256-GCM]
-        
-        subgraph "SoftHSM v2"
-            KEK1[kek-exchange-v1<br/>AES-256]
-            KEK2[kek-2fa-v1<br/>AES-256]
-        end
-    end
-    
-    subgraph "Databases"
-        DB1[(Trading DB<br/>encrypted DEKs)]
-        DB2[(2FA DB<br/>encrypted secrets)]
-    end
-    
-    TS1 -->|mTLS| API
-    TS2 -->|mTLS| API
-    WEB -->|mTLS| API
-    MOB -->|mTLS| API
-    
-    API --> ACL
-    ACL --> CRYPTO
-    CRYPTO --> KEK1
-    CRYPTO --> KEK2
-    
-    TS1 -.->|mTLS<br/>stores encrypted DEKs| DB1
-    TS2 -.->|mTLS<br/>stores encrypted DEKs| DB1
-    WEB -.->|mTLS<br/>stores encrypted secrets| DB2
-```
-
-**Ключевые принципы**:
-- 🔒 KEK никогда не покидают HSM
-- 🔐 Все соединения - mTLS (clients ↔ HSM, services ↔ DB)
-- 🎯 ACL изолирует contexts по Organizational Unit
-- 🔄 Zero-downtime ротация ключей
-- 📊 Полный аудит всех операций
-
-### Разделение конфигурации
-
-Сервис использует двухфайловую архитектуру конфигурации для совместимости с GitOps/IaC:
-
-**config.yaml** (статическая конфигурация, в Git)
-- Типы ключей и политики ротации
-- ACL правила и маппинг OU → contexts
-- Настройки сервера и HSM
-- Монтируется read-only (`:ro`)
-
-**metadata.yaml** (динамические метаданные, вне Git)
-- **Текущая активная версия** (`current`) для каждого контекста
-- **Массив всех версий** (`versions`) - поддержка overlap period
-- Временные метки создания и номера версий
-- Обновляется автоматически при ротации
-- Монтируется read-write (`:rw`)
-
-Пример структуры metadata.yaml:
-```yaml
-rotation:
-  exchange-key:
-    current: kek-exchange-v2      # Активная версия для новых операций
-    versions:
-      - label: kek-exchange-v1    # Старая версия (для расшифровки)
-        version: 1
-        created_at: '2026-01-09T00:00:00Z'
-      - label: kek-exchange-v2    # Новая версия
-        version: 2
-        created_at: '2026-01-16T10:30:00Z'
-```
-
-Это обеспечивает:
-- ✅ **GitOps совместимость** (Ansible/Terraform не конфликтует с автоматической ротацией)
-- ✅ **Immutable Infrastructure** (config.yaml read-only)
-- ✅ **Key Overlap Period** (множественные версии ключей доступны одновременно)
-- ✅ **Zero-downtime rotation** (старые данные расшифровываются v1, новые шифруются v2)
-- ✅ **Простой rollback** (изменяется только metadata.yaml)
 
 ---
 
