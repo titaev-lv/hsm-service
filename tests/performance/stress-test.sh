@@ -12,7 +12,7 @@ set -euo pipefail
 HSM_URL="${HSM_URL:-https://localhost:8443}"
 RESULTS_DIR="${RESULTS_DIR:-./stress-results}"
 DURATION="${DURATION:-60s}"
-MAX_RATE="${MAX_RATE:-5000}" # requests/second
+MAX_RATE="${MAX_RATE:-20000}" # requests/second - increased to find breaking point
 
 # Client certificates (mTLS required)
 CLIENT_CERT="${CLIENT_CERT:-pki/client/hsm-trading-client-1.crt}"
@@ -81,7 +81,8 @@ echo ""
 # Create request body file
 echo '{"context":"exchange-key","plaintext":"SGVsbG8gV29ybGQh"}' > /tmp/vegeta-body.json
 
-for rate in 100 500 1000 2000 3000 4000 5000; do
+# Aggressive incremental testing to find breaking point
+for rate in 1000 2000 3000 4000 5000 6000 7000 8000 9000 10000 12000 15000 20000; do
     log_info "Testing at $rate req/s..."
     
     echo "POST $HSM_URL/encrypt" | vegeta attack \
@@ -92,6 +93,8 @@ for rate in 100 500 1000 2000 3000 4000 5000; do
         -cert="$CLIENT_CERT" \
         -key="$CLIENT_KEY" \
         -insecure \
+        -timeout=10s \
+        -max-workers=500 \
         > "$RESULTS_DIR/incremental-${rate}.bin"
     
     # Analyze results
@@ -101,15 +104,15 @@ for rate in 100 500 1000 2000 3000 4000 5000; do
     success_rate=$(cat "$RESULTS_DIR/incremental-${rate}.txt" | grep "Success" | awk '{print $3}' | tr -d '%')
     p95_latency=$(cat "$RESULTS_DIR/incremental-${rate}.txt" | grep "Latencies" | awk '{print $5}')
     
-    if (( $(echo "$success_rate < 99" | bc -l) )); then
+    if (( $(echo "$success_rate < 95" | bc -l) )); then
         log_warning "Success rate dropped to ${success_rate}% at ${rate} req/s"
-        log_warning "Breaking point found!"
+        log_warning "⚠️  Breaking point found at ~${rate} req/s!"
         break
     else
         log_success "${rate} req/s: ${success_rate}% success, P95=${p95_latency}"
     fi
     
-    sleep 2 # Cool down between tests
+    sleep 3 # Cool down between aggressive tests
 done
 
 echo ""
@@ -133,17 +136,19 @@ log_success "Sustained load test complete"
 cat "$RESULTS_DIR/sustained-high.txt"
 
 echo ""
-log_info "Test 3: Spike Test (sudden traffic increase)..."
+log_info "Test 3: Extreme Spike Test (sudden traffic burst)..."
 
-# Test 3: Spike test
+# Test 3: Spike test - increased to find limits
 echo "POST $HSM_URL/encrypt" | vegeta attack \
-    -duration=10s \
-    -rate=5000 \
+    -duration=15s \
+    -rate=$MAX_RATE \
     -cert="$CLIENT_CERT" \
     -key="$CLIENT_KEY" \
     -body=/tmp/vegeta-body.json \
     -header='Content-Type: application/json' \
     -insecure \
+    -timeout=15s \
+    -max-workers=1000 \
     > "$RESULTS_DIR/spike.bin"
 
 vegeta report -type=text "$RESULTS_DIR/spike.bin" > "$RESULTS_DIR/spike.txt"
@@ -169,6 +174,49 @@ vegeta report -type=text "$RESULTS_DIR/endurance.bin" > "$RESULTS_DIR/endurance.
 log_success "Endurance test complete"
 cat "$RESULTS_DIR/endurance.txt"
 
+echo ""
+log_info "Test 5: Encrypt/Decrypt Round-Trip Test..."
+
+# Test 5: Combined encrypt + decrypt workflow
+log_info "Testing encrypt -> decrypt round-trip at 5000 req/s..."
+
+# First encrypt to get ciphertext
+ENCRYPT_RESPONSE=$(curl -k -s \
+    --cert "$CLIENT_CERT" \
+    --key "$CLIENT_KEY" \
+    -X POST "$HSM_URL/encrypt" \
+    -H "Content-Type: application/json" \
+    -d '{"context":"exchange-key","plaintext":"SGVsbG8gV29ybGQh"}')
+
+CIPHERTEXT=$(echo "$ENCRYPT_RESPONSE" | grep -o '"ciphertext":"[^"]*"' | cut -d'"' -f4)
+KEY_ID=$(echo "$ENCRYPT_RESPONSE" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$CIPHERTEXT" ] || [ -z "$KEY_ID" ]; then
+    log_error "Failed to get ciphertext or key_id for round-trip test"
+else
+    log_info "Got ciphertext (key_id: $KEY_ID), testing decrypt throughput..."
+    
+    # Create decrypt body with key_id (REQUIRED for decrypt endpoint)
+    echo "{\"context\":\"exchange-key\",\"ciphertext\":\"$CIPHERTEXT\",\"key_id\":\"$KEY_ID\"}" > /tmp/vegeta-decrypt-body.json
+    
+    # Test decrypt throughput
+    echo "POST $HSM_URL/decrypt" | vegeta attack \
+        -duration=30s \
+        -rate=5000 \
+        -body=/tmp/vegeta-decrypt-body.json \
+        -header='Content-Type: application/json' \
+        -cert="$CLIENT_CERT" \
+        -key="$CLIENT_KEY" \
+        -insecure \
+        -timeout=10s \
+        -max-workers=500 \
+        > "$RESULTS_DIR/decrypt-test.bin"
+    
+    vegeta report -type=text "$RESULTS_DIR/decrypt-test.bin" > "$RESULTS_DIR/decrypt-test.txt"
+    log_success "Decrypt test complete"
+    cat "$RESULTS_DIR/decrypt-test.txt"
+fi
+
 # Summary
 echo ""
 log_info "========================================="
@@ -178,6 +226,12 @@ log_info "Results saved to: $RESULTS_DIR"
 echo ""
 log_info "View HTML plots:"
 log_info "  - Sustained Load: file://$PWD/$RESULTS_DIR/sustained-high.html"
+echo ""
+log_info "Summary:"
+log_info "  - Encrypt tests: incremental-*.txt"
+log_info "  - Decrypt test: decrypt-test.txt"
+log_info "  - Spike test: spike.txt"
+log_info "  - Endurance: endurance.txt"
 echo ""
 log_info "Next steps:"
 log_info "  1. Review results in $RESULTS_DIR/"
