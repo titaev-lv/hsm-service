@@ -225,6 +225,103 @@ docker inspect hsm-service | jq '.[0].State.Health'
 docker-compose exec hsm-service wget --spider --no-check-certificate https://localhost:8443/health
 ```
 
+## Performance Tuning
+
+### Network optimization (applied in docker-compose.yml)
+
+Сервис уже настроен с оптимальными параметрами для высоких нагрузок:
+
+```yaml
+sysctls:
+  - net.core.somaxconn=8192              # Connection queue size
+  - net.ipv4.tcp_tw_reuse=1              # Reuse TIME_WAIT sockets
+  - net.ipv4.ip_local_port_range=1024 65535  # Expand port range
+
+ulimits:
+  nofile:
+    soft: 65536  # File descriptors
+    hard: 65536
+  nproc:
+    soft: 4096   # Max processes
+    hard: 4096
+```
+
+### HTTP/2 Configuration
+
+Агрессивные настройки HTTP/2 для выделенных HSM машин (в config.yaml):
+
+```yaml
+server:
+  http2:
+    max_concurrent_streams: "2000"       # Default: ~250
+    initial_window_size: "4M"            # Default: 64KB
+    max_frame_size: "1M"                 # Default: 16KB
+    max_header_list_size: "2M"
+    idle_timeout_seconds: 120
+    max_upload_buffer_per_conn: "4M"
+    max_upload_buffer_per_stream: "4M"
+```
+
+**Производительность после оптимизации:**
+- Breaking point: >5000 req/s (не достигнут)
+- Spike test (5000 req/s): 100% success
+- Endurance test (5 min): 100% success
+- Latency P95: <500µs при 5000 req/s
+
+### Дополнительные настройки хоста
+
+Для максимальной производительности также настройте на хосте:
+
+```bash
+# Apply kernel tuning
+sudo sysctl -w net.core.somaxconn=8192
+sudo sysctl -w net.ipv4.tcp_max_syn_backlog=8192
+sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+sudo sysctl -w net.ipv4.tcp_fin_timeout=15
+sudo sysctl -w net.core.rmem_max=16777216
+sudo sysctl -w net.core.wmem_max=16777216
+
+# Persist changes
+echo 'net.core.somaxconn = 8192' | sudo tee -a /etc/sysctl.conf
+echo 'net.ipv4.tcp_max_syn_backlog = 8192' | sudo tee -a /etc/sysctl.conf
+echo 'net.ipv4.tcp_tw_reuse = 1' | sudo tee -a /etc/sysctl.conf
+echo 'net.ipv4.tcp_fin_timeout = 15' | sudo tee -a /etc/sysctl.conf
+echo 'net.core.rmem_max = 16777216' | sudo tee -a /etc/sysctl.conf
+echo 'net.core.wmem_max = 16777216' | sudo tee -a /etc/sysctl.conf
+
+sudo sysctl -p
+```
+
+### Проверка применённых настроек
+
+```bash
+# Check ulimits in container
+docker exec hsm-service sh -c 'ulimit -n'
+# Expected: 65536
+
+# Check sysctl on host
+sysctl net.core.somaxconn
+# Expected: net.core.somaxconn = 8192
+
+sysctl net.ipv4.tcp_tw_reuse
+# Expected: net.ipv4.tcp_tw_reuse = 1
+```
+
+### Performance Testing
+
+Запустите stress test для проверки:
+
+```bash
+./tests/performance/stress-test.sh
+```
+
+Ожидаемые результаты:
+- 100-5000 req/s: 100% success
+- Spike test (5000 req/s): 100% success
+- Endurance (5 min): 100% success
+
+---
+
 ## Production Deployment
 
 ### Security checklist

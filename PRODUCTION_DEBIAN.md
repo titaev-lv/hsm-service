@@ -279,13 +279,26 @@ acl:
       - 2fa
 
 rate_limit:
-  requests_per_second: 100
-  burst: 50
+  requests_per_second: 50000  # Per-client limit (by mTLS CN)
+  burst: 5000                  # Burst capacity
 
 logging:
   level: info
   format: json
+
+# HTTP/2 optimization for high-load scenarios
+server:
+  http2:
+    max_concurrent_streams: "2000"       # Default: ~250, increase for high throughput
+    initial_window_size: "4M"            # Default: 64KB, larger for better flow control
+    max_frame_size: "1M"                 # Default: 16KB, reduce syscalls
+    max_header_list_size: "2M"           # Support large mTLS certificates
+    idle_timeout_seconds: 120            # Connection reuse
+    max_upload_buffer_per_conn: "4M"     # Memory budget per connection
+    max_upload_buffer_per_stream: "4M"   # Memory budget per stream
 ```
+
+**Примечание:** Значения в `http2` секции можно указывать в килобайтах (k/K) или мегабайтах (m/M), например: `"4M"`, `"512k"`, или просто байтами `"1048576"`.
 
 ### 4. Создание metadata.yaml
 
@@ -379,9 +392,10 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/hsm-service /var/log/hsm-service /var/lib/softhsm/tokens
 
-# Limits
+# Limits (Performance optimized for high load)
 LimitNOFILE=65536
 LimitNPROC=4096
+LimitMEMLOCK=infinity
 
 # Logging
 StandardOutput=journal
@@ -392,7 +406,48 @@ SyslogIdentifier=hsm-service
 WantedBy=multi-user.target
 ```
 
-### 2. Создание environment file (рекомендуется)
+**Примечание:** `LimitNOFILE=65536` критично для обработки высоких нагрузок (>5000 req/s).
+
+### 2. Kernel Network Tuning
+
+Для максимальной производительности настройте параметры ядра:
+
+```bash
+# Edit sysctl configuration
+sudo nano /etc/sysctl.d/99-hsm-service.conf
+```
+
+**Содержимое `/etc/sysctl.d/99-hsm-service.conf`**:
+```ini
+# Connection handling
+net.core.somaxconn = 8192
+net.ipv4.tcp_max_syn_backlog = 8192
+
+# Port management (prevents port exhaustion)
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+
+# Buffer sizes for HTTP/2
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+
+# Connection tracking (for high concurrent connections)
+net.netfilter.nf_conntrack_max = 524288
+```
+
+**Применить настройки:**
+```bash
+sudo sysctl -p /etc/sysctl.d/99-hsm-service.conf
+
+# Verify
+sysctl net.core.somaxconn
+sysctl net.ipv4.tcp_tw_reuse
+```
+
+### 3. Создание environment file (рекомендуется)
 
 ```bash
 sudo nano /etc/hsm-service/environment
@@ -411,7 +466,7 @@ sudo chown root:hsm /etc/hsm-service/environment
 sudo chmod 640 /etc/hsm-service/environment
 ```
 
-### 3. Перезагрузка systemd и запуск
+### 4. Перезагрузка systemd и запуск
 
 ```bash
 # Reload systemd
@@ -430,7 +485,7 @@ sudo systemctl status hsm-service
 sudo journalctl -u hsm-service -f
 ```
 
-### 4. Проверка работы
+### 5. Проверка работы
 
 ```bash
 # Health check
