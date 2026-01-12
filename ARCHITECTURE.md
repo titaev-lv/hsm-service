@@ -234,9 +234,9 @@ hsm-service/
 ├── QUICKSTART_NATIVE.md        # Быстрый старт нативно
 ├── PRODUCTION_DEBIAN.md        # Production на Debian
 ├── TROUBLESHOOTING.md          # Решение проблем
-├── tests/README.md             # Руководство по тестированию
-├── EXTREME_TEST_RESULTS.md     # Результаты нагрузочного тестирования
 ├── DOCS_INDEX.md               # Индекс документации
+├── tests/README.md             # Руководство по тестированию
+├── tests/EXTREME_TEST_RESULTS.md # Результаты экстремального нагрузочного тестирования
 └── LICENSE                     # Лицензия
 ```
 
@@ -612,7 +612,7 @@ hsm-admin cleanup exchange-key --version 1
 - ✅ Race detector clean - **РЕАЛИЗОВАНО**
 - ✅ Integration tests - **РЕАЛИЗОВАНО** (tests/integration/full-integration-test.sh Phase 9.5)
 
-Подробнее см. [KEY_ROTATION.md](KEY_ROTATION.md) и [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
+Подробнее см. [KEY_ROTATION.md](KEY_ROTATION.md) (ротация ключей) и [README.md](README.md) (автоматическая перезагрузка revoked.yaml)
 
 ---
 
