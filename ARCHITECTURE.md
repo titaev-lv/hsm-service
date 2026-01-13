@@ -1238,14 +1238,13 @@ services:
 
 ```
 VM Configuration:
-- OS: Ubuntu 22.04 LTS
-- RAM: 4GB minimum
-- CPU: 2 cores
-- Disk: 20GB (для token storage)
-- Network: Internal VLAN only
+- OS: Debian 13/Ubuntu 24.04 LTS
+- RAM: 1GB minimum
+- CPU: 4 cores
+- Disk: 20GB
 
 Security:
-- Firewall: только 8443 от известных IP
+- Firewall: только 8443 и 22 порты открыты
 - SELinux / AppArmor enabled
 - SSH hardened (key-only, no root)
 - Audit logging to SIEM
