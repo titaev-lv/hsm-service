@@ -61,13 +61,13 @@ go test -cover ./...
 
 | Тип | Файлов | Тестов | Описание |
 |-----|--------|--------|----------|
-| **Unit Tests** | 14 файлов | ~70 тестов | Изолированное тестирование функций |
+| **Unit Tests** | 12 файлов | 58 тестов + 1 benchmark | Изолированное тестирование функций |
 | **Integration** | 1 скрипт | 45 тестов | API тестирование с Docker |
 | **E2E Scenarios** | 3 сценария | 3 workflow | End-to-end бизнес-процессы |
 | **Performance** | 4 скрипта | 8+ нагрузочных | Stress и load тестирование |
 | **Security** | 2 скрипта | 8 проверок | Vulnerability scanning |
 
-**Всего**: ~10,000 строк тестового кода
+**Всего**: ~8,000 строк тестового кода
 
 ---
 
@@ -162,23 +162,21 @@ vegeta -version
 internal/
 ├── config/                      # 3 test файла
 │   ├── config_test.go          # Базовые тесты конфигурации (3 теста)
-│   ├── config_extended_test.go # Расширенные тесты (7 тестов)
-│   └── http2_test.go           # HTTP/2 конфигурация (2 теста)
+│   ├── config_extended_test.go # Расширенные тесты (6 тестов)
+│   └── http2_test.go           # HTTP/2 конфигурация (3 теста)
 │
-├── hsm/                         # 6 test файлов
-│   ├── crypto_test.go          # Шифрование/расшифровка (6 тестов)
-│   ├── crypto_extended_test.go # Расширенное крипто (11 тестов + 4 benchmark)
+├── hsm/                         # 4 test файла
+│   ├── crypto_test.go          # Шифрование/расшифровка + AAD (1 тест)
 │   ├── key_manager_test.go     # KeyManager hot reload (5 тестов)
-│   ├── key_manager_extended_test.go # Расширенный KeyManager (13 тестов + 3 benchmark)
-│   ├── metadata_test.go        # Метаданные и ротация (6 тестов + 1 benchmark)
-│   └── rotation_test.go        # Ротация ключей (5 тестов)
+│   ├── metadata_test.go        # Метаданные (6 тестов)
+│   └── rotation_test.go        # Ротация ключей (8 тестов + 1 benchmark)
 │
 └── server/                      # 5 test файлов
-    ├── handlers_test.go        # HTTP handlers (17 тестов)
+    ├── handlers_test.go        # HTTP handlers (6 тестов)
     ├── acl_test.go             # ACL проверки (8 тестов)
     ├── acl_reload_test.go      # Auto-reload ACL (6 тестов)
     ├── middleware_test.go      # Rate limiting (5 тестов)
-    └── logger_test.go          # Логирование (8 тестов)
+    └── logger_test.go          # Логирование (2 теста)
 ```
 
 ### Запуск unit-тестов
@@ -208,144 +206,94 @@ go test -run TestACL ./internal/server/
 
 ### Описание unit-тестов
 
-#### internal/hsm/ - HSM модуль (46 тестов)
+#### internal/hsm/ - HSM модуль (19 тестов + 1 benchmark)
 
-**crypto_test.go** (6 тестов):
-- `TestEncryptDecrypt` - базовое шифрование/расшифровка
-- `TestEncrypt_InvalidContext` - обработка невалидного context
-- `TestDecrypt_InvalidCiphertext` - обработка битого ciphertext
-- `TestEncrypt_EmptyPlaintext` - пустой plaintext
-- `TestDecrypt_WrongKey` - расшифровка неправильным ключом
-- `TestEncrypt_LargePlaintext` - большие данные (10KB)
-
-**crypto_extended_test.go** (11 тестов + 4 benchmark):
-- `TestEncryptDecrypt_MultipleContexts` - несколько contexts
-- `TestEncrypt_ConcurrentOperations` - concurrent шифрование
-- `TestDecrypt_DifferentVersions` - расшифровка разными версиями ключей
-- `TestEncryptDecrypt_SpecialCharacters` - спецсимволы в данных
-- `TestEncrypt_MaxPayloadSize` - максимальный размер payload
-- `TestDecrypt_CorruptedMetadata` - поврежденные метаданные
-- `TestEncryptDecrypt_BinaryData` - бинарные данные
-- `TestEncrypt_EmptyKey` - пустой ключ
-- `TestDecrypt_MissingKey` - отсутствующий ключ
-- `TestEncryptDecrypt_UnicodeData` - Unicode данные
-- `TestEncrypt_RapidSequential` - быстрая последовательность операций
-- **Benchmarks**: BenchmarkEncrypt, BenchmarkDecrypt, BenchmarkEncryptLarge, BenchmarkDecryptLarge
+**crypto_test.go** (1 тест):
+- `TestBuildAAD` - построение AAD с context и OU для shared/private mode
 
 **key_manager_test.go** (5 тестов):
-- `TestKeyManager_LoadKeys` - загрузка ключей
-- `TestKeyManager_GetKey` - получение ключа
-- `TestKeyManager_Reload` - hot reload метаданных
-- `TestKeyManager_ConcurrentAccess` - concurrent доступ
-- `TestKeyManager_InvalidMetadata` - невалидные метаданные
+- `TestKeyManagerLoadKeys` - загрузка ключей из метаданных
+- `TestKeyManagerHotReload` - hot reload метаданных при изменении файла
+- `TestKeyManagerAutoReload` - автоматическая перезагрузка с file watcher
+- `TestKeyManagerThreadSafety` - безопасность при concurrent доступе
+- `TestKeyManagerGracefulShutdown` - корректное завершение работы
 
-**key_manager_extended_test.go** (13 тестов + 3 benchmark):
-- `TestKeyManager_MultipleVersions` - множественные версии ключей
-- `TestKeyManager_AutoReload` - автоматическая перезагрузка
-- `TestKeyManager_ReloadFailure` - обработка ошибок reload
-- `TestKeyManager_ConcurrentReload` - concurrent reload
-- `TestKeyManager_GetKeyByVersion` - получение ключа по версии
-- `TestKeyManager_GetCurrentKey` - получение текущего ключа
-- `TestKeyManager_MissingContext` - отсутствующий context
-- `TestKeyManager_EmptyMetadata` - пустые метаданные
-- `TestKeyManager_CorruptedYAML` - поврежденный YAML
-- `TestKeyManager_VersionRollback` - откат версии
-- `TestKeyManager_ReloadPreservesState` - reload сохраняет состояние
-- `TestKeyManager_GetAllKeys` - получение всех ключей
-- `TestKeyManager_FileWatcher` - file watcher механизм
-- **Benchmarks**: BenchmarkGetKey, BenchmarkReload, BenchmarkConcurrentGetKey
+**metadata_test.go** (5 тестов + 1 benchmark):
+- `TestNeedsRotation` - проверка необходимости ротации
+- `TestKeyMetadataAge` - вычисление возраста ключа
+- `TestKeyMetadataRotationBoundary` - граничные условия для ротации
+- `TestMultipleKeyVersionsRotationStatus` - статус ротации для нескольких версий
+- `TestNeedsRotationWithZeroInterval` - ротация с interval=0 (отключена)
+- **Benchmark**: `BenchmarkNeedsRotation`
 
-**metadata_test.go** (6 тестов + 1 benchmark):
-- `TestLoadMetadata` - загрузка метаданных
-- `TestSaveMetadata` - сохранение метаданных
-- `TestUpdateMetadata` - обновление метаданных
-- `TestValidateMetadata` - валидация метаданных
-- `TestMetadata_Versioning` - версионирование
-- `TestMetadata_Concurrent` - concurrent операции
-- **Benchmark**: BenchmarkLoadMetadata
-
-**rotation_test.go** (5 тестов):
+**rotation_test.go** (8 тестов):
+- `TestRotateKey_Success` - успешная ротация ключа
 - `TestRotateKey_CreateNewVersion` - создание новой версии ключа
 - `TestRotateKey_UpdateMetadata` - обновление метаданных при ротации
-- `TestRotateKey_PreserveOldKeys` - сохранение старых ключей
-- `TestRotateKey_ConcurrentRotation` - concurrent ротация
-- `TestRotateKey_ValidationErrors` - валидация ошибок
+- `TestRotateKey_PreserveOldKeys` - сохранение старых ключей после ротации
+- `TestRotateKey_ConcurrentRotation` - concurrent ротация нескольких ключей
+- `TestRotateKey_FailureRollback` - откат при ошибке ротации
+- `TestCleanupOldVersions_RespectRetention` - cleanup с учетом retention периода
+- `TestCleanupOldVersions_KeepMinimum` - сохранение минимального количества версий
 
-#### internal/server/ - Server модуль (44 теста)
+#### internal/server/ - Server модуль (27 тестов)
 
-**handlers_test.go** (17 тестов):
-- `TestEncryptHandler` - тест /encrypt endpoint
-- `TestDecryptHandler` - тест /decrypt endpoint
-- `TestHealthHandler` - тест /health endpoint
-- `TestMetricsHandler` - тест /metrics endpoint
-- `TestEncryptHandler_InvalidJSON` - невалидный JSON
-- `TestEncryptHandler_MissingFields` - отсутствующие поля
-- `TestDecryptHandler_InvalidCiphertext` - невалидный ciphertext
-- `TestEncryptHandler_Unauthorized` - неавторизованный доступ
-- `TestDecryptHandler_WrongContext` - неправильный context
-- `TestEncryptHandler_EmptyPlaintext` - пустой plaintext
-- `TestDecryptHandler_EmptyCiphertext` - пустой ciphertext
-- `TestHandlers_ConcurrentRequests` - concurrent запросы
-- `TestHandlers_LargePayload` - большой payload
-- `TestHandlers_RateLimiting` - rate limiting
-- `TestHandlers_ErrorResponses` - error responses
-- `TestHandlers_MetricsIncrement` - инкремент метрик
-- `TestHandlers_AuditLogging` - audit logging
+**handlers_test.go** (6 тестов):
+- `TestEncryptHandler_InvalidJSON` - невалидный JSON в запросе
+- `TestEncryptHandler_MethodNotAllowed` - неправильный HTTP метод
+- `TestEncryptHandler_ACLForbidden` - блокировка по ACL
+- `TestHealthHandler` - health check endpoint
+- `TestRespondJSON` - JSON response helper
+- `TestRespondError` - error response helper
 
 **acl_test.go** (8 тестов):
-- `TestACL_CheckAccess` - проверка доступа
-- `TestACL_LoadMapping` - загрузка ACL маппинга
-- `TestACL_Unauthorized` - неавторизованный доступ
-- `TestACL_MultipleOUs` - множественные OU
-- `TestACL_CaseInsensitive` - регистронезависимая проверка
-- `TestACL_EmptyOU` - пустой OU
-- `TestACL_UnknownContext` - неизвестный context
-- `TestACL_WildcardAccess` - wildcard доступ
+- `TestNewACLChecker` - создание ACL checker
+- `TestCheckAccess_ValidAccess` - разрешенный доступ
+- `TestCheckAccess_ForbiddenContext` - запрещенный context по ACL
+- `TestCheckAccess_NoOU` - отсутствие OU в сертификате
+- `TestCheckAccess_UnknownOU` - неизвестный OU
+- `TestCheckAccess_RevokedCertificate` - проверка отозванного сертификата
+- `TestLoadRevoked_FileNotExist` - обработка отсутствующего revoked.yaml
+- `TestLoadRevoked_EmptyFile` - обработка пустого файла отзыва
 
 **acl_reload_test.go** (6 тестов):
-- `TestACL_AutoReload` - автоматическая перезагрузка
-- `TestACL_ReloadOnFileChange` - reload при изменении файла
-- `TestACL_ReloadValidation` - валидация при reload
-- `TestACL_ReloadConcurrent` - concurrent reload
-- `TestACL_ReloadPreservesState` - reload сохраняет состояние
-- `TestACL_ReloadErrorHandling` - обработка ошибок reload
+- `TestACLAutoReload` - автоматическая перезагрузка ACL при изменении
+- `TestACLStopAutoReload` - остановка auto-reload
+- `TestACLReloadInvalidYAML` - обработка невалидного YAML при reload
+- `TestACLReloadFileDeleted` - обработка удаления файла
+- `TestACLReloadEmptyCN` - обработка пустого CN
+- `TestACLReloadDuplicateCN` - обработка дубликатов CN
 
 **middleware_test.go** (5 тестов):
-- `TestRateLimiter` - базовый rate limiter
-- `TestRateLimiter_Concurrent` - concurrent rate limiting
-- `TestRateLimiter_PerClient` - per-client limiting
-- `TestRateLimiter_Reset` - сброс лимитов
-- `TestRateLimiter_Overflow` - превышение лимита
+- `TestRateLimiter_GetLimiter` - получение rate limiter для клиента
+- `TestRateLimitMiddleware_Allow` - пропуск запросов в пределах лимита
+- `TestRateLimitMiddleware_Exceed` - блокировка при превышении лимита
+- `TestRateLimitMiddleware_PerClient` - per-client rate limiting
+- `TestRateLimitMiddleware_NoCert` - обработка запросов без сертификата
 
-**logger_test.go** (8 тестов):
-- `TestLogger_Info` - info логирование
-- `TestLogger_Error` - error логирование
-- `TestLogger_Warn` - warn логирование
-- `TestLogger_AuditLog` - audit логирование
-- `TestLogger_Structured` - structured logging
-- `TestLogger_Concurrent` - concurrent logging
-- `TestLogger_Rotation` - log rotation
-- `TestLogger_Levels` - log levels
+**logger_test.go** (2 теста):
+- `TestInitLogger` - инициализация логгера
+- `TestSanitizeForLog` - санитизация sensitive данных в логах
 
 #### internal/config/ - Config модуль (12 тестов)
 
 **config_test.go** (3 теста):
-- `TestLoadConfig` - загрузка конфигурации
-- `TestValidateConfig` - валидация конфигурации
-- `TestConfig_Defaults` - значения по умолчанию
+- `TestLoadConfig` - загрузка конфигурации из файла
+- `TestEnvOverrides` - переопределение через environment variables
+- `TestValidateConfig` - валидация конфигурационных параметров
 
-**config_extended_test.go** (7 тестов):
-- `TestConfig_Environment` - переменные окружения
-- `TestConfig_InvalidYAML` - невалидный YAML
-- `TestConfig_MissingFile` - отсутствующий файл
-- `TestConfig_Override` - переопределение значений
-- `TestConfig_Validation` - расширенная валидация
-- `TestConfig_TLSSettings` - TLS настройки
-- `TestConfig_HSMSettings` - HSM настройки
+**config_extended_test.go** (6 тестов):
+- `TestConfig_Validation` - расширенная валидация параметров
+- `TestConfig_Defaults` - проверка значений по умолчанию
+- `TestConfig_EnvOverride` - переопределение через environment variables
+- `TestConfig_LoadNonExistentFile` - обработка отсутствующего файла
+- `TestConfig_YAMLSyntaxError` - обработка невалидного YAML
+- `TestMetadata_SaveAndLoad` - сохранение и загрузка метаданных
 
-**http2_test.go** (2 теста):
-- `TestHTTP2Config` - HTTP/2 конфигурация
-- `TestHTTP2_Negotiation` - HTTP/2 negotiation
+**http2_test.go** (3 теста):
+- `TestParseSize` - парсинг размеров (KB, MB, etc.)
+- `TestHTTP2Config_Parse` - парсинг HTTP/2 конфигурации
+- `TestHTTP2Config_RealWorldScenarios` - реальные сценарии использования HTTP/2
 
 ---
 
@@ -599,13 +547,7 @@ cat stress-results-extreme/*.txt
 
 **Цель**: Измерение производительности отдельных функций  
 **Что тестирует**:
-- BenchmarkEncrypt
-- BenchmarkDecrypt
-- BenchmarkEncryptLarge
-- BenchmarkDecryptLarge
-- BenchmarkGetKey
-- BenchmarkReload
-- BenchmarkConcurrentGetKey
+- BenchmarkNeedsRotation - проверка необходимости ротации ключа
 
 **Запуск**:
 ```bash
@@ -743,15 +685,13 @@ go test -bench=. ./internal/hsm/
 go test -bench=. -benchmem ./internal/hsm/
 
 # CPU profiling
-go test -bench=BenchmarkEncrypt -cpuprofile=cpu.prof ./internal/hsm/
+go test -bench=BenchmarkNeedsRotation -cpuprofile=cpu.prof ./internal/hsm/
 go tool pprof cpu.prof
 ```
 
 **Пример вывода**:
 ```
-BenchmarkEncrypt-8           1000000    1234 ns/op    512 B/op    8 allocs/op
-BenchmarkDecrypt-8           1000000    1156 ns/op    512 B/op    7 allocs/op
-BenchmarkGetKey-8           10000000     123 ns/op      0 B/op    0 allocs/op
+BenchmarkNeedsRotation-8    10000000    123 ns/op    0 B/op    0 allocs/op
 ```
 
 ---
@@ -869,13 +809,13 @@ echo "✅ All tests passed!"
 
 | Метрика | Значение |
 |---------|----------|
-| **Unit тестов** | ~70 тестов |
+| **Unit тестов** | 58 тестов + 1 benchmark |
 | **Integration тестов** | 45 тестов |
 | **E2E сценариев** | 3 workflow |
 | **Performance тестов** | 8 нагрузочных |
 | **Security проверок** | 8 checks |
 | **Coverage** | ~80% |
-| **Строк тестового кода** | ~10,000 строк |
+| **Строк тестового кода** | ~8,000 строк |
 | **Время выполнения (full)** | ~15-20 минут |
 
 ---
