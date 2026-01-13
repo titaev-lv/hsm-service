@@ -774,7 +774,7 @@ go test ./internal/...
 |----------|----------|-------|
 | [DOCKER.md](DOCKER.md) | Docker конфигурация | 10 мин |
 | [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) | Docker Compose setup | 10 мин |
-| [DOCKER_DEV.md](DOCKER_DEV.md) | Development в Docker | 10 мин |
+| [BUILD.md](BUILD.md) | Сборка бинарников для production | 15 мин |
 | [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) | Production на Debian 13 + nftables | 30 мин |
 
 ### 🔑 Управление ключами и сертификатами

@@ -266,7 +266,7 @@ hsm-service/
 ├── BACKUP_RESTORE.md           # Backup и восстановление
 ├── DOCKER.md                   # Docker документация
 ├── DOCKER_COMPOSE.md           # Docker Compose документация
-├── DOCKER_DEV.md               # Docker для разработки
+├── BUILD.md                    # Сборка бинарников для production
 ├── QUICKSTART_DOCKER.md        # Быстрый старт с Docker
 ├── QUICKSTART_NATIVE.md        # Быстрый старт нативно
 ├── PRODUCTION_DEBIAN.md        # Production на Debian
