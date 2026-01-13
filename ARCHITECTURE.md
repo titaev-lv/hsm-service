@@ -86,7 +86,7 @@ graph TB
 - ✅ Поддержка множества распределенных сервисов
 - ✅ Независимая ротация ключей для разных контекстов
 - ✅ Версионирование KEK с обратной совместимостью
-- ✅ Возможность горизонтального масштабирования (Phase 2)
+- ✅ Возможность горизонтального масштабирования после доработки
 
 ---
 
@@ -569,108 +569,19 @@ kek-2fa-v1:       [ACTIVE]
 
 ### Hot Reload для KEK и Metadata (Zero-Downtime Rotation)
 
-**Проблема текущей реализации:**
-- ❌ Restart сервиса требует downtime для всех 50+ клиентов
-- ❌ Невозможность graceful rotation в production
-- ❌ Прерывание активных операций
-- ❌ Single point of failure при обновлении
+**Преимущества:**
+- ✅ **Zero Downtime** - клиенты не видят перезапуска
+- ✅ **Graceful Rotation** - старые и новые ключи доступны одновременно
+- ✅ **Atomic Switch** - переключение на новую версию мгновенное
+- ✅ **Persistent PKCS#11 Session** - нет повторной инициализации
+- ✅ **Production Ready** - для нагруженных систем с 50+ клиентами
 
-**Требуемое решение - Zero-Downtime KEK Reload:**
-
-```go
-type KeyManager struct {
-    ctx           crypto11.Context  // Persistent PKCS#11 session
-    keys          map[string]*KeyHandle
-    keysMutex     sync.RWMutex
-    
-    metadata      *MetadataConfig
-    metadataMutex sync.RWMutex
-    metadataFile  string
-    lastModTime   time.Time
-}
-
-// Периодическая проверка metadata.yaml (каждые 30 секунд)
-func (km *KeyManager) AutoReloadMetadata(interval time.Duration) {
-    ticker := time.NewTicker(interval)
-    defer ticker.Stop()
-    
-    for {
-        select {
-        case <-ticker.C:
-            if km.metadataChanged() {
-                km.ReloadKeysFromMetadata()
-            }
-        case <-km.stopChan:
-            return
-        }
-    }
-}
-
-// Загрузка новых KEK без разрыва сессии
-func (km *KeyManager) ReloadKeysFromMetadata() error {
-    // 1. Read metadata.yaml
-    newMetadata, err := loadMetadata(km.metadataFile)
-    if err != nil {
-        return err // Keep old data
-    }
-    
-    // 2. Load NEW keys from HSM (не закрывая старые)
-    newKeys := make(map[string]*KeyHandle)
-    for context, meta := range newMetadata.Rotation {
-        handle, err := km.ctx.FindKey(nil, []byte(meta.Label))
-        if err != nil {
-            return err // Rollback, keep old data
-        }
-        newKeys[context] = &KeyHandle{
-            Handle:  handle,
-            Label:   meta.Label,
-            Version: meta.Version,
-        }
-    }
-    
-    // 3. Atomic swap (все или ничего)
-    km.keysMutex.Lock()
-    oldKeys := km.keys
-    km.keys = newKeys
-    km.keysMutex.Unlock()
-    
-    km.metadataMutex.Lock()
-    km.metadata = newMetadata
-    km.metadataMutex.Unlock()
-    
-    // 4. Cleanup old handles (опционально, можно оставить в памяти)
-    // Old handles still valid for ongoing decrypt operations
-    
-    slog.Info("KEK hot reload successful", 
-        "contexts", len(newKeys))
-    return nil
-}
-
-// Encrypt использует текущую активную версию
-func (km *KeyManager) Encrypt(context string, plaintext []byte) ([]byte, error) {
-    km.keysMutex.RLock()
-    keyHandle, exists := km.keys[context]
-    km.keysMutex.RUnlock()
-    
-    if !exists {
-        return nil, ErrKeyNotFound
-    }
-    
-    // Use current active version from metadata
-    return encryptAESGCM(keyHandle.Handle, plaintext)
-}
-
-// Decrypt работает с любой версией (по key_id из request)
-func (km *KeyManager) Decrypt(keyID string, ciphertext []byte) ([]byte, error) {
-    // Find key by label (может быть старая версия)
-    handle, err := km.ctx.FindKey(nil, []byte(keyID))
-    if err != nil {
-        return nil, ErrKeyNotFound
-    }
-    
-    return decryptAESGCM(handle, ciphertext)
-}
-```
+**Статус реализации (Phase 4):**
+- ✅ Hot reload для `revoked.yaml` - **РЕАЛИЗОВАНО** (30 сек interval)
+- ✅ Hot reload для `metadata.yaml` и KEK - **РЕАЛИЗОВАНО** (30 сек interval)
+- ✅ KeyManager с thread-safe reload - **РЕАЛИЗОВАНО**
+- ✅ Race detector clean - **РЕАЛИЗОВАНО**
+- ✅ Integration tests - **РЕАЛИЗОВАНО** (tests/integration/full-integration-test.sh Phase 9.5)
 
 **Процесс ротации с Hot Reload:**
 
@@ -700,20 +611,6 @@ hsm-admin rotate exchange-key
 hsm-admin cleanup exchange-key --version 1
 # Проверяет, что нет активных decrypt с v1 (опционально)
 ```
-
-**Преимущества:**
-- ✅ **Zero Downtime** - клиенты не видят перезапуска
-- ✅ **Graceful Rotation** - старые и новые ключи доступны одновременно
-- ✅ **Atomic Switch** - переключение на новую версию мгновенное
-- ✅ **Persistent PKCS#11 Session** - нет повторной инициализации
-- ✅ **Production Ready** - для нагруженных систем с 50+ клиентами
-
-**Статус реализации (Phase 4):**
-- ✅ Hot reload для `revoked.yaml` - **РЕАЛИЗОВАНО** (30 сек interval)
-- ✅ Hot reload для `metadata.yaml` и KEK - **РЕАЛИЗОВАНО** (30 сек interval)
-- ✅ KeyManager с thread-safe reload - **РЕАЛИЗОВАНО**
-- ✅ Race detector clean - **РЕАЛИЗОВАНО**
-- ✅ Integration tests - **РЕАЛИЗОВАНО** (tests/integration/full-integration-test.sh Phase 9.5)
 
 Подробнее см. [KEY_ROTATION.md](KEY_ROTATION.md) (ротация ключей) и [README.md](README.md) (автоматическая перезагрузка revoked.yaml)
 
