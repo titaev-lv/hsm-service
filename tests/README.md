@@ -62,7 +62,7 @@ go test -cover ./...
 | Тип | Файлов | Тестов | Описание |
 |-----|--------|--------|----------|
 | **Unit Tests** | 14 файлов | ~70 тестов | Изолированное тестирование функций |
-| **Integration** | 1 скрипт | 42 теста | API тестирование с Docker |
+| **Integration** | 1 скрипт | 45 тестов | API тестирование с Docker |
 | **E2E Scenarios** | 3 сценария | 3 workflow | End-to-end бизнес-процессы |
 | **Performance** | 4 скрипта | 8+ нагрузочных | Stress и load тестирование |
 | **Security** | 2 скрипта | 8 проверок | Vulnerability scanning |
@@ -354,7 +354,7 @@ go test -run TestACL ./internal/server/
 ### full-integration-test.sh
 
 **Расположение**: `tests/integration/full-integration-test.sh`  
-**Тестов**: 42 теста  
+**Тестов**: 45 тестов  
 **Время выполнения**: ~2-3 минуты
 
 **Этапы тестирования**:
@@ -380,6 +380,11 @@ go test -run TestACL ./internal/server/
 - Пустой plaintext (валидация)
 - Невалидный context
 - Несанкционированный доступ
+
+**Phase 2.5: AAD Mode Tests (Shared/Private)** (3 теста)
+- Shared mode: encrypt/decrypt с AAD=context+OU
+- Private mode: ACL блокирует wrong OU
+- Config validation: проверка mode=shared/private в config.yaml
 
 **Phase 3: ACL & Authorization** (10 тестов)
 - Trading → exchange-key (✅ разрешено)
@@ -865,7 +870,7 @@ echo "✅ All tests passed!"
 | Метрика | Значение |
 |---------|----------|
 | **Unit тестов** | ~70 тестов |
-| **Integration тестов** | 42 теста |
+| **Integration тестов** | 45 тестов |
 | **E2E сценариев** | 3 workflow |
 | **Performance тестов** | 8 нагрузочных |
 | **Security проверок** | 8 checks |
