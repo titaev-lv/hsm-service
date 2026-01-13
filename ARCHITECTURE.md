@@ -311,30 +311,29 @@ server:
 
 hsm:
   pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
-  slot_id: hsm-token
-  metadata_file: /app/metadata.yaml      # Путь к файлу метаданных
-  max_versions: 3                        # Максимум версий ключей
-  cleanup_after_days: 30                 # Автоудаление старых версий
+  slot_id: hsm-token                     # TokenLabel для идентификации HSM токена в PKCS#11
+  metadata_file: /app/metadata.yaml      # Путь к файлу метаданных ротации
+  max_versions: 3                        # Максимальное кол-во версий ключей (старые удаляются автоматически)
+  cleanup_after_days: 30                 # Автоудаление версий старше N дней
   keys:
     exchange-key:
-      type: aes
+      type: aes                          # Тип ключа (только "aes" реализован, "rsa" зарезервирован)
     2fa:
       type: aes
 
 acl:
   revoked_file: /app/pki/revoked.yaml
   mappings:
-    Trading: [exchange-key]
-    2FA: [2fa]
-    Database: []
+    Trading: [exchange-key]              # OU "Trading" имеет доступ к контексту exchange-key
+    2FA: [2fa]                           # OU "2FA" имеет доступ к контексту 2fa
 
 rate_limit:
   requests_per_second: 50000             # Агрессивный rate limit
   burst: 5000                            # Burst capacity
 
 logging:
-  level: info
-  format: json
+  level: info                            # Уровни: debug, info, warn, error (default: info)
+  format: json                           # Формат: json или text (default: text)
 ```
 
 **Характеристики:**
