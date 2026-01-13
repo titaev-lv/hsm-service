@@ -574,15 +574,10 @@ kek-2fa-v1:       [ACTIVE]
 - ✅ **Graceful Rotation** - старые и новые ключи доступны одновременно
 - ✅ **Atomic Switch** - переключение на новую версию мгновенное
 - ✅ **Persistent PKCS#11 Session** - нет повторной инициализации
-- ✅ **Production Ready** - для нагруженных систем с 50+ клиентами
-
-**Статус реализации (Phase 4):**
-- ✅ Hot reload для `revoked.yaml` - **РЕАЛИЗОВАНО** (30 сек interval)
-- ✅ Hot reload для `metadata.yaml` и KEK - **РЕАЛИЗОВАНО** (30 сек interval)
-- ✅ KeyManager с thread-safe reload - **РЕАЛИЗОВАНО**
-- ✅ Race detector clean - **РЕАЛИЗОВАНО**
-- ✅ Integration tests - **РЕАЛИЗОВАНО** (tests/integration/full-integration-test.sh Phase 9.5)
-
+- ✅ **Production Ready** - для нагруженных систем с 500+ клиентами
+- ✅ Hot reload для `revoked.yaml` - 30 сек interval
+- ✅ Hot reload для `metadata.yaml` и KEK - 30 сек interval
+d
 **Процесс ротации с Hot Reload:**
 
 ```bash
@@ -681,7 +676,7 @@ Base URL: https://hsm-service.local:8443
 
 POST /encrypt
 POST /decrypt
-GET  /health       (no auth required)
+GET  /health       
 GET  /metrics      (prometheus, optional)
 ```
 
@@ -699,7 +694,6 @@ acl:
   mappings:
     Trading: [exchange-key]
     2FA: [2fa]
-    Database: []  # нет доступа к ключам
 ```
 
 **Certificate Subject Format:**
@@ -779,14 +773,14 @@ cat >> pki/revoked.yaml << EOF
 EOF
 
 # 2. Сервис автоматически перезагрузит файл в течение 30 секунд
-# (hot reload реализован, перезапуск НЕ требуется)
+# (реализован hot reload, перезапуск НЕ требуется)
 
 # 3. Сертификат блокируется и больше не может подключиться
 ```
 
 **Hot Reload статус:**
 - ✅ `revoked.yaml` - автоматическая перезагрузка каждые 30 секунд
-- ✅ `metadata.yaml` (KEK) - автоматическая перезагрузка каждые 30 секунд (Phase 4)
+- ✅ `metadata.yaml` (KEK) - автоматическая перезагрузка каждые 30 секунд
 - ❌ `config.yaml` - требуется restart сервиса
 
 ---
@@ -1075,7 +1069,7 @@ HSM_SO_PIN=<so-pin>    # Только для admin операций
 
 ## Масштабирование и отказоустойчивость
 
-### Current Architecture (Phase 1)
+### Current Architecture
 
 ```
 Single instance deployment:
@@ -1089,7 +1083,7 @@ Single instance deployment:
 - Limited throughput
 - No geographic redundancy
 
-### Future Scalability (Phase 2+)
+### Future Scalability
 
 **Option A: Active-Passive HA**
 
@@ -1119,17 +1113,51 @@ graph TB
 
 **Option B: Horizontal Scaling (Read Replicas)**
 
+```mermaid
+graph TB
+    subgraph "Load Balancer"
+        LB[HAProxy / Nginx<br/>Round Robin]
+    end
+    
+    subgraph "Node 1"
+        HSM1[HSM Service 1<br/>READ/WRITE]
+        TOKEN1[SoftHSM Token 1<br/>PRIMARY]
+    end
+    
+    subgraph "Node 2"
+        HSM2[HSM Service 2<br/>READ ONLY]
+        TOKEN2[SoftHSM Token 2<br/>Replica]
+    end
+    
+    subgraph "Node 3"
+        HSM3[HSM Service 3<br/>READ ONLY]
+        TOKEN3[SoftHSM Token 3<br/>Replica]
+    end
+    
+    CLIENTS[Clients] --> LB
+    LB --> HSM1
+    LB --> HSM2
+    LB --> HSM3
+    
+    HSM1 --> TOKEN1
+    HSM2 --> TOKEN2
+    HSM3 --> TOKEN3
+    
+    TOKEN1 -.->|periodic backup/restore| TOKEN2
+    TOKEN1 -.->|periodic backup/restore| TOKEN3
 ```
-Multiple HSM service instances:
-- Shared read-only KEK (via token replication)
-- Load balanced requests
-- Eventual consistency for KEK rotation
-```
+
+**Features:**
+- Multiple HSM service instances for horizontal scaling
+- Shared read-only KEK replicas (via token backup/restore)
+- Load balanced requests across all nodes
+- Eventual consistency for KEK rotation (delay: backup interval)
 
 **Challenges:**
 - SoftHSM не поддерживает clustering
-- Нужна репликация токенов (backup/restore)
-- KEK ротация требует координации
+- Нужна периодическая репликация токенов (backup/restore)
+- KEK ротация требует координации (только на Node 1)
+- Eventual consistency - задержка при ротации ключей
 
 ---
 
