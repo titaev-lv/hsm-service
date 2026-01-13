@@ -156,14 +156,21 @@ hsm-service/
 │   ├── config/                 # Конфигурация
 │   │   ├── config.go           # Загрузка config.yaml и metadata.yaml
 │   │   ├── config_test.go      # Тесты конфигурации
+│   │   ├── config_extended_test.go # Расширенные тесты конфигурации
+│   │   ├── http2.go            # HTTP/2 конфигурация
+│   │   ├── http2_test.go       # Тесты HTTP/2
 │   │   └── types.go            # Типы конфигурации и метаданных
 │   │
 │   ├── hsm/                    # PKCS#11 и криптография
 │   │   ├── pkcs11.go           # Инициализация SoftHSM
 │   │   ├── crypto.go           # Encrypt/Decrypt логика
 │   │   ├── crypto_test.go      # Тесты криптографии
+│   │   ├── crypto_extended_test.go # Расширенные тесты криптографии
 │   │   ├── key_manager.go      # KeyManager с hot reload
 │   │   ├── key_manager_test.go # Тесты KeyManager
+│   │   ├── key_manager_extended_test.go # Расширенные тесты KeyManager
+│   │   ├── metadata_test.go    # Тесты метаданных
+│   │   ├── rotation_test.go    # Тесты ротации ключей
 │   │   └── interface.go        # CryptoProvider интерфейс
 │   │
 │   ├── server/                 # HTTP сервер
@@ -198,8 +205,38 @@ hsm-service/
 │   ├── auto-rotate-keys.sh     # Автоматическая ротация (через hsm-admin)
 │   ├── cleanup-old-keys.sh     # Очистка старых ключей
 │   ├── check-key-rotation.sh   # Мониторинг статуса ротации
-│   ├── full-integration-test.sh # Интеграционные тесты (включая KEK hot reload)
 │   └── README.md               # Описание скриптов
+│
+├── tests/                      # Тестирование
+│   ├── integration/
+│   │   └── full-integration-test.sh  # Полные интеграционные тесты (42 теста)
+│   ├── e2e/
+│   │   ├── run-all.sh          # Запуск всех E2E тестов
+│   │   └── scenarios/          # E2E сценарии
+│   │       ├── key-rotation-e2e.sh
+│   │       ├── disaster-recovery.sh
+│   │       └── acl-realtime-reload.sh
+│   ├── performance/
+│   │   ├── smoke-test.sh       # Smoke тест
+│   │   ├── stress-test.sh      # Стандартный стресс-тест
+│   go.mod
+├── go.sum
+├── main.go                     # Entry point
+├── hsm-service                 # Скомпилированный бинарник (вне Git)d test
+│   │   ├── QUICKSTART.md       # Быстрый старт тестирования
+│   │   ├── RESULTS.md          # Результаты тестирования
+│   │   └── README.md           # Документация performance тестов
+│   ├── security/
+│   │   └── security-scan.sh    # Security сканирование (8 проверок)
+│   ├── compliance/
+│   │   ├── pci-dss.sh          # PCI DSS compliance тесты
+│   │   ├── owasp-top10.sh      # OWASP Top 10 проверки
+│   │   └── README.md           # Документация compliance тестов
+│   ├── manual/
+│   │   └── test-mtls-only.sh   # Ручное тестирование mTLS
+│   ├── run-all-tests.sh        # Мастер-скрипт запуска всех тестов
+│   ├── README.md               # Руководство по тестированию (890 строк)
+│   └── EXTREME_TEST_RESULTS.md # Результаты экстремального тестирования
 │
 ├── data/                       # Данные runtime
 │   └── tokens/                 # SoftHSM токены (persist)
