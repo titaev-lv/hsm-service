@@ -264,11 +264,8 @@ hsm-service/
 ├── MONITORING.md               # Мониторинг и метрики
 ├── SECURITY_AUDIT.md           # Аудит безопасности
 ├── BACKUP_RESTORE.md           # Backup и восстановление
-├── DOCKER.md                   # Docker документация
-├── DOCKER_COMPOSE.md           # Docker Compose документация
 ├── BUILD.md                    # Сборка бинарников для production
 ├── QUICKSTART_DOCKER.md        # Быстрый старт с Docker
-├── QUICKSTART_NATIVE.md        # Быстрый старт нативно
 ├── PRODUCTION_DEBIAN.md        # Production на Debian
 ├── TROUBLESHOOTING.md          # Решение проблем
 ├── DOCS_INDEX.md               # Индекс документации

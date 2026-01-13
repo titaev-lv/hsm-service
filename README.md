@@ -494,7 +494,7 @@ $$ LANGUAGE plpgsql;
 
 ## 🔑 Управление ключами
 
-**Подробная информация** → см. [PKI_SETUP.md](PKI_SETUP.md) для настройки PKI и [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) / [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md) для первого запуска
+**Подробная информация** → см. [PKI_SETUP.md](PKI_SETUP.md) для настройки PKI и [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) для первого запуска
 
 ### Проверка статуса ротации
 
@@ -758,7 +758,7 @@ go test ./internal/...
 |----------|----------|-------|
 | [PKI_SETUP.md](PKI_SETUP.md) | Настройка PKI (CA, сертификаты) | 15 мин |
 | [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) | Быстрый старт (Docker) | 5 мин |
-| [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md) | Быстрый старт (Native Go binary) | 10 мин |
+| [BUILD.md](BUILD.md) | Сборка бинарников для production | 15 мин |
 
 ### 🏗️ Архитектура и спецификации
 
@@ -772,8 +772,6 @@ go test ./internal/...
 
 | Документ | Описание | Время |
 |----------|----------|-------|
-| [DOCKER.md](DOCKER.md) | Docker конфигурация | 10 мин |
-| [DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) | Docker Compose setup | 10 мин |
 | [BUILD.md](BUILD.md) | Сборка бинарников для production | 15 мин |
 | [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) | Production на Debian 13 + nftables | 30 мин |
 

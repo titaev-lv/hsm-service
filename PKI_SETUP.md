@@ -982,7 +982,7 @@ curl --cert pki/client/<cn>.crt --key pki/client/<cn>.key \
 
 ### Для Development (локальная разработка):
 - 🐳 **Docker**: [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md)
-- 🔧 **Native Go binary**: [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md)
+- � **Build from source**: [BUILD.md](BUILD.md)
 
 ### Для Production:
 - 🏭 **Debian 13 + nftables**: [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md)

@@ -985,7 +985,7 @@ sudo journalctl -u hsm-service -f
 ## Дополнительные ресурсы
 
 - [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) - Быстрый старт (Docker)
-- [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md) - Быстрый старт (Native binary)
+- [BUILD.md](BUILD.md) - Сборка бинарников
 - [API.md](API.md) - API документация
 - [MONITORING.md](MONITORING.md) - Мониторинг и алерты
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security audit

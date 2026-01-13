@@ -523,7 +523,7 @@ make install         # Установить локально
 1. **Копирование на prod**: См. раздел "Копирование на production сервер" выше
 2. **Настройка окружения**: [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md)
 3. **Настройка PKI**: [PKI_SETUP.md](PKI_SETUP.md)
-4. **Запуск и тестирование**: [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md)
+4. **Запуск и тестирование**: [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md)
 
 ---
 
@@ -531,7 +531,7 @@ make install         # Установить локально
 
 - [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) - Production deployment на Debian 13
 - [PKI_SETUP.md](PKI_SETUP.md) - Настройка сертификатов
-- [QUICKSTART_NATIVE.md](QUICKSTART_NATIVE.md) - Запуск нативного бинарника
+- [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) - Быстрый старт в Docker
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Решение проблем
 
 ---
