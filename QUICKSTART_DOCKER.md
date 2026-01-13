@@ -1,4 +1,4 @@
-# � HSM Service - Quick Start (Docker)
+# HSM Service - Quick Start (Docker)
 
 > **Цель**: Запустить HSM Service в Docker и выполнить первый тестовый запрос за 5 минут
 
@@ -41,14 +41,9 @@ pki/client/trading-service-1.key   ✓
 
 ## Шаг 2: Конфигурация metadata.yaml
 
-```bash
-# Создать metadata.yaml из шаблона
-cp metadata.yaml.example metadata.yaml
-```
+**Файл metadata.yaml** создается автоматически при первом запуске контейнера скриптом `init-hsm.sh`. Он содержит динамические метаданные ключей (версии, timestamps) и обновляется автоматически при ротации.
 
-**Файл metadata.yaml** содержит динамические метаданные ключей (версии, timestamps). Обновляется автоматически при ротации.
-
-**Первоначальная структура** (создается автоматически при init-keys):
+**Структура metadata.yaml** (создается автоматически):
 ```yaml
 rotation:
   exchange-key:
@@ -71,10 +66,10 @@ rotation:
 
 ```bash
 # Запустить Docker Compose
-docker-compose up -d
+docker compose up -d
 
 # Проверить что контейнер запустился
-docker-compose ps
+docker compose ps
 ```
 
 **Ожидаемый вывод**:
@@ -85,7 +80,7 @@ hsm-service    hsm-service    Up 5 seconds   0.0.0.0:8443->8443/tcp
 
 **Проверить логи**:
 ```bash
-docker-compose logs hsm-service
+docker compose logs hsm-service
 ```
 
 **Ожидаемые логи**:
@@ -99,26 +94,29 @@ INFO  Loaded 2 KEKs: [kek-exchange-v1 kek-2fa-v1]
 
 ---
 
-## Шаг 4: Инициализация KEK (первый запуск)
+## Шаг 4: Проверка автоматической инициализации
 
+**Контейнер автоматически инициализирует KEK при первом запуске** через скрипт `init-hsm.sh`.
+
+**Проверьте что KEK созданы**:
 ```bash
-# Создать KEK ключи в SoftHSM
-docker exec hsm-service /app/hsm-admin init-keys
+docker exec hsm-service /app/hsm-admin list-kek
 ```
-
-**Что происходит**:
-- Читается `pki/inventory.yaml` (список всех KEK)
-- Для каждого context создается AES-256 ключ в SoftHSM
-- Ключи маркируются как non-extractable (не экспортируемые)
 
 **Ожидаемый вывод**:
 ```
-Initializing KEK keys from inventory...
-✓ Created kek-exchange-v1 (AES-256, context: exchange-key)
-✓ Created kek-2fa-v1 (AES-256, context: 2fa)
-✓ Updated metadata.yaml
-Done! Initialized 2 KEK keys.
+KEK objects in HSM:
+  Label: kek-exchange-v1, ID: 01, Type: AES (256 bits)
+  Label: kek-2fa-v1, ID: 01, Type: AES (256 bits)
+
+Total: 2 KEK(s)
 ```
+
+**Что произошло при запуске**:
+- Скрипт `init-hsm.sh` инициализировал SoftHSM токен
+- Создал KEK ключи: `kek-exchange-v1` и `kek-2fa-v1`
+- Обновил `metadata.yaml` с метаданными ключей
+- Запустил HSM Service
 
 ---
 
@@ -137,15 +135,18 @@ curl -k https://localhost:8443/health \
 ```json
 {
   "status": "healthy",
-  "active_keys": 2,
-  "version": "1.0.0"
+  "hsm_available": true,
+  "kek_status": {
+    "kek-2fa-v1": "available",
+    "kek-exchange-v1": "available"
+  }
 }
 ```
 
 **❌ Если ошибка**:
 - `curl: (60) SSL certificate problem` → проверьте что CA сертификат правильный
 - `curl: (35) error:14094410:SSL` → проверьте mTLS сертификаты
-- `Connection refused` → проверьте `docker-compose ps`
+- `Connection refused` → проверьте `docker compose ps`
 
 ### 6.2. Шифрование (Encrypt)
 
@@ -173,7 +174,7 @@ curl -k -X POST https://localhost:8443/encrypt \
 **Ожидаемый ответ**:
 ```json
 {
-  "ciphertext": "base64_encrypted_data_here...",
+  "ciphertext": "plpmmI0StauF6ZWGfEnrlxom23Zt8wS1yPkqTCxgQykMRAkYhgZfLKprYzM=",
   "key_id": "kek-exchange-v1"
 }
 ```
@@ -226,10 +227,9 @@ echo "SGVsbG8gV29ybGQh" | base64 -d
 
 ### 📖 Изучить API
 Читайте [API.md](API.md) - полная документация всех эндпоинтов:
-- `/encrypt`, `/decrypt` - базовые операции
-- `/rotate/:context` - ротация ключей
-- `/revoke` - отзыв сертификатов
-- `/metrics` - Prometheus метрики
+- `/encrypt`, `/decrypt` - базовые операции шифрования/расшифрования
+- `/health` - проверка состояния сервиса и KEK
+- `/metrics` - Prometheus метрики для мониторинга
 
 ### 🔧 Настроить мониторинг
 Читайте [MONITORING.md](MONITORING.md):
@@ -307,10 +307,10 @@ curl -k https://localhost:8443/health \
 
 ```bash
 # Проверить логи
-docker-compose logs hsm-service
+docker compose logs hsm-service
 
 # Пересобрать образ
-docker-compose up -d --build
+docker compose up -d --build
 
 # Проверить права на директории
 ls -la data/tokens/
@@ -323,25 +323,26 @@ chmod 755 data/tokens/
 
 ```bash
 # === Docker управление ===
-docker-compose up -d              # Запустить
-docker-compose down               # Остановить
-docker-compose logs -f            # Логи в реальном времени
-docker-compose restart            # Перезапустить
+docker compose up -d              # Запустить
+docker compose down               # Остановить
+docker compose logs -f            # Логи в реальном времени
+docker compose restart            # Перезапустить
 
 # === hsm-admin CLI ===
-docker exec hsm-service /app/hsm-admin list-kek       # Список KEK
-docker exec hsm-service /app/hsm-admin rotate exchange-key  # Ротация
-docker exec hsm-service /app/hsm-admin revoke-cert trading-service-1  # Отзыв
+docker exec hsm-service /app/hsm-admin list-kek              # Список KEK
+docker exec hsm-service /app/hsm-admin rotate exchange-key   # Ротация ключа
+docker exec hsm-service /app/hsm-admin rotation-status       # Статус ротации
+docker exec hsm-service /app/hsm-admin cleanup-old-versions exchange-key  # Очистка старых версий
 
 # === Просмотр PKI ===
 openssl x509 -in pki/ca/ca.crt -noout -text           # CA сертификат
-openssl x509 -in pki/client/trading-service-1.crt -noout -subject -dates
-openssl x509 -in pki/server/hsm-service.local.crt -noout -subject -dates
+openssl x509 -in pki/client/hsm-trading-client-1.crt -noout -subject -dates  # Клиентский сертификат
+openssl x509 -in pki/server/hsm-service.local.crt -noout -subject -dates      # Серверный сертификат
 
 # === Метрики ===
 curl -k https://localhost:8443/metrics \
-  --cert pki/client/trading-service-1.crt \
-  --key pki/client/trading-service-1.key \
+  --cert pki/client/hsm-trading-client-1.crt \
+  --key pki/client/hsm-trading-client-1.key \
   --cacert pki/ca/ca.crt | grep hsm_
 ```
 
@@ -414,33 +415,6 @@ echo "SGVsbG8gV29ybGQh" | base64 -d
 
 ---
 
-## ✅ Дополнительные команды
-
-```bash
-# === Docker управление ===
-docker-compose up -d              # Запустить
-docker-compose down               # Остановить
-docker-compose logs -f            # Логи в реальном времени
-docker-compose restart            # Перезапустить
-docker-compose exec hsm-service sh  # Зайти в контейнер
-
-# === hsm-admin CLI ===
-docker exec hsm-service /app/hsm-admin list-kek       # Список KEK
-docker exec hsm-service /app/hsm-admin rotate exchange-key  # Ротация ключа
-docker exec hsm-service /app/hsm-admin revoke-cert trading-service-1  # Отзыв сертификата
-
-# === Просмотр PKI ===
-openssl x509 -in pki/ca/ca.crt -noout -text           # CA сертификат
-openssl x509 -in pki/client/trading-service-1.crt -noout -subject -dates
-openssl x509 -in pki/server/hsm-service.local.crt -noout -subject -dates
-
-# === Метрики ===
-curl -k https://localhost:8443/metrics \
-  --cert pki/client/trading-service-1.crt \
-  --key pki/client/trading-service-1.key \
-  --cacert pki/ca/ca.crt | grep hsm_
-```
-
 ---
 
 ## ❓ Troubleshooting
@@ -493,10 +467,10 @@ curl -k https://localhost:8443/health \
 
 ```bash
 # Проверить логи
-docker-compose logs hsm-service
+docker compose logs hsm-service
 
 # Пересобрать образ
-docker-compose up -d --build
+docker compose up -d --build
 
 # Проверить права на директории
 ls -la data/tokens/
@@ -517,8 +491,8 @@ chmod 755 data/tokens
 cat .env | grep HSM_PIN
 
 # Перезапустить
-docker-compose down
-docker-compose up -d
+docker compose down
+docker compose up -d
 ```
 
 ---
