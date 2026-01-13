@@ -162,7 +162,7 @@ hsm-service/
 │   │   ├── pkcs11.go           # Инициализация SoftHSM
 │   │   ├── crypto.go           # Encrypt/Decrypt логика
 │   │   ├── crypto_test.go      # Тесты криптографии
-│   │   ├── key_manager.go      # 🔥 NEW: KeyManager с hot reload
+│   │   ├── key_manager.go      # KeyManager с hot reload
 │   │   ├── key_manager_test.go # Тесты KeyManager
 │   │   └── interface.go        # CryptoProvider интерфейс
 │   │
@@ -262,18 +262,27 @@ server:
     ca_path: /app/pki/ca/ca.crt
     cert_path: /app/pki/server/hsm-service.local.crt
     key_path: /app/pki/server/hsm-service.local.key
+  # HTTP/2 оптимизация для высоких нагрузок (100k+ req/s)
+  http2:
+    max_concurrent_streams: "2000"       # Default: ~250
+    initial_window_size: "4M"            # Default: 64KB
+    max_frame_size: "1M"                 # Default: 16KB
+    max_header_list_size: "2M"           # Поддержка больших mTLS headers
+    idle_timeout_seconds: 120            # Переиспользование соединений
+    max_upload_buffer_per_conn: "4M"     # Memory budget per connection
+    max_upload_buffer_per_stream: "4M"   # Memory budget per stream
 
 hsm:
   pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
   slot_id: hsm-token
-  metadata_file: /app/metadata.yaml  # Путь к файлу метаданных
+  metadata_file: /app/metadata.yaml      # Путь к файлу метаданных
+  max_versions: 3                        # Максимум версий ключей
+  cleanup_after_days: 30                 # Автоудаление старых версий
   keys:
     exchange-key:
       type: aes
-      rotation_interval: 2160h  # 90 days
     2fa:
       type: aes
-      rotation_interval: 2160h
 
 acl:
   revoked_file: /app/pki/revoked.yaml
@@ -281,6 +290,14 @@ acl:
     Trading: [exchange-key]
     2FA: [2fa]
     Database: []
+
+rate_limit:
+  requests_per_second: 50000             # Агрессивный rate limit
+  burst: 5000                            # Burst capacity
+
+logging:
+  level: info
+  format: json
 ```
 
 **Характеристики:**
@@ -300,14 +317,31 @@ acl:
 ```yaml
 rotation:
   exchange-key:
-    label: kek-exchange-v2
-    version: 2
-    created_at: '2025-10-11T12:00:00Z'
+    current: kek-exchange-v1              # Текущий активный ключ
+    rotation_interval_days: 90            # Интервал ротации
+    versions:
+      - label: kek-exchange-v1            # Label ключа в HSM
+        version: 1                        # Номер версии
+        created_at: '2026-01-09T00:00:00Z'  # Дата создания
   
   2fa:
-    label: kek-2fa-v1
-    version: 1
-    created_at: '2025-10-11T12:00:00Z'
+    current: kek-2fa-v1
+    rotation_interval_days: 90
+    versions:
+      - label: kek-2fa-v1
+        version: 1
+        created_at: '2026-01-09T00:00:00Z'
+
+# После ротации:
+# exchange-key:
+#   current: kek-exchange-v2
+#   versions:
+#     - label: kek-exchange-v1
+#       version: 1
+#       created_at: '2026-01-09T00:00:00Z'
+#     - label: kek-exchange-v2
+#       version: 2
+#       created_at: '2026-04-09T00:00:00Z'
 ```
 
 **Характеристики:**
