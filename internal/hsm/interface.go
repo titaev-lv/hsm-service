@@ -3,10 +3,14 @@ package hsm
 // CryptoProvider is the interface for encryption/decryption operations
 type CryptoProvider interface {
 	// Encrypt encrypts plaintext, returns ciphertext and key label
-	Encrypt(plaintext []byte, context, clientCN string) (ciphertext []byte, keyLabel string, err error)
+	// ou: organizational unit from client certificate (for shared mode)
+	// clientCN: common name from client certificate (for private mode)
+	Encrypt(plaintext []byte, context, ou, clientCN string) (ciphertext []byte, keyLabel string, err error)
 
 	// Decrypt decrypts ciphertext using the specified key label
-	Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error)
+	// ou: organizational unit from client certificate (for shared mode)
+	// clientCN: common name from client certificate (for private mode)
+	Decrypt(ciphertext []byte, context, ou, clientCN, keyLabel string) ([]byte, error)
 
 	// GetKeyLabels returns all available key labels
 	GetKeyLabels() []string

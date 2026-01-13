@@ -26,12 +26,12 @@ type mockKeyManager struct {
 	contextToLabel map[string]string
 }
 
-func (m *mockKeyManager) Encrypt(plaintext []byte, context, clientCN string) ([]byte, string, error) {
+func (m *mockKeyManager) Encrypt(plaintext []byte, context, ou, clientCN string) ([]byte, string, error) {
 	// Return mock encrypted data
 	return []byte("mock-ciphertext"), "mock-key-v1", nil
 }
 
-func (m *mockKeyManager) Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error) {
+func (m *mockKeyManager) Decrypt(ciphertext []byte, context, ou, clientCN, keyLabel string) ([]byte, error) {
 	// Return mock decrypted data
 	return []byte("mock-plaintext"), nil
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
-	"fmt"
 )
 
 var (
@@ -23,75 +22,24 @@ func ReadRandom(buf []byte) (int, error) {
 	return rand.Read(buf)
 }
 
-// BuildAAD constructs Additional Authenticated Data from context and client CN
-// Uses SHA-256 hashing to prevent AAD collisions from separator ambiguity
-// BuildAAD constructs Additional Authenticated Data from context and client CN
+// BuildAAD constructs Additional Authenticated Data from context and client identifier
+// Mode determines which identifier to use:
+// - "shared": uses OU (allows sharing within organizational unit)
+// - "private": uses clientCN (isolated per client)
 // Uses SHA-256 hashing to prevent AAD collisions from separator ambiguity
 // Example: context="exchange" + CN="key|admin" vs context="exchange|key" + CN="admin"
 // would produce different hashes, preventing confusion attacks
-func BuildAAD(context, clientCN string) []byte {
+func BuildAAD(context, ou, clientCN, mode string) []byte {
 	h := sha256.New()
 	h.Write([]byte(context))
 	h.Write([]byte{0x00}) // NULL byte separator (cannot appear in strings)
-	h.Write([]byte(clientCN))
+
+	// Choose identifier based on mode
+	if mode == "shared" {
+		h.Write([]byte(ou)) // Shared within OU
+	} else {
+		h.Write([]byte(clientCN)) // Private to specific client
+	}
+
 	return h.Sum(nil) // Returns 32-byte SHA-256 hash
-}
-
-// Encrypt encrypts plaintext using AES-GCM with the specified key
-// Returns: nonce (12 bytes) || ciphertext || tag (16 bytes)
-// AAD is constructed from context and clientCN internally
-func (h *HSMContext) Encrypt(plaintext []byte, context, clientCN, keyLabel string) ([]byte, error) {
-	// 1. Get GCM cipher for the key
-	gcm, ok := h.keys[keyLabel]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrKeyNotFound, keyLabel)
-	}
-
-	// 2. Generate random nonce (12 bytes for GCM)
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("failed to generate nonce: %w", err)
-	}
-
-	// 3. Build AAD from context and clientCN (security: enforce correct AAD construction)
-	aad := BuildAAD(context, clientCN)
-
-	// 4. Encrypt with AAD
-	// Seal appends ciphertext and tag to nonce
-	ciphertext := gcm.Seal(nonce, nonce, plaintext, aad)
-
-	return ciphertext, nil
-}
-
-// Decrypt decrypts ciphertext using AES-GCM with the specified key
-// Expects: nonce (12 bytes) || ciphertext || tag (16 bytes)
-// AAD is reconstructed from context and clientCN to ensure correctness
-func (h *HSMContext) Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error) {
-	// 1. Get GCM cipher for the key
-	gcm, ok := h.keys[keyLabel]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrKeyNotFound, keyLabel)
-	}
-
-	// 2. Validate ciphertext length
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, ErrInvalidCiphertext
-	}
-
-	// 3. Extract nonce and encrypted data
-	nonce := ciphertext[:nonceSize]
-	encrypted := ciphertext[nonceSize:]
-
-	// 4. Reconstruct AAD from context and clientCN (security: force correct AAD)
-	// This prevents caller from passing wrong AAD that could allow unauthorized decryption
-	aad := BuildAAD(context, clientCN)
-
-	// 5. Decrypt with AAD verification
-	plaintext, err := gcm.Open(nil, nonce, encrypted, aad)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
-	}
-
-	return plaintext, nil
 }

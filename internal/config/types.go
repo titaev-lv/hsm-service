@@ -39,6 +39,7 @@ type HSMConfig struct {
 // KeyConfig defines individual key configuration (static)
 type KeyConfig struct {
 	Type string `yaml:"type"` // "aes" or "rsa"
+	Mode string `yaml:"mode"` // "shared" (AAD=context+OU) or "private" (AAD=context+clientCN), default: "private"
 }
 
 // KeyVersion represents a single version of a key

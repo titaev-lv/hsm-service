@@ -193,6 +193,152 @@ acl:
 
 ---
 
+### 3.1.1. Режимы AAD и требования к сертификатам (ВАЖНО!)
+
+HSM Service поддерживает два режима AAD (Additional Authenticated Data):
+
+#### **Shared Mode** (mode: shared)
+- **AAD**: SHA256(context + OU)
+- **Sharing**: Все клиенты с одинаковым OU могут расшифровывать данные друг друга
+- **Use case**: Envelope encryption, когда несколько сервисов шифруют DEKs для общей базы данных
+
+**Пример конфигурации**:
+```yaml
+hsm:
+  keys:
+    exchange-key:
+      type: aes
+      mode: shared    # AAD использует OU, не CN
+```
+
+**Требуемые сертификаты** (для envelope encryption с Trading сервисами):
+```bash
+# Все Trading сервисы должны иметь одинаковый OU=Trading
+./pki/scripts/issue-client-cert.sh trading-service-1 Trading
+./pki/scripts/issue-client-cert.sh trading-service-2 Trading
+./pki/scripts/issue-client-cert.sh billing-worker-1 Trading
+
+# Результат: все 3 клиента могут расшифровывать DEKs друг друга
+# AAD = SHA256("exchange-key" + NULL + "Trading") - одинаковый для всех
+```
+
+#### **Private Mode** (mode: private, по умолчанию)
+- **AAD**: SHA256(context + CN)
+- **Isolation**: Каждый клиент изолирован, не может расшифровать чужие данные
+- **Use case**: 2FA secrets, приватные ключи, индивидуальные credentials
+
+**Пример конфигурации**:
+```yaml
+hsm:
+  keys:
+    2fa:
+      type: aes
+      mode: private   # AAD использует CN (default)
+```
+
+**Требуемые сертификаты** (для изолированных 2FA сервисов):
+```bash
+# Каждый 2FA сервис имеет свой уникальный CN
+./pki/scripts/issue-client-cert.sh 2fa-service-1 2FA
+./pki/scripts/issue-client-cert.sh 2fa-service-2 2FA
+
+# Результат: каждый сервис видит только СВОИ данные
+# AAD для service-1 = SHA256("2fa" + NULL + "2fa-service-1")
+# AAD для service-2 = SHA256("2fa" + NULL + "2fa-service-2")
+```
+
+#### **Таблица режимов и use cases**
+
+| Context      | Mode    | OU      | Use Case                           | Сертификаты                              |
+|--------------|---------|---------|-----------------------------------|------------------------------------------|
+| exchange-key | shared  | Trading | Envelope encryption, DEK sharing   | trading-service-1, trading-service-2, ... |
+| 2fa          | private | 2FA     | 2FA secrets (изолированные)        | 2fa-service-1, 2fa-service-2, ...        |
+| user-keys    | private | Users   | User private keys                  | user-service-1, user-service-2, ...      |
+| billing      | shared  | Billing | Shared billing encryption keys     | billing-api-1, billing-worker-1, ...     |
+
+**ВАЖНО**: 
+- ✅ Для **shared mode** создавайте несколько сертификатов с **одинаковым OU**
+- ✅ Для **private mode** каждый сертификат должен иметь **уникальный CN**
+- ⚠️ Нельзя смешивать режимы - если context имеет mode=shared, все клиенты с нужным OU получат доступ
+
+---
+
+### 3.1.2. Примеры генерации сертификатов для типовых сценариев
+
+#### Сценарий 1: Trading Platform (Envelope Encryption)
+
+**Задача**: 3 Trading сервиса шифруют DEKs для общей БД
+
+```bash
+# Все с OU=Trading для shared mode
+./pki/scripts/issue-client-cert.sh trading-api-1 Trading
+./pki/scripts/issue-client-cert.sh trading-api-2 Trading
+./pki/scripts/issue-client-cert.sh trading-worker-1 Trading
+```
+
+**Config**:
+```yaml
+hsm:
+  keys:
+    exchange-key:
+      mode: shared    # Все Trading клиенты могут decrypt друг друга
+acl:
+  mappings:
+    Trading: [exchange-key]
+```
+
+#### Сценарий 2: Multi-tenant 2FA Service (Isolation)
+
+**Задача**: Каждый 2FA сервис изолирован, видит только свои secrets
+
+```bash
+# Каждый с уникальным CN, но OU=2FA для ACL
+./pki/scripts/issue-client-cert.sh 2fa-tenant-a 2FA
+./pki/scripts/issue-client-cert.sh 2fa-tenant-b 2FA
+./pki/scripts/issue-client-cert.sh 2fa-tenant-c 2FA
+```
+
+**Config**:
+```yaml
+hsm:
+  keys:
+    2fa:
+      mode: private   # Каждый tenant изолирован (default)
+acl:
+  mappings:
+    2FA: [2fa]
+```
+
+#### Сценарий 3: Mixed (Trading + 2FA)
+
+**Задача**: Trading сервисы могут share DEKs, но 2FA изолированы
+
+```bash
+# Trading сервисы (shared)
+./pki/scripts/issue-client-cert.sh trading-service-1 Trading
+./pki/scripts/issue-client-cert.sh trading-service-2 Trading
+
+# 2FA сервисы (private)
+./pki/scripts/issue-client-cert.sh 2fa-service-1 2FA
+./pki/scripts/issue-client-cert.sh 2fa-service-2 2FA
+```
+
+**Config**:
+```yaml
+hsm:
+  keys:
+    exchange-key:
+      mode: shared    # Trading share
+    2fa:
+      mode: private   # 2FA isolated
+acl:
+  mappings:
+    Trading: [exchange-key]
+    2FA: [2fa]
+```
+
+---
+
 ### 3.2. Генерация клиентского сертификата
 
 **Синтаксис**:

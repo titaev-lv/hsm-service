@@ -132,6 +132,15 @@ func validateConfig(cfg *Config) error {
 		if key.Type != "aes" && key.Type != "rsa" {
 			return fmt.Errorf("hsm.keys.%s.type must be 'aes' or 'rsa', got '%s'", name, key.Type)
 		}
+		// Validate mode (default: private if not set)
+		if key.Mode == "" {
+			cfg.HSM.Keys[name] = KeyConfig{
+				Type: key.Type,
+				Mode: "private", // default
+			}
+		} else if key.Mode != "shared" && key.Mode != "private" {
+			return fmt.Errorf("hsm.keys.%s.mode must be 'shared' or 'private', got '%s'", name, key.Mode)
+		}
 	}
 
 	// Validate ACL config

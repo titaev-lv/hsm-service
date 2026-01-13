@@ -66,7 +66,7 @@ func main() {
 	// Note: Close HSM context manually in shutdown handler to avoid panic
 
 	// 4a. Create KeyManager with hot reload capability
-	keyManager, err := hsm.NewKeyManager(hsmCtx.GetContext(), &cfg.HSM, metadata)
+	keyManager, err := hsm.NewKeyManager(hsmCtx.GetContext(), cfg, metadata)
 	if err != nil {
 		log.Fatalf("Failed to create key manager: %v", err)
 	}

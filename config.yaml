@@ -26,8 +26,10 @@ hsm:
   keys:
     exchange-key:
       type: aes
+      mode: shared       # Shared mode: AAD=context+OU (all Trading clients can decrypt each other's data)
     2fa:
       type: aes
+      mode: private      # Private mode (default): AAD=context+clientCN (isolated per client)
 
 acl:
   revoked_file: /app/pki/revoked.yaml

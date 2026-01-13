@@ -318,8 +318,10 @@ hsm:
   keys:
     exchange-key:
       type: aes                          # Тип ключа (только "aes" реализован, "rsa" зарезервирован)
+      mode: shared                       # Режим AAD: "shared" (AAD=context+OU, шаринг внутри OU) или "private" (AAD=context+clientCN), default: private
     2fa:
       type: aes
+      mode: private                      # Private mode: каждый клиент видит только свои данные
 
 acl:
   revoked_file: /app/pki/revoked.yaml
@@ -510,18 +512,49 @@ graph TD
     Base64 Encoded
 ```
 
-**Пример AAD:**
+**AAD (Additional Authenticated Data) - Режимы Shared/Private:**
 
+AAD формируется по-разному в зависимости от режима ключа в конфигурации:
+
+**Private Mode (default):**
 ```
 Context: "exchange-key"
 Client CN: "trading-service-1"
-AAD: "exchange-key|trading-service-1"
+AAD: SHA256("exchange-key" + 0x00 + "trading-service-1")
+```
+- ✅ Максимальная изоляция: каждый клиент видит только свои данные
+- ✅ trading-service-1 **НЕ МОЖЕТ** расшифровать данные trading-service-2
+- ✅ Подходит для 2FA секретов, приватных ключей
+
+**Shared Mode:**
+```
+Context: "exchange-key"
+OU: "Trading"
+AAD: SHA256("exchange-key" + 0x00 + "Trading")
+```
+- ✅ Sharing внутри organizational unit
+- ✅ trading-service-1 **МОЖЕТ** расшифровать данные trading-service-2 (оба OU=Trading)
+- ✅ Подходит для envelope encryption (DEK шарятся между сервисами Trading)
+- ❌ Lateral movement возможен внутри OU (компрометация одного = угроза всем)
+
+**Конфигурация режима:**
+
+```yaml
+hsm:
+  keys:
+    exchange-key:
+      type: aes
+      mode: shared      # Shared mode для envelope encryption
+    2fa:
+      type: aes
+      mode: private     # Private mode (default) для изоляции
 ```
 
 **Защита AAD:**
 - Привязка к контексту (нельзя использовать ciphertext из другого контекста)
-- Привязка к клиенту (нельзя переиспользовать ciphertext другим клиентом)
+- Привязка к OU (shared) или clientCN (private)
 - Защита от replay attacks между разными доменами
+- SHA-256 хеширование для предотвращения коллизий
 
 ### Версионирование KEK
 

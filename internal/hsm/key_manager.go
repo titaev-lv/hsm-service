@@ -28,6 +28,7 @@ type KeyManager struct {
 	metadataFile string
 	lastModTime  time.Time
 	hsmConfig    *config.HSMConfig
+	config       *config.Config // Full config for accessing key modes
 
 	// Auto-reload control
 	stopReload chan struct{}
@@ -36,11 +37,12 @@ type KeyManager struct {
 }
 
 // NewKeyManager creates a new KeyManager with initial state
-func NewKeyManager(ctx *crypto11.Context, cfg *config.HSMConfig, metadata *config.Metadata) (*KeyManager, error) {
+func NewKeyManager(ctx *crypto11.Context, cfg *config.Config, metadata *config.Metadata) (*KeyManager, error) {
 	km := &KeyManager{
 		ctx:          ctx,
-		metadataFile: cfg.MetadataFile,
-		hsmConfig:    cfg,
+		metadataFile: cfg.HSM.MetadataFile,
+		hsmConfig:    &cfg.HSM,
+		config:       cfg, // Store full config
 		stopReload:   make(chan struct{}),
 	}
 
@@ -252,12 +254,18 @@ func (km *KeyManager) StopAutoReload(ctx context.Context) error {
 }
 
 // Encrypt encrypts plaintext using the current active key for the context
-func (km *KeyManager) Encrypt(plaintext []byte, context, clientCN string) (ciphertext []byte, keyLabel string, err error) {
+func (km *KeyManager) Encrypt(plaintext []byte, context, ou, clientCN string) (ciphertext []byte, keyLabel string, err error) {
 	// Get current key label for context
 	km.mu.RLock()
 	label, exists := km.contextToLabel[context]
 	km.mu.RUnlock()
 
+	if !exists {
+		return nil, "", fmt.Errorf("no key configured for context: %s", context)
+	}
+
+	// Get key mode from config
+	keyConfig, exists := km.config.HSM.Keys[context]
 	if !exists {
 		return nil, "", fmt.Errorf("no key configured for context: %s", context)
 	}
@@ -271,8 +279,8 @@ func (km *KeyManager) Encrypt(plaintext []byte, context, clientCN string) (ciphe
 		return nil, "", fmt.Errorf("%w: %s", ErrKeyNotFound, label)
 	}
 
-	// Build AAD
-	aad := BuildAAD(context, clientCN)
+	// Build AAD based on mode
+	aad := BuildAAD(context, ou, clientCN, keyConfig.Mode)
 
 	// Generate nonce
 	nonce := make([]byte, gcm.NonceSize())
@@ -287,7 +295,13 @@ func (km *KeyManager) Encrypt(plaintext []byte, context, clientCN string) (ciphe
 }
 
 // Decrypt decrypts ciphertext using the specified key label
-func (km *KeyManager) Decrypt(ciphertext []byte, context, clientCN, keyLabel string) ([]byte, error) {
+func (km *KeyManager) Decrypt(ciphertext []byte, context, ou, clientCN, keyLabel string) ([]byte, error) {
+	// Get key mode from config
+	keyConfig, exists := km.config.HSM.Keys[context]
+	if !exists {
+		return nil, fmt.Errorf("no key configured for context: %s", context)
+	}
+
 	// Get GCM cipher
 	km.mu.RLock()
 	gcm, exists := km.keys[keyLabel]
@@ -307,8 +321,8 @@ func (km *KeyManager) Decrypt(ciphertext []byte, context, clientCN, keyLabel str
 	nonce := ciphertext[:nonceSize]
 	encrypted := ciphertext[nonceSize:]
 
-	// Build AAD
-	aad := BuildAAD(context, clientCN)
+	// Build AAD based on mode
+	aad := BuildAAD(context, ou, clientCN, keyConfig.Mode)
 
 	// Decrypt
 	plaintext, err := gcm.Open(nil, nonce, encrypted, aad)

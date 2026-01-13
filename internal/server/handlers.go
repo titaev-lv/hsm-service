@@ -80,6 +80,12 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		clientCert := r.TLS.PeerCertificates[0]
 		clientCN := clientCert.Subject.CommonName
 
+		// Extract OU from certificate
+		var clientOU string
+		if len(clientCert.Subject.OrganizationalUnit) > 0 {
+			clientOU = clientCert.Subject.OrganizationalUnit[0]
+		}
+
 		// 3. ACL check
 		if err := aclChecker.CheckAccess(clientCert, req.Context); err != nil {
 			slog.Warn("ACL check failed",
@@ -107,10 +113,9 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 			}
 		}()
 
-		// 5. Encrypt with context and clientCN (AAD constructed internally)
-		// Security: Encrypt() will build AAD from context+clientCN to ensure consistency
-		// KeyManager returns both ciphertext and keyID (current active version)
-		ciphertext, keyID, err := keyManager.Encrypt(plaintext, req.Context, clientCN)
+		// 5. Encrypt with context, OU, and clientCN
+		// AAD will be built based on key's mode (shared=OU, private=CN)
+		ciphertext, keyID, err := keyManager.Encrypt(plaintext, req.Context, clientOU, clientCN)
 		if err != nil {
 			slog.Error("encryption failed",
 				"client_cn", clientCN,
@@ -194,9 +199,15 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 			}
 		}()
 
-		// 5. Decrypt with context and clientCN (AAD reconstructed internally)
-		// Security: Decrypt() will rebuild AAD from context+clientCN to prevent AAD tampering
-		plaintext, err := keyManager.Decrypt(ciphertext, req.Context, clientCN, req.KeyID)
+		// Extract OU from certificate
+		var clientOU string
+		if len(clientCert.Subject.OrganizationalUnit) > 0 {
+			clientOU = clientCert.Subject.OrganizationalUnit[0]
+		}
+
+		// 5. Decrypt with context, OU, clientCN, and keyID
+		// AAD will be rebuilt based on key's mode (shared=OU, private=CN)
+		plaintext, err := keyManager.Decrypt(ciphertext, req.Context, clientOU, clientCN, req.KeyID)
 		if err != nil {
 			slog.Warn("decryption failed",
 				"client_cn", clientCN,

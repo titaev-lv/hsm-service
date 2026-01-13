@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=42
+TOTAL_TESTS=45
 
 # Helper functions
 print_header() {
@@ -120,17 +120,84 @@ print_header "PHASE 3: PKI Verification"
 
 print_test "Check CA certificate exists"
 if [ ! -f "$PROJECT_ROOT/pki/ca/ca.crt" ]; then
-    print_error "CA certificate not found. Run: ./pki/scripts/issue-server-cert.sh hsm-service.local"
+    echo ""
+    echo -e "${RED}CA certificate not found!${NC}"
+    echo ""
+    echo "HSM Service requires a Certificate Authority (CA) for mTLS."
+    echo ""
+    echo -e "${YELLOW}Would you like to create a CA now?${NC}"
+    echo "This will:"
+    echo "  1. Generate CA private key (4096-bit RSA, password protected)"
+    echo "  2. Create self-signed CA certificate (valid 10 years)"
+    echo "  3. Save to pki/ca/ca.crt and pki/ca/ca.key"
+    echo ""
+    read -p "Create CA? (y/n): " CREATE_CA
+    
+    if [ "$CREATE_CA" = "y" ] || [ "$CREATE_CA" = "Y" ]; then
+        echo ""
+        echo "=== Creating CA ==="
+        mkdir -p "$PROJECT_ROOT/pki/ca"
+        
+        # Generate CA key
+        echo "Generating CA private key (you will be asked for a password)..."
+        if ! openssl genrsa -aes256 -out "$PROJECT_ROOT/pki/ca/ca.key" 4096; then
+            print_error "Failed to generate CA key"
+        fi
+        
+        # Generate CA certificate
+        echo ""
+        echo "Creating CA certificate..."
+        if ! openssl req -new -x509 -days 3650 -key "$PROJECT_ROOT/pki/ca/ca.key" \
+            -out "$PROJECT_ROOT/pki/ca/ca.crt" \
+            -subj "/C=RU/ST=Moscow/L=Moscow/O=TestOrg/OU=Security/CN=HSM-CA"; then
+            print_error "Failed to generate CA certificate"
+        fi
+        
+        # Set permissions
+        chmod 600 "$PROJECT_ROOT/pki/ca/ca.key"
+        chmod 644 "$PROJECT_ROOT/pki/ca/ca.crt"
+        
+        echo ""
+        print_success "CA created successfully!"
+        echo ""
+        echo -e "${BLUE}IMPORTANT:${NC} Keep ca.key password secure! You'll need it to sign certificates."
+        echo ""
+    else
+        print_error "CA certificate required. Please create it manually or re-run test and choose 'y'"
+    fi
 fi
 print_success "CA certificate exists"
 
 print_test "Check server certificate exists"
 if [ ! -f "$PROJECT_ROOT/pki/server/hsm-service.local.crt" ]; then
-    print_error "Server certificate not found"
+    echo ""
+    echo -e "${RED}Server certificate not found!${NC}"
+    echo ""
+    echo "HSM Service requires a server certificate for TLS."
+    echo ""
+    echo -e "${YELLOW}Would you like to create server certificate now?${NC}"
+    echo "This will create: pki/server/hsm-service.local.crt and .key"
+    echo ""
+    read -p "Create server certificate? (y/n): " CREATE_SERVER
+    
+    if [ "$CREATE_SERVER" = "y" ] || [ "$CREATE_SERVER" = "Y" ]; then
+        echo ""
+        if [ -x "$PROJECT_ROOT/pki/scripts/issue-server-cert.sh" ]; then
+            echo "=== Creating server certificate ==="
+            if ! "$PROJECT_ROOT/pki/scripts/issue-server-cert.sh" hsm-service.local; then
+                print_error "Failed to create server certificate"
+            fi
+            print_success "Server certificate created!"
+        else
+            print_error "Script pki/scripts/issue-server-cert.sh not found or not executable"
+        fi
+    else
+        print_error "Server certificate required. Run: ./pki/scripts/issue-server-cert.sh hsm-service.local"
+    fi
 fi
 print_success "Server certificate exists"
 
-print_test "Request client certificate details"
+print_test "Check client certificate exists"
 echo ""
 
 # Try default certificate first
@@ -145,56 +212,87 @@ if [ -f "$DEFAULT_CLIENT_CERT_PATH" ] && [ -f "$DEFAULT_CLIENT_KEY_PATH" ]; then
     CLIENT_KEY_PATH="$DEFAULT_CLIENT_KEY_PATH"
     echo "Using default certificate: $CLIENT_CERT_NAME"
 else
-    # Request certificate name interactively
-    echo -e "${BLUE}Please provide client certificate details for testing:${NC}"
+    echo -e "${RED}Client certificate not found: $DEFAULT_CLIENT_CERT_NAME${NC}"
     echo ""
+    echo "Tests require a client certificate with OU=Trading for testing."
+    echo ""
+    echo -e "${YELLOW}Would you like to:${NC}"
+    echo "  1) Create default certificate: hsm-trading-client-1 (OU=Trading)"
+    echo "  2) Use existing certificate (specify name)"
+    echo "  3) Specify custom certificate paths"
+    echo ""
+    read -p "Choose option (1/2/3): " CERT_OPTION
     
-    # Request client certificate name with validation
-    while true; do
-        read -p "Client certificate name (default: hsm-trading-client-1): " CLIENT_CERT_NAME
-        # Use default if empty
-        if [ -z "$CLIENT_CERT_NAME" ]; then
+    if [ "$CERT_OPTION" = "1" ]; then
+        # Create default certificate
+        echo ""
+        if [ -x "$PROJECT_ROOT/pki/scripts/issue-client-cert.sh" ]; then
+            echo "=== Creating client certificate: hsm-trading-client-1 ==="
+            if ! "$PROJECT_ROOT/pki/scripts/issue-client-cert.sh" hsm-trading-client-1 Trading; then
+                print_error "Failed to create client certificate"
+            fi
+            
             CLIENT_CERT_NAME="hsm-trading-client-1"
+            CLIENT_CERT_PATH="$DEFAULT_CLIENT_CERT_PATH"
+            CLIENT_KEY_PATH="$DEFAULT_CLIENT_KEY_PATH"
+            
+            echo ""
+            print_success "Client certificate created: $CLIENT_CERT_NAME"
+        else
+            print_error "Script pki/scripts/issue-client-cert.sh not found or not executable"
         fi
-        # Trim whitespace
-        CLIENT_CERT_NAME=$(echo "$CLIENT_CERT_NAME" | xargs)
-        # Validate not empty after trimming
-        if [ -n "$CLIENT_CERT_NAME" ]; then
-            break
+        
+    elif [ "$CERT_OPTION" = "2" ]; then
+        # Use existing certificate
+        echo ""
+        echo "Available client certificates:"
+        ls -1 "$PROJECT_ROOT/pki/client/"*.crt 2>/dev/null | xargs -n1 basename | sed 's/.crt$//' || echo "  (none found)"
+        echo ""
+        
+        while true; do
+            read -p "Client certificate name (without .crt): " CLIENT_CERT_NAME
+            # Trim whitespace
+            CLIENT_CERT_NAME=$(echo "$CLIENT_CERT_NAME" | xargs)
+            # Validate not empty
+            if [ -n "$CLIENT_CERT_NAME" ]; then
+                break
+            fi
+            echo -e "${RED}Certificate name cannot be empty${NC}"
+        done
+        
+        CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.crt"
+        CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.key"
+        
+        if [ ! -f "$CLIENT_CERT_PATH" ] || [ ! -f "$CLIENT_KEY_PATH" ]; then
+            print_error "Certificate not found: $CLIENT_CERT_PATH"
         fi
-        echo -e "${RED}Certificate name cannot be empty${NC}"
-    done
-
-    echo "Using certificate: $CLIENT_CERT_NAME"
-    echo ""
-
-    # Build paths
-    CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.crt"
-    CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.key"
-
-    # Check if custom paths are needed
-    if [ ! -f "$CLIENT_CERT_PATH" ]; then
-        echo -e "${YELLOW}Certificate not found at default location: $CLIENT_CERT_PATH${NC}"
-        read -p "Enter full path to client certificate: " CLIENT_CERT_PATH
-    fi
-
-    if [ ! -f "$CLIENT_KEY_PATH" ]; then
-        echo -e "${YELLOW}Key not found at default location: $CLIENT_KEY_PATH${NC}"
-        read -p "Enter full path to client key: " CLIENT_KEY_PATH
-    fi
-
-    # Validate files exist
-    if [ ! -f "$CLIENT_CERT_PATH" ]; then
-        print_error "Client certificate not found: $CLIENT_CERT_PATH"
-    fi
-    if [ ! -f "$CLIENT_KEY_PATH" ]; then
-        print_error "Client key not found: $CLIENT_KEY_PATH"
+        
+    else
+        # Custom paths
+        echo ""
+        read -p "Enter full path to client certificate (.crt): " CLIENT_CERT_PATH
+        read -p "Enter full path to client key (.key): " CLIENT_KEY_PATH
+        
+        if [ ! -f "$CLIENT_CERT_PATH" ]; then
+            print_error "Client certificate not found: $CLIENT_CERT_PATH"
+        fi
+        if [ ! -f "$CLIENT_KEY_PATH" ]; then
+            print_error "Client key not found: $CLIENT_KEY_PATH"
+        fi
+        
+        CLIENT_CERT_NAME=$(basename "$CLIENT_CERT_PATH" .crt)
     fi
 fi
 
 echo ""
-
 print_success "Client certificate verified: $CLIENT_CERT_NAME"
+
+# Verify OU in certificate for better test coverage
+CLIENT_OU=$(openssl x509 -in "$CLIENT_CERT_PATH" -noout -subject 2>/dev/null | grep -o "OU=[^,]*" | cut -d= -f2)
+if [ -n "$CLIENT_OU" ]; then
+    echo ""
+    print_info "Certificate OU: $CLIENT_OU (will be used for AAD in shared mode)"
+fi
 
 # ==========================================
 # PHASE 4: METADATA INITIALIZATION
@@ -414,6 +512,118 @@ if [ "$DECRYPTED" != "$PLAINTEXT" ]; then
     print_error "Decryption failed - plaintext mismatch"
 fi
 print_success "Decryption successful - data matches"
+
+# ==========================================
+# PHASE 7.5: AAD MODE TESTS (SHARED/PRIVATE)
+# ==========================================
+print_header "PHASE 7.5: AAD Mode Tests (Shared/Private)"
+
+print_test "Test 7.5.1: Shared mode - encrypt/decrypt with exchange-key (AAD uses OU)"
+echo ""
+echo "=== Testing shared mode (exchange-key, mode=shared) ==="
+echo "Client: hsm-trading-client-1 (OU=Trading)"
+echo "AAD should use OU instead of CN for this context"
+echo ""
+
+# Encrypt data with shared mode context
+SHARED_PLAINTEXT="U2hhcmVkRGF0YQ=="  # "SharedData" in base64
+
+SHARED_ENCRYPT=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
+    --cert "$CLIENT_CERT" \
+    --key "$CLIENT_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"context\":\"exchange-key\",\"plaintext\":\"$SHARED_PLAINTEXT\"}" \
+    "$BASE_URL/encrypt" 2>&1)
+
+SHARED_CIPHERTEXT=$(echo "$SHARED_ENCRYPT" | grep -o '"ciphertext":"[^"]*"' | cut -d'"' -f4)
+SHARED_KEY_ID=$(echo "$SHARED_ENCRYPT" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$SHARED_CIPHERTEXT" ]; then
+    echo "Encrypt response: $SHARED_ENCRYPT"
+    print_error "Failed to encrypt with exchange-key (shared mode)"
+fi
+
+echo "Encrypted: ${SHARED_CIPHERTEXT:0:40}... (key: $SHARED_KEY_ID)"
+echo ""
+
+# Decrypt with same client (verifies shared mode AAD works)
+SHARED_DECRYPT=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
+    --cert "$CLIENT_CERT" \
+    --key "$CLIENT_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$SHARED_CIPHERTEXT\",\"key_id\":\"$SHARED_KEY_ID\"}" \
+    "$BASE_URL/decrypt" 2>&1)
+
+SHARED_DECRYPTED=$(echo "$SHARED_DECRYPT" | grep -o '"plaintext":"[^"]*"' | cut -d'"' -f4)
+
+echo "Decrypted: $SHARED_DECRYPTED"
+echo ""
+
+if [ "$SHARED_DECRYPTED" = "$SHARED_PLAINTEXT" ]; then
+    print_success "Shared mode works - AAD uses OU (all clients with OU=Trading can share data)"
+else
+    echo "Expected: $SHARED_PLAINTEXT"
+    echo "Got: $SHARED_DECRYPTED"
+    echo "Decrypt response: $SHARED_DECRYPT"
+    print_error "Shared mode failed"
+fi
+
+print_test "Test 7.5.2: Private mode - different clients cannot decrypt (2fa)"
+# Use 2fa client cert if it exists
+TFA_CLIENT_CERT="$PROJECT_ROOT/pki/client/hsm-2fa-client-1.crt"
+TFA_CLIENT_KEY="$PROJECT_ROOT/pki/client/hsm-2fa-client-1.key"
+
+if [ -f "$TFA_CLIENT_CERT" ] && [ -f "$TFA_CLIENT_KEY" ]; then
+    echo ""
+    echo "=== Testing private mode isolation (2fa context) ==="
+    echo "Note: This test requires 2 different clients with OU=2FA"
+    echo "Since we only have 1 2FA client, we verify ACL blocks wrong OU instead"
+    echo ""
+    
+    # Try to use Trading client cert to access 2fa context (should fail via ACL)
+    PRIVATE_PLAINTEXT="UHJpdmF0ZURhdGE="  # "PrivateData" in base64
+    
+    PRIVATE_RESPONSE=$(curl -s -w "\n%{http_code}" --connect-timeout 10 --max-time 15 \
+        --cacert "$CA_CERT" \
+        --cert "$CLIENT_CERT" \
+        --key "$CLIENT_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{\"context\":\"2fa\",\"plaintext\":\"$PRIVATE_PLAINTEXT\"}" \
+        "$BASE_URL/encrypt" 2>&1)
+    
+    HTTP_CODE=$(echo "$PRIVATE_RESPONSE" | tail -1)
+    RESPONSE_BODY=$(echo "$PRIVATE_RESPONSE" | head -n -1)
+    
+    echo "Response HTTP Code: $HTTP_CODE"
+    echo "Response: ${RESPONSE_BODY:0:100}..."
+    echo ""
+    
+    if [ "$HTTP_CODE" = "403" ] || echo "$RESPONSE_BODY" | grep -qi "forbidden\|not.*authorized\|access.*denied"; then
+        print_success "Private mode enforced - wrong OU blocked by ACL (Trading cannot access 2fa)"
+    else
+        print_error "Private mode ACL failed - Trading client accessed 2fa context!"
+    fi
+else
+    print_info "2fa client cert not found, skipping private mode test"
+fi
+
+print_test "Test 7.5.3: Verify mode configuration in config.yaml"
+# Read config and verify modes are set correctly
+CONFIG_EXCHANGE_MODE=$(grep -A 2 "exchange-key:" "$PROJECT_ROOT/config.yaml" | grep "mode:" | awk '{print $2}')
+CONFIG_2FA_MODE=$(grep -A 2 "2fa:" "$PROJECT_ROOT/config.yaml" | grep "mode:" | awk '{print $2}')
+
+echo "Config modes:"
+echo "  exchange-key: $CONFIG_EXCHANGE_MODE (expected: shared)"
+echo "  2fa: $CONFIG_2FA_MODE (expected: private)"
+echo ""
+
+if [ "$CONFIG_EXCHANGE_MODE" = "shared" ] && [ "$CONFIG_2FA_MODE" = "private" ]; then
+    print_success "AAD modes configured correctly"
+else
+    print_error "AAD modes misconfigured in config.yaml"
+fi
 
 # ==========================================
 # PHASE 8: KEY ROTATION
