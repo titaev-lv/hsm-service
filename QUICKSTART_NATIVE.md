@@ -382,7 +382,7 @@ cat config.yaml | grep -A5 "acl:"
 - 📊 **Мониторинг**: [MONITORING.md](MONITORING.md)
 
 ### Для security:
-- 🔒 **PKI управление**: [pki/README.md](pki/README.md)
+- 🔒 **PKI управление**: [PKI_SETUP.md](PKI_SETUP.md)
 - 🔄 **Ротация ключей**: [KEY_ROTATION.md](KEY_ROTATION.md)
 
 ---

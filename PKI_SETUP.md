@@ -596,21 +596,383 @@ mv pki/client/trading-service-1-new.key pki/client/trading-service-1.key
 
 Если клиентский сертификат скомпрометирован:
 
-```bash
-# Отозвать сертификат
-./pki/scripts/revoke-cert.sh trading-service-1
+### Синтаксис отзыва
 
-# Проверить revoked.yaml
-cat pki/revoked.yaml
-# revoked_certs:
-#   - cn: trading-service-1
-#     revoked_at: '2026-01-10T15:30:00Z'
-#     reason: key-compromise
+```bash
+./pki/scripts/revoke-cert.sh <cn> <reason>
 ```
+
+**Причины отзыва** (reason):
+- `compromised` - Приватный ключ скомпрометирован
+- `decommissioned` - Сервис больше не используется
+- `superseded` - Сертификат заменен новым
+- `cessation` - Сервис прекратил работу
+
+**Примеры**:
+
+```bash
+# Скомпрометированный сертификат
+./pki/scripts/revoke-cert.sh old-trading-service compromised
+
+# Списанный сервис
+./pki/scripts/revoke-cert.sh test-service decommissioned
+
+# Заменен новым
+./pki/scripts/revoke-cert.sh old-api superseded
+```
+
+### Что происходит при отзыве
+
+1. Сертификат добавляется в `pki/revoked.yaml`
+2. После перезапуска HSM service (или SIGHUP) сертификат отклоняется
+3. Клиент получает `403 Forbidden` при попытке подключения
 
 **HSM Service автоматически перезагружает `revoked.yaml` каждые 30 секунд**.
 
+**Применить отзыв**:
+```bash
+# Перезапустить HSM service
+docker-compose restart hsm-service
+
+# ИЛИ отправить SIGHUP для hot reload
+kill -HUP $(pgrep hsm-service)
+```
+
+### Формат revoked.yaml
+
+```yaml
+revoked:
+  - cn: old-trading-service
+    serial: '05'
+    revoked_date: '2026-01-03T10:00:00Z'
+    reason: compromised
+  - cn: test-service
+    serial: '08'
+    revoked_date: '2026-01-05T12:00:00Z'
+    reason: decommissioned
+```
+
+**Просмотр списка отозванных**:
+```bash
+cat pki/revoked.yaml
+```
+
 Подробнее: [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
+
+---
+
+## 📊 Управление сертификатами
+
+### Certificate Inventory (Инвентаризация)
+
+Файл `pki/inventory.yaml` автоматически отслеживает все выданные сертификаты.
+
+**Пример содержимого**:
+
+```yaml
+certificates:
+  servers:
+    - cn: hsm-service.local
+      ou: Services
+      issued: '2026-01-06'
+      expires: '2027-01-06'
+      serial: '01'
+      san_dns:
+        - hsm-service.local
+        - localhost
+      san_ip:
+        - 127.0.0.1
+      file: server/hsm-service.local
+  
+  clients:
+    - cn: trading-service-1
+      ou: Trading
+      issued: '2026-01-06'
+      expires: '2027-01-06'
+      serial: '02'
+      access_contexts:
+        - exchange-key
+      file: client/trading-service-1
+    
+    - cn: 2fa-service-1
+      ou: 2FA
+      issued: '2026-01-06'
+      expires: '2027-01-06'
+      serial: '03'
+      access_contexts:
+        - 2fa
+      file: client/2fa-service-1
+```
+
+**Команды**:
+
+```bash
+# Просмотр инвентаризации
+cat pki/inventory.yaml
+
+# Найти сертификаты с определенным OU
+grep -A 10 "ou: Trading" pki/inventory.yaml
+
+# Найти истекающие сертификаты (вручную проверить даты)
+# TODO: Создать скрипт для автоматической проверки
+```
+
+### Certificate Revocation List
+
+Файл `pki/revoked.yaml` содержит все отозванные сертификаты.
+
+**Просмотр**:
+```bash
+cat pki/revoked.yaml
+```
+
+---
+
+## 🧪 Расширенное тестирование PKI
+
+### Тестирование mTLS подключения к HSM Service
+
+```bash
+# POST запрос с mTLS
+curl -X POST https://localhost:8443/encrypt \
+  --cert pki/client/trading-service-1.crt \
+  --key pki/client/trading-service-1.key \
+  --cacert pki/ca/ca.crt \
+  -H "Content-Type: application/json" \
+  -d '{"context":"exchange-key","plaintext":"SGVsbG8gV29ybGQ="}'
+
+# Ожидаемый результат: JSON с ciphertext
+```
+
+### Тестирование mTLS к MySQL (если настроено)
+
+```bash
+# Подключение с mTLS
+mysql \
+  --host=192.168.50.5 \
+  --user=testuser \
+  --ssl-ca=pki/ca/ca.crt \
+  --ssl-cert=pki/client/mysql-client-test.crt \
+  --ssl-key=pki/client/mysql-client-test.key \
+  -e "SELECT 'mTLS works!'"
+
+# Ожидаемый вывод:
+# +-------------+
+# | mTLS works! |
+# +-------------+
+```
+
+### Negative тесты (должны провалиться)
+
+**1. Подключение без сертификата:**
+```bash
+curl https://localhost:8443/health
+# Ожидаемо: SSL handshake error или 403 Forbidden
+```
+
+**2. Подключение с самоподписанным сертификатом (не от CA):**
+```bash
+# Создать fake сертификат
+openssl req -new -newkey rsa:2048 -days 1 -nodes -x509 \
+  -subj "/CN=fake-cert" -keyout /tmp/fake.key -out /tmp/fake.crt
+
+# Попытка подключения
+curl --cert /tmp/fake.crt --key /tmp/fake.key --cacert pki/ca/ca.crt \
+  https://localhost:8443/health
+# Ожидаемо: SSL certificate problem
+```
+
+**3. Подключение с отозванным сертификатом:**
+```bash
+# Отозвать сертификат
+./pki/scripts/revoke-cert.sh test-client compromised
+
+# Подождать 30 секунд (auto-reload) или перезапустить service
+
+# Попытка подключения
+curl --cert pki/client/test-client.crt \
+     --key pki/client/test-client.key \
+     --cacert pki/ca/ca.crt \
+     https://localhost:8443/health
+# Ожидаемо: 403 Forbidden
+```
+
+**Результаты тестирования** (2026-01-06):
+- ✅ mTLS подключение - SUCCESS
+- ✅ Подключение без сертификата - REJECTED
+- ✅ Подключение с неподписанным сертификатом - REJECTED
+- ✅ Подключение с отозванным сертификатом - REJECTED (403)
+
+---
+
+## 🔒 Security Best Practices
+
+### 1. Защита приватных ключей
+
+**Права доступа к файлам**:
+```bash
+# CA ключ (наиболее критичный)
+chmod 400 pki/ca/ca.key
+chown root:root pki/ca/ca.key
+
+# Серверные/клиентские ключи
+chmod 600 pki/server/*.key
+chmod 600 pki/client/*.key
+
+# Сертификаты (публичные)
+chmod 644 pki/ca/ca.crt
+chmod 644 pki/server/*.crt
+chmod 644 pki/client/*.crt
+```
+
+**Хранение**:
+- ✅ Храните CA ключ на отдельной защищенной VM
+- ✅ Используйте Hardware Security Module (HSM) для production CA
+- ✅ Никогда не коммитьте `.key` файлы в git (уже в `.gitignore`)
+- ✅ Регулярно делайте backup CA ключа и сертификата
+- ✅ Используйте сильные пароли для защиты CA ключа
+
+### 2. Ротация сертификатов
+
+**Рекомендации**:
+- ✅ Ротируйте сертификаты каждые 365 дней (текущий срок действия)
+- ✅ Обновляйте за 30 дней до истечения срока
+- ✅ Используйте более короткий срок действия (90 дней) для повышения безопасности
+
+**Процесс обновления**:
+```bash
+# Выпустить новый сертификат с тем же CN
+./pki/scripts/issue-server-cert.sh <cn> <san-dns> <san-ip>
+
+# Обновить конфигурацию сервиса
+# Перезапустить сервис
+
+# (Опционально) Отозвать старый сертификат
+./pki/scripts/revoke-cert.sh <cn> superseded
+```
+
+### 3. Аудит и мониторинг
+
+**Регулярные проверки**:
+```bash
+# Список всех сертификатов
+cat pki/inventory.yaml
+
+# Проверить список отозванных
+cat pki/revoked.yaml
+
+# Найти сертификаты, истекающие в ближайшие 30 дней
+# TODO: Создать скрипт для автоматического мониторинга
+```
+
+**Рекомендации**:
+- ✅ Настройте мониторинг срока действия сертификатов
+- ✅ Логируйте все операции выпуска/отзыва сертификатов
+- ✅ Регулярно проверяйте `inventory.yaml` на аномалии
+- ✅ Аудируйте доступ к CA ключу
+
+---
+
+## 🆘 Расширенный Troubleshooting
+
+### ❌ "CA certificate or key not found"
+
+**Проблема**: CA файлы отсутствуют в `pki/ca/`
+
+**Решение**:
+```bash
+# Проверить наличие CA файлов
+ls -la pki/ca/
+# Должно показать: ca.crt, ca.key
+
+# Если отсутствуют, скопировать с CA VM:
+scp ca-vm:/path/to/ca.crt pki/ca/
+scp ca-vm:/path/to/ca.key pki/ca/
+chmod 400 pki/ca/ca.key
+```
+
+---
+
+### ❌ "python3: command not found"
+
+**Проблема**: Python 3 не установлен (нужен для скриптов)
+
+**Решение**:
+```bash
+# Ubuntu/Debian
+sudo apt-get install python3 python3-pip
+pip3 install pyyaml
+
+# Alpine (Docker)
+apk add python3 py3-pip
+pip3 install pyyaml
+
+# Arch Linux
+sudo pacman -S python python-yaml
+```
+
+---
+
+### ❌ "Certificate already exists"
+
+**Проблема**: Попытка выпустить сертификат с существующим CN
+
+**Решение**:
+- Скрипт запросит подтверждение на перезапись
+- Выберите 'y' для замены, 'n' для отмены
+- Старый сертификат будет сохранен как backup (если нужно)
+
+---
+
+### ❌ "SSL certificate problem: unable to get local issuer certificate"
+
+**Проблема**: Клиент не доверяет CA сертификату
+
+**Решение**:
+```bash
+# Убедитесь что используете правильный CA
+curl --cacert pki/ca/ca.crt https://localhost:8443/health
+
+# Проверить цепочку сертификатов
+openssl verify -CAfile pki/ca/ca.crt pki/server/hsm-service.local.crt
+```
+
+---
+
+## 📝 Quick Reference (Быстрая справка)
+
+```bash
+# Выпустить серверный сертификат
+./pki/scripts/issue-server-cert.sh <cn> "<dns1>,<dns2>" "<ip1>,<ip2>"
+
+# Выпустить клиентский сертификат
+./pki/scripts/issue-client-cert.sh <cn> <OU>
+
+# Отозвать сертификат
+./pki/scripts/revoke-cert.sh <cn> <reason>
+
+# Проверить сертификат против CA
+openssl verify -CAfile pki/ca/ca.crt pki/client/<cn>.crt
+
+# Просмотр subject сертификата
+openssl x509 -in pki/client/<cn>.crt -noout -subject
+
+# Просмотр дат действия
+openssl x509 -in pki/client/<cn>.crt -noout -dates
+
+# Просмотр SAN (Subject Alternative Names)
+openssl x509 -in pki/server/<cn>.crt -noout -ext subjectAltName
+
+# Просмотр инвентаризации
+cat pki/inventory.yaml
+
+# Просмотр отозванных
+cat pki/revoked.yaml
+
+# Тест mTLS подключения
+curl --cert pki/client/<cn>.crt --key pki/client/<cn>.key \
+     --cacert pki/ca/ca.crt https://localhost:8443/health
+```
 
 ---
 
@@ -625,10 +987,11 @@ cat pki/revoked.yaml
 ### Для Production:
 - 🏭 **Debian 13 + nftables**: [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md)
 
-### Продвинутое управление PKI:
-- 📖 **Детальная документация**: [pki/README.md](pki/README.md)
+### Дополнительная документация:
 - 🔄 **Ротация ключей HSM**: [KEY_ROTATION.md](KEY_ROTATION.md)
 - 🛠️ **CLI утилиты**: [CLI_TOOLS.md](CLI_TOOLS.md)
+- 🚫 **Отзыв сертификатов**: [REVOCATION_RELOAD.md](REVOCATION_RELOAD.md)
+- 🧪 **Тестирование**: [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ---
 
