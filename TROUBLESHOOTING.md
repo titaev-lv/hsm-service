@@ -996,10 +996,11 @@ journalctl -u hsm-service | jq -r '.client_cn' | sort | uniq -c | sort -rn
 
 ## Additional Resources
 
-- [QUICKSTART_DOCKER.md](QUICKSTART_DOCKER.md) - Quick start guide (Docker)
+- [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) - Production deployment
 - [BUILD.md](BUILD.md) - Build instructions
 - [PKI_SETUP.md](PKI_SETUP.md) - PKI setup guide
 - [API.md](API.md) - API documentation
-- [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) - Production deployment
 - [MONITORING.md](MONITORING.md) - Monitoring and alerting
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security guidelines
+- [BACKUP_RESTORE.md](BACKUP_RESTORE.md) - Backup и disaster recovery
+- [KEY_ROTATION.md](KEY_ROTATION.md) - Ротация ключей

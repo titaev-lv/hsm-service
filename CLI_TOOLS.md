@@ -50,11 +50,8 @@ sudo mv hsm-admin /usr/local/bin/
 # HSM PIN (обязательно!)
 export HSM_PIN=1234
 
-# Slot label (по умолчанию: hsm-token)
-export SLOT_LABEL=hsm-token
-
-# Metadata file (по умолчанию: ./data/metadata.yaml)
-export METADATA_FILE=/var/lib/hsm-service/metadata.yaml
+# Config path (опционально, по умолчанию: config.yaml)
+export CONFIG_PATH=/etc/hsm-service/config.yaml
 ```
 
 ### Файл конфигурации
@@ -63,15 +60,17 @@ export METADATA_FILE=/var/lib/hsm-service/metadata.yaml
 
 ```bash
 HSM_PIN=your-secure-pin
-SLOT_LABEL=hsm-token
-METADATA_FILE=/var/lib/hsm-service/metadata.yaml
-PKCS11_LIB=/usr/lib/softhsm/libsofthsm2.so
+CONFIG_PATH=/etc/hsm-service/config.yaml
 ```
 
 Загрузка:
 ```bash
 source ~/.hsm-admin.env
 ```
+
+**Примечание**: Все остальные параметры (PKCS11 библиотека, slot label, metadata path) берутся из `config.yaml`.
+
+**Примечание**: Все остальные параметры (PKCS11 библиотека, slot label, metadata path) берутся из `config.yaml`.
 
 ---
 
@@ -173,25 +172,22 @@ kek-2fa-v2            | 2fa          | 9      | 2024-03-20 11:00:00 | active
 
 **Синтаксис**:
 ```bash
-hsm-admin delete-kek --label <label> [--force]
+hsm-admin delete-kek --label <label> --confirm
 ```
 
 **Параметры**:
 - `--label` (обязательный) - имя KEK для удаления
-- `--force` (опционально) - пропустить подтверждение
+- `--confirm` (обязательный) - подтверждение удаления
 
 **Пример**:
 ```bash
-# With confirmation
+# Удаление (требует флаг --confirm)
+./hsm-admin delete-kek --label kek-old-v1 --confirm
+
+# Без --confirm выдаст ошибку:
 ./hsm-admin delete-kek --label kek-old-v1
-
-# Вывод:
-# WARNING: Deleting KEK 'kek-old-v1'
-# This action cannot be undone!
-# Type 'DELETE kek-old-v1' to confirm:
-
-# Without confirmation
-./hsm-admin delete-kek --label kek-old-v1 --force
+# Error: --confirm flag is required to delete KEK
+# This operation is irreversible!
 ```
 
 **Когда использовать**:
@@ -211,21 +207,21 @@ hsm-admin delete-kek --label <label> [--force]
 
 **Синтаксис**:
 ```bash
-hsm-admin rotate --context <context>
+hsm-admin rotate <context>
 ```
 
 **Параметры**:
-- `--context` (обязательный) - контекст для ротации
+- `<context>` (обязательный) - контекст для ротации
 
 **Пример**:
 ```bash
 export HSM_PIN=1234
 
 # Rotate exchange-key
-./hsm-admin rotate --context exchange-key
+./hsm-admin rotate exchange-key
 
 # Rotate 2fa
-./hsm-admin rotate --context 2fa
+./hsm-admin rotate 2fa
 ```
 
 **Output**:
@@ -267,19 +263,16 @@ Next cleanup: 2024-04-20 (30 days)
 
 **Синтаксис**:
 ```bash
-hsm-admin rotation-status [--context <context>]
+hsm-admin rotation-status
 ```
 
 **Параметры**:
-- `--context` (опционально) - фильтр по контексту
+- Нет параметров (команда показывает все контексты)
 
 **Пример**:
 ```bash
-# All contexts
+# Показать статус всех контекстов
 ./hsm-admin rotation-status
-
-# Specific context
-./hsm-admin rotation-status --context exchange-key
 ```
 
 **Output**:
@@ -321,41 +314,42 @@ Summary:
 
 **Синтаксис**:
 ```bash
-hsm-admin cleanup-old-versions --context <context> [--dry-run]
+hsm-admin cleanup-old-versions [--dry-run]
 ```
 
 **Параметры**:
-- `--context` (обязательный) - контекст для очистки
 - `--dry-run` (опционально) - показать что будет удалено, но не удалять
 
 **Пример**:
 ```bash
 # Dry run (preview)
-./hsm-admin cleanup-old-versions \
-  --context exchange-key \
-  --dry-run
+./hsm-admin cleanup-old-versions --dry-run
 
 # Вывод:
 # [DRY RUN] Would delete:
-#   - kek-exchange-v1 (created: 2024-01-01, age: 90 days)
+#   Context: exchange-key
+#     - kek-exchange-v1 (created: 2024-01-01, age: 90 days)
+#   Context: 2fa
+#     - kek-2fa-v1 (created: 2024-01-01, age: 90 days)
 # Keeping:
-#   - kek-exchange-v2 (current - 1)
-#   - kek-exchange-v3 (current)
+#   - kek-exchange-v2, kek-exchange-v3 (exchange-key)
+#   - kek-2fa-v2 (2fa)
 
 # Actual cleanup
-./hsm-admin cleanup-old-versions --context exchange-key
+./hsm-admin cleanup-old-versions
 
 # Вывод:
-# Cleaning up old versions for: exchange-key
+# Cleaning up old versions across all contexts...
 # Max versions to keep: 3
 # Cleanup after days: 30
 #
-# Deleting: kek-exchange-v1
-# ✓ Deleted kek-exchange-v1
+# Context: exchange-key
+#   Deleting: kek-exchange-v1
+#   ✓ Deleted kek-exchange-v1
 #
 # Cleanup complete!
-# Deleted: 1
-# Kept: 2
+# Total deleted: 1
+# Total kept: 3
 ```
 
 **Логика cleanup**:
@@ -505,14 +499,14 @@ export HSM_PIN=1234
 
 # 2. Perform rotation
 export HSM_PIN=1234
-./hsm-admin rotate --context exchange-key
+./hsm-admin rotate exchange-key
 
 # 3. Verify new version
-./hsm-admin list-kek --context exchange-key
+./hsm-admin list-kek
 
 # 4. Cleanup будет автоматически через 30 дней
 # Или manual:
-./hsm-admin cleanup-old-versions --context exchange-key --dry-run
+./hsm-admin cleanup-old-versions --dry-run
 ```
 
 ---
@@ -576,13 +570,13 @@ sudo systemctl start hsm-service
 
 # 1. IMMEDIATE: Rotate compromised key
 export HSM_PIN=1234
-./hsm-admin rotate --context exchange-key
+./hsm-admin rotate exchange-key
 
 # 2. Update ACL to revoke compromised clients
 echo "  - compromised-client" | sudo tee -a /etc/hsm-service/pki/revoked.yaml
 
 # 3. Verify new KEK active
-./hsm-admin list-kek --context exchange-key
+./hsm-admin list-kek
 
 # 4. Notify clients to re-encrypt with new key
 # (Application-level procedure)
@@ -631,11 +625,9 @@ echo "Saved to: /audit/metadata-$(date +%Y%m%d).json"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HSM_PIN` | (required) | HSM token PIN |
-| `SLOT_LABEL` | `hsm-token` | HSM slot label |
-| `METADATA_FILE` | `./data/metadata.yaml` | Path to metadata file |
-| `PKCS11_LIB` | `/usr/lib/softhsm/libsofthsm2.so` | PKCS#11 library path |
-| `MAX_VERSIONS` | `3` | Max KEK versions to keep |
-| `CLEANUP_AFTER_DAYS` | `30` | Days before cleanup old KEKs |
+| `CONFIG_PATH` | `config.yaml` | Path to config.yaml file |
+
+**Примечание**: Параметры `max_versions` и `cleanup_after_days` настраиваются в `config.yaml`, а не через environment variables.
 
 ---
 
@@ -706,12 +698,14 @@ sudo chmod 644 /var/lib/hsm-service/metadata.yaml
 
 ### Cron job для automatic rotation
 
+**Примечание**: Рекомендуется использовать systemd timer вместо cron (см. [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md)).
+
 ```cron
 # Rotate exchange-key every 90 days
-0 3 1 */3 * cd /opt/hsm-service && export HSM_PIN=$(cat /etc/hsm-service/.pin) && ./hsm-admin rotate --context exchange-key >> /var/log/hsm-service/rotation.log 2>&1
+0 3 1 */3 * cd /opt/hsm-service && export HSM_PIN=$(cat /etc/hsm-service/.pin) && ./hsm-admin rotate exchange-key >> /var/log/hsm-service/rotation.log 2>&1
 
 # Cleanup old versions monthly
-0 4 1 * * cd /opt/hsm-service && export HSM_PIN=$(cat /etc/hsm-service/.pin) && ./hsm-admin cleanup-old-versions --context exchange-key >> /var/log/hsm-service/cleanup.log 2>&1
+0 4 1 * * cd /opt/hsm-service && export HSM_PIN=$(cat /etc/hsm-service/.pin) && ./hsm-admin cleanup-old-versions >> /var/log/hsm-service/cleanup.log 2>&1
 ```
 
 ### Prometheus exporter для KEK metrics

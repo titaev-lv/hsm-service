@@ -605,7 +605,7 @@ sudo systemctl restart hsm-service
 ## Preparation
 - [ ] Schedule test during maintenance window
 - [ ] Notify stakeholders
-- [ ] Prepare test server
+- [ ] Prepare test server (VM or bare metal)
 - [ ] Verify latest backup exists
 
 ## Test Steps
@@ -645,21 +645,6 @@ sudo systemctl restart hsm-service
 - Tested by: ___
 - Date: ___
 - Result: PASS / FAIL
-```
-
-### Automated DR Test
-
-```bash
-#!/bin/bash
-# dr-test.sh - Automated DR test
-
-# 1. Create test VM/container
-# 2. Deploy HSM Service
-# 3. Restore from backup
-# 4. Run health checks
-# 5. Cleanup
-
-# TODO: Implement based on your infrastructure
 ```
 
 ---
