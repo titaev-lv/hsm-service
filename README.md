@@ -718,6 +718,498 @@ curl https://hsm-service.local:8443/health
 - `hsm_decrypt_duration_seconds` - Latency decrypt операций
 - `hsm_acl_denied_total` - Количество отказов ACL
 
+## 📝 Audit Logging (PCI DSS 10.2)
+
+### Обзор
+
+HSM Service реализует **полное audit logging** всех криптографических операций в соответствии с требованием PCI DSS 10.2 ("Audit logs must be implemented to track all access to system components").
+
+### Что логируется
+
+**Каждый запрос /encrypt и /decrypt записывается в audit log** со следующими полями:
+
+| Поле | Описание | Пример |
+|------|----------|--------|
+| `timestamp` | ISO 8601 timestamp | `2026-01-15T10:30:45Z` |
+| `client_cn` | Common Name из клиентского сертификата | `trading-service-1` |
+| `client_ou` | Organizational Unit клиента | `Trading` |
+| `client_ip` | IP адрес клиента | `10.0.0.15` |
+| `operation` | Тип операции | `encrypt` или `decrypt` |
+| `context` | Контекст ключа | `exchange-key`, `2fa` |
+| `key_id` | Использованный KEK | `kek-exchange-v2` |
+| `status` | Статус операции | `success` или `error` |
+| `error` | Сообщение об ошибке (если есть) | `acl_denied: OU not allowed` |
+| `duration_ms` | Время выполнения в миллисекундах | `12` |
+| `request_id` | Уникальный ID запроса | `req-abc123def456` |
+
+### Что НЕ логируется (Security Best Practice)
+
+**Критически важно:** Следующие данные **НИКОГДА** не попадают в логи:
+
+- ❌ **plaintext** - расшифрованные данные
+- ❌ **ciphertext** - зашифрованные данные  
+- ❌ **nonce** - криптографические nonce
+- ❌ **tags** - authentication tags
+- ❌ **HSM PIN** - credentials для доступа к HSM
+- ❌ **KEK handles** - внутренние PKCS#11 handles
+
+Это защищает от утечки чувствительных данных через логи.
+
+### Формат логов
+
+**JSON structured logging (по умолчанию):**
+
+```json
+{
+  "time": "2026-01-15T10:30:45Z",
+  "level": "INFO",
+  "component": "audit",
+  "msg": "request",
+  "client_cn": "trading-service-1",
+  "client_ou": "Trading",
+  "client_ip": "10.0.0.15:54321",
+  "method": "POST",
+  "path": "/encrypt",
+  "operation": "encrypt",
+  "context": "exchange-key",
+  "key_id": "kek-exchange-v2",
+  "status": "success",
+  "duration_ms": 12,
+  "request_id": "req-abc123def456"
+}
+```
+
+**Text format (для debugging):**
+
+```
+time=2026-01-15T10:30:45Z level=INFO component=audit msg=request client_cn=trading-service-1 client_ou=Trading operation=encrypt context=exchange-key key_id=kek-exchange-v2 status=success duration_ms=12
+```
+
+### Конфигурация
+
+**config.yaml:**
+```yaml
+logging:
+  level: info      # Уровни: debug, info, warn, error
+  format: json     # Форматы: json, text
+```
+
+**Environment Variables:**
+```bash
+LOG_LEVEL=info     # Переопределяет config.yaml
+LOG_FORMAT=json    # Переопределяет config.yaml
+```
+
+### Где хранятся логи
+
+**Docker (stdout → Docker logging driver):**
+
+HSM Service пишет логи в **stdout**, которые Docker перехватывает и сохраняет через logging driver.
+
+**Физическое расположение:**
+```bash
+# По умолчанию (json-file driver):
+/var/lib/docker/containers/<CONTAINER_ID>/<CONTAINER_ID>-json.log
+
+# Найти путь к логам конкретного контейнера:
+CONTAINER_ID=$(docker compose ps -q hsm-service)
+docker inspect $CONTAINER_ID | jq '.[0].LogPath'
+# Вывод: "/var/lib/docker/containers/abc123.../abc123...-json.log"
+
+# Прямой доступ к файлу (требует root):
+sudo tail -f /var/lib/docker/containers/$(docker compose ps -q hsm-service)/$(docker compose ps -q hsm-service)-json.log
+```
+
+**Просмотр через Docker CLI:**
+```bash
+# Просмотр логов
+docker compose logs -f hsm-service
+
+# Фильтр только audit events
+docker compose logs hsm-service | grep '"component":"audit"'
+
+# Поиск конкретного клиента
+docker compose logs hsm-service | jq 'select(.client_cn=="trading-service-1")'
+
+# Экспорт в файл
+docker compose logs hsm-service > /var/log/hsm/audit.log
+```
+
+**Ротация логов в Docker:**
+
+```yaml
+# docker-compose.yml
+services:
+  hsm-service:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"    # Максимальный размер файла лога
+        max-file: "10"      # Количество файлов (100m * 10 = 1GB)
+        compress: "true"    # Сжатие старых логов
+```
+
+После этого логи будут ротироваться автоматически:
+```
+/var/lib/docker/containers/<id>/<id>-json.log       (активный)
+/var/lib/docker/containers/<id>/<id>-json.log.1.gz  (архив)
+/var/lib/docker/containers/<id>/<id>-json.log.2.gz
+...
+```
+
+**Production (systemd + journald):**
+
+HSM Service пишет логи в **stdout**, которые systemd перехватывает и сохраняет в **journald**.
+
+**Физическое расположение:**
+```bash
+# Журналы systemd хранятся в бинарном формате:
+/var/log/journal/<MACHINE_ID>/system.journal
+/var/log/journal/<MACHINE_ID>/user-*.journal
+
+# Найти MACHINE_ID:
+cat /etc/machine-id
+
+# Пример:
+/var/log/journal/a1b2c3d4e5f6.../system.journal
+
+# Размер логов:
+sudo journalctl --disk-usage
+# Вывод: "Archived and active journals take up 512.0M in the file system."
+```
+
+**Просмотр через journalctl:**
+```bash
+# Просмотр логов hsm-service
+journalctl -u hsm-service -f
+
+# Только audit events
+journalctl -u hsm-service | grep '"component":"audit"'
+
+# С временным диапазоном
+journalctl -u hsm-service --since "2026-01-15 00:00:00" --until "2026-01-15 23:59:59"
+
+# JSON формат для экспорта
+journalctl -u hsm-service -o json > /var/log/hsm/audit.json
+
+# Последние 100 строк
+journalctl -u hsm-service -n 100
+
+# Показать логи с момента последней загрузки
+journalctl -u hsm-service -b
+```
+
+**Конфигурация ротации (journald):**
+
+```bash
+# /etc/systemd/journald.conf
+[Journal]
+Storage=persistent           # Хранить на диске (не только в RAM)
+SystemMaxUse=10G            # Максимум места на диске
+SystemKeepFree=5G           # Оставить минимум 5GB свободными
+MaxRetentionSec=31536000    # 1 год (365 дней) для PCI DSS
+MaxFileSec=2592000          # Новый файл раз в 30 дней
+Compress=yes                # Сжимать старые логи
+
+# Применить изменения:
+sudo systemctl restart systemd-journald
+
+# Проверить статус:
+sudo journalctl --verify
+```
+
+**Экспорт в текстовый файл (для долгосрочного хранения):**
+
+```bash
+# Создать директорию для audit логов
+sudo mkdir -p /var/log/hsm-service
+
+# Ежедневный экспорт через cron
+# /etc/cron.daily/hsm-audit-export
+#!/bin/bash
+journalctl -u hsm-service \
+  --since "yesterday" \
+  --until "today" \
+  -o json \
+  | gzip > /var/log/hsm-service/audit-$(date -d yesterday +%Y-%m-%d).json.gz
+
+# Экспорт только audit events:
+journalctl -u hsm-service \
+  --since "yesterday" \
+  --until "today" \
+  -o json \
+  | grep '"component":"audit"' \
+  | gzip > /var/log/hsm-service/audit-$(date -d yesterday +%Y-%m-%d).json.gz
+```
+
+### Интеграция с SIEM
+
+**Отправка в ELK (Elasticsearch + Logstash + Kibana):**
+
+```yaml
+# docker-compose.yml
+services:
+  hsm-service:
+    logging:
+      driver: "syslog"
+      options:
+        syslog-address: "tcp://logstash:5000"
+        tag: "hsm-service"
+```
+
+**Или через Filebeat:**
+
+```yaml
+# filebeat.yml
+filebeat.inputs:
+  - type: container
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata: ~
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "hsm-audit-%{+yyyy.MM.dd}"
+```
+
+**Splunk:**
+
+```bash
+# Отправка через HTTP Event Collector
+docker compose logs -f hsm-service | \
+  grep '"component":"audit"' | \
+  while read line; do
+    curl -X POST https://splunk:8088/services/collector \
+      -H "Authorization: Splunk YOUR-HEC-TOKEN" \
+      -d "{\"event\": $line}"
+  done
+```
+
+### Примеры аудита
+
+**1. Успешное шифрование:**
+```json
+{
+  "time": "2026-01-15T10:30:45Z",
+  "level": "INFO",
+  "component": "audit",
+  "msg": "request",
+  "client_cn": "trading-service-1",
+  "client_ou": "Trading",
+  "operation": "encrypt",
+  "context": "exchange-key",
+  "key_id": "kek-exchange-v2",
+  "status": "success",
+  "duration_ms": 12
+}
+```
+
+**2. ACL отказ:**
+```json
+{
+  "time": "2026-01-15T10:31:00Z",
+  "level": "WARN",
+  "component": "audit",
+  "msg": "request",
+  "client_cn": "unauthorized-service",
+  "client_ou": "Unknown",
+  "operation": "decrypt",
+  "context": "exchange-key",
+  "status": "error",
+  "error": "acl_denied: OU 'Unknown' not allowed for context 'exchange-key'",
+  "duration_ms": 2
+}
+```
+
+**3. Отозванный сертификат:**
+```json
+{
+  "time": "2026-01-15T10:32:00Z",
+  "level": "WARN",
+  "component": "audit",
+  "msg": "request",
+  "client_cn": "compromised-service",
+  "client_ou": "Trading",
+  "operation": "encrypt",
+  "status": "error",
+  "error": "certificate_revoked: CN 'compromised-service' found in revoked.yaml",
+  "duration_ms": 1
+}
+```
+
+**4. Ротация ключа:**
+```json
+{
+  "time": "2026-01-15T14:30:00Z",
+  "level": "INFO",
+  "component": "audit",
+  "msg": "key_rotation",
+  "context": "exchange-key",
+  "old_key": "kek-exchange-v1",
+  "new_key": "kek-exchange-v2",
+  "performed_by": "hsm-admin",
+  "reason": "scheduled_90day_rotation"
+}
+```
+
+### Соответствие PCI DSS
+
+| Требование | Реализация | Подтверждение |
+|------------|-----------|---------------|
+| **10.2.2** | Audit log всех действий привилегированных пользователей | ✅ Логирование всех encrypt/decrypt операций |
+| **10.3.1** | User identification | ✅ client_cn из mTLS сертификата |
+| **10.3.2** | Type of event | ✅ operation (encrypt/decrypt) |
+| **10.3.3** | Date and time | ✅ timestamp (ISO 8601) |
+| **10.3.4** | Success/failure | ✅ status (success/error) |
+| **10.3.5** | Origination of event | ✅ client_ip |
+| **10.3.6** | Identity of affected data | ✅ context, key_id |
+| **10.4** | Time synchronization | ✅ UTC timestamps (NTP на серверах) |
+| **10.5** | Protect audit logs | ✅ Read-only монтирование, SIEM интеграция |
+| **10.6** | Review logs daily | 📊 Настройка алертов в SIEM |
+
+### Retention Policy (PCI DSS 10.7)
+
+**Минимальные требования:**
+- Аудит логи должны храниться минимум **1 год**
+- Минимум **3 месяца** должны быть онлайн (доступны для быстрого анализа)
+
+**Рекомендуемая конфигурация:**
+
+```bash
+# Journald (systemd)
+# /etc/systemd/journald.conf
+[Journal]
+SystemMaxUse=10G          # Максимум места на диске
+MaxRetentionSec=31536000  # 1 год (365 дней)
+MaxFileSec=2592000        # Ротация раз в 30 дней
+
+# Применить
+sudo systemctl restart systemd-journald
+```
+
+```yaml
+# Docker logging driver
+services:
+  hsm-service:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"      # Макс размер файла
+        max-file: "365"       # 365 файлов = ~1 год
+```
+
+**Архивация в S3/MinIO:**
+
+```bash
+#!/bin/bash
+# /etc/cron.daily/hsm-log-archive
+
+# Экспорт логов старше 3 месяцев в S3
+journalctl -u hsm-service \
+  --since "1 year ago" \
+  --until "3 months ago" \
+  -o json > /tmp/hsm-audit-archive.json
+
+# Сжатие
+gzip /tmp/hsm-audit-archive.json
+
+# Загрузка в S3
+aws s3 cp /tmp/hsm-audit-archive.json.gz \
+  s3://audit-logs/hsm-service/$(date +%Y-%m-%d).json.gz
+
+# Очистка
+rm /tmp/hsm-audit-archive.json.gz
+```
+
+### Мониторинг и алерты
+
+**Пример Grafana Dashboard:**
+
+```sql
+-- Kibana/Elasticsearch query
+-- Количество encrypt операций по клиентам (за последние 24 часа)
+{
+  "query": {
+    "bool": {
+      "must": [
+        {"match": {"component": "audit"}},
+        {"match": {"operation": "encrypt"}},
+        {"range": {"time": {"gte": "now-24h"}}}
+      ]
+    }
+  },
+  "aggs": {
+    "by_client": {
+      "terms": {"field": "client_cn.keyword"}
+    }
+  }
+}
+```
+
+**Алерты (Prometheus AlertManager):**
+
+```yaml
+# alerts.yml
+groups:
+  - name: hsm_audit
+    rules:
+      # Высокая частота ACL отказов
+      - alert: HighACLDenialRate
+        expr: rate(hsm_acl_denied_total[5m]) > 10
+        for: 5m
+        annotations:
+          summary: "High rate of ACL denials"
+          description: "More than 10 ACL denials per second in the last 5 minutes"
+      
+      # Использование отозванного сертификата
+      - alert: RevokedCertificateAttempt
+        expr: increase(hsm_revoked_cert_attempts[1h]) > 0
+        annotations:
+          summary: "Revoked certificate access attempt"
+          description: "Someone attempted to use a revoked certificate"
+```
+
+### Troubleshooting
+
+**Логи не появляются:**
+
+```bash
+# Проверить уровень логирования
+grep "level:" /app/config.yaml
+
+# Проверить, что component=audit не фильтруется
+docker compose logs hsm-service | grep audit | head -5
+
+# Включить debug для диагностики
+export LOG_LEVEL=debug
+docker compose restart hsm-service
+```
+
+**Слишком много логов:**
+
+```bash
+# Фильтр только ошибок
+docker compose logs hsm-service | jq 'select(.status=="error")'
+
+# Уменьшить verbosity
+logging:
+  level: warn  # Только предупреждения и ошибки
+```
+
+**Логи не пишутся в файл:**
+
+```bash
+# Docker: перенаправление stdout в файл
+docker compose logs -f hsm-service >> /var/log/hsm/audit.log &
+
+# Systemd: использовать journald с форвардингом
+journalctl -u hsm-service -f -o json | tee /var/log/hsm/audit.json
+```
+
 ## 🐳 Docker Compose
 
 ```yaml

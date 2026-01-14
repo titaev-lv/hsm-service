@@ -438,8 +438,6 @@ acl:
       - exchange-key   # Разрешен access к exchange-key
     2FA:              # OU=2FA
       - 2fa            # Разрешен access к 2fa
-    Database:         # OU=Database
-      []               # Нет доступа ни к чему
 ```
 
 ### Проверка OU в сертификате
@@ -737,5 +735,4 @@ encrypt('Hello World!').then(data => {
 Проблемы с API? 
 
 1. Проверьте [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-2. Создайте [GitHub Issue](https://github.com/...)
-3. Email: api-support@example.com
+2. Email: titaev@.com
