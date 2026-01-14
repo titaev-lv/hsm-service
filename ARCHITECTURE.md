@@ -255,7 +255,6 @@ hsm-service/
 ├── main.go                     # Entry point
 │
 ├── ARCHITECTURE.md             # Этот файл - архитектурная документация
-├── TECHNICAL_SPEC.md           # Техническое задание
 ├── README.md                   # Основная документация
 ├── API.md                      # API документация
 ├── PKI_SETUP.md                # Настройка PKI

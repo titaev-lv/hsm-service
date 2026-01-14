@@ -403,5 +403,5 @@ docker exec hsm-service ls -la /app/config.yaml
 ## См. также
 
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Отчет по аудиту безопасности
-- [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) - Техническая спецификация
+- [API.md](API.md) - API документация
 - PCI DSS v4.0 Requirement 3.6 - Управление криптографическими ключами
