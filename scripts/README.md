@@ -25,7 +25,7 @@ sudo ./scripts/check-key-rotation.sh
 
 # С настройкой Email оповещений
 export HSM_SEND_EMAIL=true
-export HSM_ALERT_EMAIL="ops@company.com"
+export HSM_ALERT_EMAIL="titaev@gmail.com"
 sudo ./scripts/check-key-rotation.sh
 
 # С Slack оповещениями
@@ -56,7 +56,7 @@ sudo ./scripts/check-key-rotation.sh
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 HSM_SEND_EMAIL=true
-HSM_ALERT_EMAIL=ops@company.com
+HSM_ALERT_EMAIL=titaev@gmail.com
 HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK
 
 0 9 * * * cd /home/user/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-cron.log 2>&1
@@ -274,7 +274,7 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/XXX
 HSM_SEND_EMAIL=true
-HSM_ALERT_EMAIL=ops@company.com
+HSM_ALERT_EMAIL=titaev@gmail.com
 
 # Проверка ротации каждый день в 9:00
 0 9 * * * root cd /opt/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-rotation-check.log 2>&1
@@ -337,7 +337,7 @@ Environment="AUTO_ROTATION_ENABLED=true"
 Environment="AUTO_CLEANUP_ENABLED=true"
 Environment="HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/XXX"
 Environment="HSM_SEND_EMAIL=true"
-Environment="HSM_ALERT_EMAIL=ops@company.com"
+Environment="HSM_ALERT_EMAIL=titaev@gmail.com"
 # HSM_PIN хранится в credentials (см. ниже)
 ExecStart=/opt/hsm-service/scripts/check-key-rotation.sh
 StandardOutput=append:/var/log/hsm-rotation-check.log
@@ -509,7 +509,7 @@ sudo ./scripts/check-key-rotation.sh
 
 ```bash
 # Проверка Email
-echo "Test" | mail -s "Test" ops@company.com
+echo "Test" | mail -s "Test" titaev@gmail.com
 
 # Проверка Slack webhook
 curl -X POST "$HSM_SLACK_WEBHOOK" -d '{"text":"Test"}'

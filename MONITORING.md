@@ -529,8 +529,8 @@ groups:
 ```yaml
 global:
   smtp_smarthost: 'smtp.example.com:587'
-  smtp_from: 'alerts@example.com'
-  smtp_auth_username: 'alerts@example.com'
+  smtp_from: 'titaev@gmail.com'
+  smtp_auth_username: 'titaev@gmail.com'
   smtp_auth_password: 'password'
 
 route:
@@ -560,13 +560,13 @@ route:
 receivers:
   - name: 'default'
     email_configs:
-      - to: 'devops@example.com'
+      - to: 'titaev@gmail.com'
   
   - name: 'pagerduty'
     pagerduty_configs:
       - service_key: 'YOUR_PAGERDUTY_KEY'
     email_configs:
-      - to: 'oncall@example.com'
+      - to: 'titaev@gmail.com'
         send_resolved: true
   
   - name: 'slack-warnings'

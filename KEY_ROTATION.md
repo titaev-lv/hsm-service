@@ -520,7 +520,7 @@ sudo systemctl status hsm-rotation-check.timer
 set -euo pipefail
 
 LOG_FILE="/var/log/hsm/rotation.log"
-ALERT_EMAIL="ops@company.com"
+ALERT_EMAIL="titaev@gmail.com"
 AUTO_ROTATE=${AUTO_ROTATE:-false}  # false = только алерты, true = автоматическая ротация
 
 log() {

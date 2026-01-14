@@ -708,6 +708,308 @@ scrape_configs:
 
 ---
 
+## Автоматическая ротация KEK
+
+### Настройка systemd timer для автоматической ротации
+
+**1. Создать systemd service:**
+
+```bash
+sudo nano /etc/systemd/system/hsm-rotation-check.service
+```
+
+**Содержимое:**
+```ini
+[Unit]
+Description=HSM Key Rotation Check
+After=network.target hsm-service.service
+
+[Service]
+Type=oneshot
+User=hsm
+WorkingDirectory=/opt/hsm-service
+Environment="HSM_PIN_FILE=/etc/hsm-service/pin.txt"
+Environment="AUTO_ROTATE=true"
+ExecStart=/opt/hsm-service/scripts/check-key-rotation.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**2. Создать systemd timer:**
+
+```bash
+sudo nano /etc/systemd/system/hsm-rotation-check.timer
+```
+
+**Содержимое:**
+```ini
+[Unit]
+Description=HSM Key Rotation Check Timer
+Requires=hsm-rotation-check.service
+
+[Timer]
+# Проверять каждый день в 3:00
+OnCalendar=daily
+OnCalendar=03:00
+# Запустить через 5 минут после boot
+OnBootSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+**3. Создать скрипт проверки:**
+
+```bash
+sudo nano /opt/hsm-service/scripts/check-key-rotation.sh
+```
+
+**Содержимое:**
+```bash
+#!/bin/bash
+set -euo pipefail
+
+LOG_FILE="/var/log/hsm-service/rotation.log"
+ALERT_EMAIL="${ALERT_EMAIL:-titaev@gmail.com}"
+AUTO_ROTATE="${AUTO_ROTATE:-false}"
+SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
+
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+check_rotation_status() {
+    /usr/local/bin/hsm-admin rotation-status | tee /tmp/rotation-status.txt
+}
+
+send_alert() {
+    local subject=$1
+    local body=$2
+    
+    # Email alert (опционально)
+    if command -v mail >/dev/null 2>&1; then
+        echo "$body" | mail -s "$subject" "$ALERT_EMAIL"
+    fi
+    
+    # Slack webhook (опционально)
+    if [[ -n "$SLACK_WEBHOOK" ]]; then
+        curl -X POST "$SLACK_WEBHOOK" \
+          -H 'Content-Type: application/json' \
+          -d "{\"text\":\"⚠️  $subject\n\n\`\`\`$body\`\`\`\"}"
+    fi
+}
+
+perform_rotation() {
+    local context=$1
+    
+    log "Starting automatic rotation for context: $context"
+    
+    if /usr/local/bin/hsm-admin rotate "$context"; then
+        log "✓ Rotation completed for $context"
+        
+        # Отправить webhook приложениям (опционально)
+        if [[ -n "${APP_WEBHOOK:-}" ]]; then
+            curl -X POST "$APP_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "{\"event\":\"key_rotation\",\"context\":\"$context\",\"timestamp\":\"$(date -Iseconds)\"}"
+        fi
+        
+        return 0
+    else
+        log "✗ Rotation failed for $context"
+        send_alert "HSM Rotation FAILED: $context" \
+                   "Automatic rotation failed. Manual intervention required.\n\nCheck logs: sudo journalctl -u hsm-service -n 50"
+        return 1
+    fi
+}
+
+main() {
+    log "Starting key rotation check..."
+    
+    check_rotation_status
+    
+    # Найти ключи, требующие ротации (поиск "NEEDS ROTATION")
+    OVERDUE_KEYS=$(grep "NEEDS ROTATION" /tmp/rotation-status.txt | awk '{print $3}' | tr -d ':' || true)
+    
+    if [[ -z "$OVERDUE_KEYS" ]]; then
+        log "All keys are up to date"
+        exit 0
+    fi
+    
+    log "Keys requiring rotation: $OVERDUE_KEYS"
+    
+    if [[ "$AUTO_ROTATE" == "true" ]]; then
+        # Автоматическая ротация
+        log "AUTO_ROTATE enabled, performing automatic rotation"
+        for context in $OVERDUE_KEYS; do
+            perform_rotation "$context"
+        done
+    else
+        # Только алерты
+        log "AUTO_ROTATE disabled, sending alerts only"
+        send_alert "HSM Keys Need Rotation" "$(cat /tmp/rotation-status.txt)"
+    fi
+}
+
+main
+```
+
+**4. Установить права:**
+
+```bash
+sudo chmod +x /opt/hsm-service/scripts/check-key-rotation.sh
+sudo mkdir -p /var/log/hsm-service
+sudo chown hsm:hsm /var/log/hsm-service
+```
+
+**5. Активировать timer:**
+
+```bash
+# Перезагрузить systemd
+sudo systemctl daemon-reload
+
+# Включить и запустить timer
+sudo systemctl enable hsm-rotation-check.timer
+sudo systemctl start hsm-rotation-check.timer
+
+# Проверить статус
+sudo systemctl status hsm-rotation-check.timer
+
+# Посмотреть следующий запуск
+sudo systemctl list-timers | grep hsm-rotation
+```
+
+**Вывод:**
+```
+NEXT                         LEFT          LAST  PASSED  UNIT                        ACTIVATES
+Thu 2026-01-16 03:00:00 UTC  11h left      n/a   n/a     hsm-rotation-check.timer    hsm-rotation-check.service
+```
+
+### Тестирование автоматической ротации
+
+**Запустить проверку вручную:**
+
+```bash
+# Запустить service вручную
+sudo systemctl start hsm-rotation-check.service
+
+# Посмотреть результат
+sudo journalctl -u hsm-rotation-check.service -n 50
+
+# Проверить лог
+sudo tail -f /var/log/hsm-service/rotation.log
+```
+
+**Симуляция просроченного ключа:**
+
+```bash
+# Изменить дату создания ключа в metadata.yaml
+sudo nano /var/lib/hsm-service/metadata.yaml
+
+# Изменить created_at на дату 91 день назад
+# created_at: '2025-10-15T00:00:00Z'
+
+# Запустить проверку
+sudo systemctl start hsm-rotation-check.service
+
+# Проверить, что ротация сработала
+sudo /usr/local/bin/hsm-admin rotation-status
+```
+
+### Настройка уведомлений
+
+**Email уведомления (опционально):**
+
+```bash
+# Установить mailutils
+sudo apt install -y mailutils
+
+# Настроить SMTP (например, через Gmail)
+sudo nano /etc/ssmtp/ssmtp.conf
+```
+
+**Slack webhook (рекомендуется):**
+
+```bash
+# Создать Incoming Webhook в Slack
+# https://api.slack.com/messaging/webhooks
+
+# Добавить в environment
+sudo nano /etc/systemd/system/hsm-rotation-check.service
+
+# В секцию [Service] добавить:
+Environment="SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+Environment="ALERT_EMAIL=titaev@gmail.com"
+Environment="APP_WEBHOOK=https://your-app.com/api/webhooks/key-rotation"
+
+# Применить
+sudo systemctl daemon-reload
+```
+
+### Режимы работы
+
+**1. Только алерты (по умолчанию):**
+
+```ini
+# /etc/systemd/system/hsm-rotation-check.service
+Environment="AUTO_ROTATE=false"
+```
+
+При обнаружении просроченных ключей:
+- ✅ Отправляет email/Slack уведомление
+- ❌ НЕ выполняет автоматическую ротацию
+- 👤 Требуется ручная ротация оператором
+
+**2. Автоматическая ротация:**
+
+```ini
+# /etc/systemd/system/hsm-rotation-check.service
+Environment="AUTO_ROTATE=true"
+```
+
+При обнаружении просроченных ключей:
+- ✅ Автоматически выполняет ротацию
+- ✅ Отправляет уведомление об успехе/ошибке
+- ✅ Отправляет webhook приложениям для re-encryption
+- ⚡ Zero-downtime через hot reload
+
+### Мониторинг ротации
+
+**Проверить статус ключей:**
+
+```bash
+sudo /usr/local/bin/hsm-admin rotation-status
+```
+
+**Проверить историю ротаций:**
+
+```bash
+# Логи ротации
+sudo tail -50 /var/log/hsm-service/rotation.log
+
+# Systemd journal
+sudo journalctl -u hsm-rotation-check.service --since "7 days ago"
+```
+
+**Метрики Prometheus (если настроен):**
+
+```promql
+# Дни до следующей ротации
+hsm_key_rotation_days_remaining{context="exchange-key"}
+
+# Количество успешных ротаций
+hsm_key_rotation_success_total
+
+# Количество ошибок ротации
+hsm_key_rotation_failed_total
+```
+
+---
+
 ## Бэкапы
 
 ### 1. Backup script
@@ -972,7 +1274,9 @@ sudo journalctl -u hsm-service -f
 - [ ] Настроен Prometheus мониторинг
 - [ ] Настроены алерты
 - [ ] Настроены автоматические бэкапы
+- [ ] Настроена автоматическая ротация KEK (systemd timer)
 - [ ] Протестирована ротация ключей
+- [ ] Настроены уведомления о ротации (email/Slack)
 - [ ] Настроен logrotate
 - [ ] Включен fail2ban
 - [ ] Проведен security audit
