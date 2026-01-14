@@ -256,7 +256,7 @@ log "✓ Manifest created"
 
 # === 7. Encrypt backup (опционально) ===
 # Uncomment if you want GPG encryption
-# GPG_KEY="titaev@gmail.com"
+# GPG_KEY="backup@example.com"
 # log "Encrypting backup..."
 # tar -czf - * | gpg --encrypt --recipient "$GPG_KEY" > "../backup-${DATE}.tar.gz.gpg"
 # log "✓ Backup encrypted"
@@ -734,7 +734,7 @@ rsync -avz -e "ssh -i /root/.ssh/backup_key" \
 ```bash
 # Encrypt and upload
 tar -czf - /var/backups/hsm-service/ | \
-  gpg --encrypt --recipient titaev@gmail.com | \
+  gpg --encrypt --recipient backup@example.com | \
   curl -T - https://backup-server/upload/hsm-backup-$(date +%Y%m%d).tar.gz.gpg
 ```
 
@@ -792,7 +792,7 @@ expr: (time() - hsm_last_backup_timestamp) / 86400 > 2
 # Encrypt backup with GPG
 tar -czf - /var/lib/softhsm/tokens/ | \
   gpg --encrypt \
-      --recipient titaev@gmail.com \
+      --recipient backup-key@example.com \
       --output tokens-encrypted.tar.gz.gpg
 
 # Decrypt

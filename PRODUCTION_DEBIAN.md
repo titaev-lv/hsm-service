@@ -774,7 +774,7 @@ sudo nano /opt/hsm-service/scripts/check-key-rotation.sh
 set -euo pipefail
 
 LOG_FILE="/var/log/hsm-service/rotation.log"
-ALERT_EMAIL="${ALERT_EMAIL:-titaev@gmail.com}"
+ALERT_EMAIL="${ALERT_EMAIL:-ops@company.com}"
 AUTO_ROTATE="${AUTO_ROTATE:-false}"
 SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
 
@@ -943,7 +943,7 @@ sudo nano /etc/systemd/system/hsm-rotation-check.service
 
 # В секцию [Service] добавить:
 Environment="SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-Environment="ALERT_EMAIL=titaev@gmail.com"
+Environment="ALERT_EMAIL=ops@company.com"
 Environment="APP_WEBHOOK=https://your-app.com/api/webhooks/key-rotation"
 
 # Применить
