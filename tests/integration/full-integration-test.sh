@@ -303,10 +303,10 @@ print_test "Create initial metadata.yaml with multi-version structure"
 cat > "$PROJECT_ROOT/metadata.yaml" << 'EOF'
 rotation:
   exchange-key:
-    current: kek-exchange-v1
+    current: kek-exchange-key-v1
     rotation_interval_days: 90
     versions:
-      - label: kek-exchange-v1
+      - label: kek-exchange-key-v1
         version: 1
         created_at: '2026-01-09T00:00:00Z'
   2fa:
@@ -375,9 +375,9 @@ fi
 print_success "HSM keys initialized"
 
 print_test "Verify keys loaded (check logs)"
-if ! docker logs hsm-service 2>&1 | grep -q "Loaded KEK: kek-exchange-v1"; then
+if ! docker logs hsm-service 2>&1 | grep -q "Loaded KEK: kek-exchange-key-v1"; then
     docker logs hsm-service
-    print_error "KEK kek-exchange-v1 not loaded"
+    print_error "KEK kek-exchange-key-v1 not loaded"
 fi
 if ! docker logs hsm-service 2>&1 | grep -q "Loaded KEK: kek-2fa-v1"; then
     docker logs hsm-service
@@ -471,8 +471,8 @@ if [ -z "$CIPHERTEXT" ]; then
     echo "ERROR: No ciphertext in response"
     print_error "Encryption failed - no ciphertext returned"
 fi
-if [ "$KEY_ID" != "kek-exchange-v1" ]; then
-    echo "Expected: kek-exchange-v1, Got: $KEY_ID"
+if [ "$KEY_ID" != "kek-exchange-key-v1" ]; then
+    echo "Expected: kek-exchange-key-v1, Got: $KEY_ID"
     print_error "Wrong key_id returned"
 fi
 print_success "Encryption successful (key: $KEY_ID)"
@@ -649,11 +649,11 @@ print_success "Key rotation completed"
 
 print_test "Test 8.3: Verify metadata.yaml updated"
 METADATA_CONTENT=$(cat "$PROJECT_ROOT/metadata.yaml")
-if ! echo "$METADATA_CONTENT" | grep -q "kek-exchange-v2"; then
+if ! echo "$METADATA_CONTENT" | grep -q "kek-exchange-key-v2"; then
     echo "$METADATA_CONTENT"
     print_error "metadata.yaml not updated with v2"
 fi
-if ! echo "$METADATA_CONTENT" | grep -q "current: kek-exchange-v2"; then
+if ! echo "$METADATA_CONTENT" | grep -q "current: kek-exchange-key-v2"; then
     echo "$METADATA_CONTENT"
     print_error "current pointer not updated to v2"
 fi
@@ -672,11 +672,11 @@ print_success "Service restarted"
 
 print_test "Test 8.5: Verify both versions loaded (overlap period)"
 LOGS=$(docker logs hsm-service 2>&1)
-if ! echo "$LOGS" | grep -q "Loaded KEK: kek-exchange-v1"; then
+if ! echo "$LOGS" | grep -q "Loaded KEK: kek-exchange-key-v1"; then
     echo "$LOGS"
     print_error "Old key (v1) not loaded after rotation"
 fi
-if ! echo "$LOGS" | grep -q "Loaded KEK: kek-exchange-v2"; then
+if ! echo "$LOGS" | grep -q "Loaded KEK: kek-exchange-key-v2"; then
     echo "$LOGS"
     print_error "New key (v2) not loaded after rotation"
 fi
@@ -693,7 +693,7 @@ DECRYPT_V1=$(curl -s --connect-timeout 10 --max-time 15 \
     --cert "$CLIENT_CERT" \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
-    -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$CIPHERTEXT\",\"key_id\":\"kek-exchange-v1\"}" \
+    -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$CIPHERTEXT\",\"key_id\":\"kek-exchange-key-v1\"}" \
     "$BASE_URL/decrypt" 2>&1)
 
 DECRYPTED_V1=$(echo "$DECRYPT_V1" | grep -o '"plaintext":"[^"]*"' | cut -d'"' -f4)
@@ -715,8 +715,8 @@ ENCRYPT_V2=$(curl -s --connect-timeout 10 --max-time 15 \
     "$BASE_URL/encrypt" 2>&1)
 
 KEY_ID_V2=$(echo "$ENCRYPT_V2" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
-if [ "$KEY_ID_V2" != "kek-exchange-v2" ]; then
-    echo "Expected: kek-exchange-v2, Got: $KEY_ID_V2"
+if [ "$KEY_ID_V2" != "kek-exchange-key-v2" ]; then
+    echo "Expected: kek-exchange-key-v2, Got: $KEY_ID_V2"
     echo "Response: $ENCRYPT_V2"
     print_error "New encryption not using v2 key"
 fi
@@ -856,9 +856,9 @@ echo ""
 cp "$PROJECT_ROOT/metadata.yaml" /tmp/metadata-before-backdate.yaml
 
 # Modify metadata with backdated timestamps
-sed -E "s/(label: kek-exchange-v1.*)/\1/; /label: kek-exchange-v1/,/created_at:/ s/created_at:.*/created_at: $DATE_60_DAYS_AGO/" /tmp/metadata-before-backdate.yaml | \
-sed -E "s/(label: kek-exchange-v2.*)/\1/; /label: kek-exchange-v2/,/created_at:/ s/created_at:.*/created_at: $DATE_60_DAYS_AGO/" | \
-sed -E "s/(label: kek-exchange-v3.*)/\1/; /label: kek-exchange-v3/,/created_at:/ s/created_at:.*/created_at: $DATE_15_DAYS_AGO/" > /tmp/metadata-backdated.yaml
+sed -E "s/(label: kek-exchange-key-v1.*)/\1/; /label: kek-exchange-key-v1/,/created_at:/ s/created_at:.*/created_at: $DATE_60_DAYS_AGO/" /tmp/metadata-before-backdate.yaml | \
+sed -E "s/(label: kek-exchange-key-v2.*)/\1/; /label: kek-exchange-key-v2/,/created_at:/ s/created_at:.*/created_at: $DATE_60_DAYS_AGO/" | \
+sed -E "s/(label: kek-exchange-key-v3.*)/\1/; /label: kek-exchange-key-v3/,/created_at:/ s/created_at:.*/created_at: $DATE_15_DAYS_AGO/" > /tmp/metadata-backdated.yaml
 
 # Stop container before modifying mounted file
 echo "Stopping container to modify metadata.yaml on host..."
@@ -952,10 +952,10 @@ echo "Resetting metadata and HSM to clean state for remaining tests..."
 cat > "$PROJECT_ROOT/metadata.yaml" << 'EOF'
 rotation:
   exchange-key:
-    current: kek-exchange-v1
+    current: kek-exchange-key-v1
     rotation_interval_days: 90
     versions:
-      - label: kek-exchange-v1
+      - label: kek-exchange-key-v1
         version: 1
         created_at: '2026-01-09T00:00:00Z'
   2fa:

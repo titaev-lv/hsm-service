@@ -35,7 +35,7 @@ RESPONSE=$(curl -s --cacert "$CA_CERT" --cert "$CLIENT_CERT" --key "$CLIENT_KEY"
 CIPHERTEXT=$(echo "$RESPONSE" | grep -o '"ciphertext":"[^"]*"' | cut -d'"' -f4)
 KEY_ID_V1=$(echo "$RESPONSE" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
 
-if [ -z "$CIPHERTEXT" ] || [ "$KEY_ID_V1" != "kek-exchange-v1" ]; then
+if [ -z "$CIPHERTEXT" ] || [ "$KEY_ID_V1" != "kek-exchange-key-v1" ]; then
     echo "Response: $RESPONSE"
     print_error "Failed to encrypt with v1"
 fi
@@ -76,8 +76,8 @@ NEW_RESPONSE=$(curl -s --cacert "$CA_CERT" --cert "$CLIENT_CERT" --key "$CLIENT_
     "$BASE_URL/encrypt")
 
 KEY_ID_V2=$(echo "$NEW_RESPONSE" | grep -o '"key_id":"[^"]*"' | cut -d'"' -f4)
-if [ "$KEY_ID_V2" != "kek-exchange-v2" ]; then
-    echo "Expected: kek-exchange-v2, Got: $KEY_ID_V2"
+if [ "$KEY_ID_V2" != "kek-exchange-key-v2" ]; then
+    echo "Expected: kek-exchange-key-v2, Got: $KEY_ID_V2"
     print_error "New encryption not using v2"
 fi
 print_success "New data encrypted with $KEY_ID_V2"
