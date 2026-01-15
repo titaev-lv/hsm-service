@@ -20,7 +20,7 @@ git clone <repository-url>
 cd hsm-service
 
 # Проверить что PKI готова
-ls -la pki/ca/ca.key pki/ca/ca.crt
+ls -la pki/ca/ca.crt
 ls -la pki/server/hsm-service.local.*
 ls -la pki/client/trading-service-1.*
 ```
