@@ -86,7 +86,7 @@ hsm-admin create-kek --label <label> --context <context>
 ```
 
 **Параметры**:
-- `--label` (обязательный) - уникальное имя KEK (например: `kek-exchange-v1`)
+- `--label` (обязательный) - уникальное имя KEK (например: `kek-exchange-key-v1`)
 - `--context` (обязательный) - контекст использования (например: `exchange-key`, `2fa`)
 
 **Пример**:
@@ -95,7 +95,7 @@ export HSM_PIN=1234
 
 # Create KEK for exchange-key context
 ./hsm-admin create-kek \
-  --label kek-exchange-v1 \
+  --label kek-exchange-key-v1 \
   --context exchange-key
 
 # Create KEK for 2FA context
@@ -107,7 +107,7 @@ export HSM_PIN=1234
 **Output**:
 ```
 Creating KEK...
-Label: kek-exchange-v1
+Label: kek-exchange-key-v1
 Context: exchange-key
 Type: AES-256-GCM
 
@@ -150,8 +150,8 @@ Total KEKs: 4
 
 Label                 | Context      | Handle | Created At          | Status
 ----------------------|--------------|--------|---------------------|--------
-kek-exchange-v1       | exchange-key | 5      | 2024-01-01 10:00:00 | active
-kek-exchange-v2       | exchange-key | 8      | 2024-03-15 14:30:00 | active
+kek-exchange-key-v1       | exchange-key | 5      | 2024-01-01 10:00:00 | active
+kek-exchange-key-v2       | exchange-key | 8      | 2024-03-15 14:30:00 | active
 kek-2fa-v1            | 2fa          | 6      | 2024-01-01 10:05:00 | active
 kek-2fa-v2            | 2fa          | 9      | 2024-03-20 11:00:00 | active
 ```
@@ -228,19 +228,19 @@ export HSM_PIN=1234
 ```
 Starting rotation for context: exchange-key
 Loaded metadata with 2 contexts
-Creating new KEK: kek-exchange-v3
-Executing: /app/create-kek kek-exchange-v3 1234 3
+Creating new KEK: kek-exchange-key-v3
+Executing: /app/create-kek kek-exchange-key-v3 1234 3
 Created metadata backup: metadata.yaml.backup-20260115-143000
 ✓ Key rotation completed:
   Context: exchange-key
-  Old key: kek-exchange-v2 (version 2)
-  New key: kek-exchange-v3 (version 3)
+  Old key: kek-exchange-key-v2 (version 2)
+  New key: kek-exchange-key-v3 (version 3)
 
 ⚠️  IMPORTANT:
   1. Restart the HSM service to load the new key
   2. Re-encrypt all data encrypted with the old key
   3. After 7 days overlap period, delete the old key:
-     hsm-admin delete kek-exchange-v2
+     hsm-admin delete kek-exchange-key-v2
 ```
 
 **Что происходит**:
@@ -282,7 +282,7 @@ Key Rotation Status:
 ====================
 
 ✓ Context: exchange-key
-  Current:           kek-exchange-v2
+  Current:           kek-exchange-key-v2
   Version:           2
   Total Versions:    2
   Created:           2026-01-09 14:30:00
@@ -330,9 +330,9 @@ hsm-admin cleanup-old-versions [--dry-run]
 # Delete versions older than: 30 days
 # DRY RUN MODE - No changes will be made
 #
-# Context: exchange-key (current: kek-exchange-v3)
-#   ⚠ kek-exchange-v1 (v1) - created 2025-10-15 - TOO OLD
-#   [DRY-RUN] Would delete kek-exchange-v1 (v1)
+# Context: exchange-key (current: kek-exchange-key-v3)
+#   ⚠ kek-exchange-key-v1 (v1) - created 2025-10-15 - TOO OLD
+#   [DRY-RUN] Would delete kek-exchange-key-v1 (v1)
 #   Summary: kept 2, deleted 1
 #
 # Context: 2fa (current: kek-2fa-v2)
@@ -348,10 +348,10 @@ hsm-admin cleanup-old-versions [--dry-run]
 # Max versions to keep: 3
 # Delete versions older than: 30 days
 #
-# Context: exchange-key (current: kek-exchange-v3)
-#   ⚠ kek-exchange-v1 (v1) - created 2025-10-15 - TOO OLD
+# Context: exchange-key (current: kek-exchange-key-v3)
+#   ⚠ kek-exchange-key-v1 (v1) - created 2025-10-15 - TOO OLD
 #   Delete 1 versions? (yes/no): yes
-#   ✓ Deleted kek-exchange-v1 (v1) from HSM
+#   ✓ Deleted kek-exchange-key-v1 (v1) from HSM
 #   Summary: kept 2, deleted 1
 #
 # ✓ Old metadata backed up to: metadata.yaml.backup.20260115-143500
@@ -393,8 +393,8 @@ hsm-admin update-checksums
 Computing KEK checksums...
 
 Context: exchange-key
-  ✓ kek-exchange-v1 (v1): checksum already up-to-date (a1b2c3d4...)
-  ✓ kek-exchange-v2 (v2): checksum already up-to-date (x1y2z3w4...)
+  ✓ kek-exchange-key-v1 (v1): checksum already up-to-date (a1b2c3d4...)
+  ✓ kek-exchange-key-v2 (v2): checksum already up-to-date (x1y2z3w4...)
 
 Context: 2fa
   + kek-2fa-v1 (v1): NEW checksum m1n2o3p4...
@@ -446,14 +446,14 @@ hsm-admin export-metadata [--output <file>]
       "versions": [
         {
           "version": "v3",
-          "label": "kek-exchange-v3",
+          "label": "kek-exchange-key-v3",
           "created_at": "2024-03-15T14:30:00Z",
           "checksum": "a1b2c3d4e5f6...",
           "status": "active"
         },
         {
           "version": "v2",
-          "label": "kek-exchange-v2",
+          "label": "kek-exchange-key-v2",
           "created_at": "2024-02-01T10:00:00Z",
           "checksum": "x1y2z3w4v5...",
           "status": "old"
@@ -483,7 +483,7 @@ hsm-admin export-metadata [--output <file>]
 export HSM_PIN=1234
 
 # 2. Create initial KEKs
-./hsm-admin create-kek --label kek-exchange-v1 --context exchange-key
+./hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key
 ./hsm-admin create-kek --label kek-2fa-v1 --context 2fa
 
 # 3. Verify
@@ -675,7 +675,7 @@ sudo chmod 644 /var/lib/hsm-service/metadata.yaml
 ./hsm-admin list-kek
 
 # Use different label
-./hsm-admin create-kek --label kek-exchange-v2 --context exchange-key
+./hsm-admin create-kek --label kek-exchange-key-v2 --context exchange-key
 ```
 
 ---

@@ -37,7 +37,7 @@ graph TB
         CRYPTO[Crypto Engine<br/>AES-256-GCM]
         
         subgraph "SoftHSM v2"
-            KEK1[kek-exchange-v1<br/>AES-256]
+            KEK1[kek-exchange-key-v1<br/>AES-256]
             KEK2[kek-2fa-v1<br/>AES-256]
         end
     end
@@ -351,10 +351,10 @@ logging:
 ```yaml
 rotation:
   exchange-key:
-    current: kek-exchange-v1              # Текущий активный ключ
+    current: kek-exchange-key-v1              # Текущий активный ключ
     rotation_interval_days: 90            # Интервал ротации
     versions:
-      - label: kek-exchange-v1            # Label ключа в HSM
+      - label: kek-exchange-key-v1            # Label ключа в HSM
         version: 1                        # Номер версии
         created_at: '2026-01-09T00:00:00Z'  # Дата создания
   
@@ -368,12 +368,12 @@ rotation:
 
 # После ротации:
 # exchange-key:
-#   current: kek-exchange-v2
+#   current: kek-exchange-key-v2
 #   versions:
-#     - label: kek-exchange-v1
+#     - label: kek-exchange-key-v1
 #       version: 1
 #       created_at: '2026-01-09T00:00:00Z'
-#     - label: kek-exchange-v2
+#     - label: kek-exchange-key-v2
 #       version: 2
 #       created_at: '2026-04-09T00:00:00Z'
 ```
@@ -431,13 +431,13 @@ volumes:
 ```mermaid
 graph TD
     subgraph "HSM (SoftHSM v2)"
-        KEK1[KEK: kek-exchange-v1<br/>AES-256<br/>CKA_EXTRACTABLE=false]
+        KEK1[KEK: kek-exchange-key-v1<br/>AES-256<br/>CKA_EXTRACTABLE=false]
         KEK2[KEK: kek-2fa-v1<br/>AES-256<br/>CKA_EXTRACTABLE=false]
     end
     
     subgraph "Trading Services"
-        DEK1[DEK #1<br/>encrypted by kek-exchange-v1]
-        DEK2[DEK #2<br/>encrypted by kek-exchange-v1]
+        DEK1[DEK #1<br/>encrypted by kek-exchange-key-v1]
+        DEK2[DEK #2<br/>encrypted by kek-exchange-key-v1]
         
         KEY1[Exchange API Key #1<br/>encrypted by DEK #1]
         KEY2[Exchange API Key #2<br/>encrypted by DEK #2]
@@ -463,7 +463,7 @@ graph TD
 
 ```
 1. Trading Service генерирует DEK локально
-2. HSM Service шифрует DEK с помощью kek-exchange-v1
+2. HSM Service шифрует DEK с помощью kek-exchange-key-v1
 3. Trading Service хранит encrypted_DEK в БД
 4. Trading Service использует DEK для шифрования API ключей бирж
 5. При необходимости Trading Service расшифровывает DEK через HSM
@@ -558,8 +558,8 @@ hsm:
 # Поддержка нескольких версий KEK одновременно
 KEK Lifecycle:
 
-kek-exchange-v1:  [ACTIVE]    - используется для новых encrypt
-kek-exchange-v2:  [PENDING]   - создан, но не активен
+kek-exchange-key-v1:  [ACTIVE]    - используется для новых encrypt
+kek-exchange-key-v2:  [PENDING]   - создан, но не активен
 kek-2fa-v1:       [ACTIVE]
 ```
 
@@ -579,17 +579,17 @@ d
 ```bash
 # 1. Создать новую версию ключа
 hsm-admin rotate exchange-key
-# Output: Created kek-exchange-v2, updated metadata.yaml
+# Output: Created kek-exchange-key-v2, updated metadata.yaml
 
 # 2. Metadata.yaml обновлен автоматически:
 # rotation:
 #   exchange-key:
-#     label: kek-exchange-v2
+#     label: kek-exchange-key-v2
 #     version: 2
 #     created_at: '2026-01-10T15:30:00Z'
 
 # 3. HSM Service автоматически перезагружает metadata.yaml в течение 30 сек
-#    - Загружает kek-exchange-v2 из HSM
+#    - Загружает kek-exchange-key-v2 из HSM
 #    - Атомарно переключается на новую версию
 #    - Старые ключи остаются доступны для decrypt
 #    - ZERO DOWNTIME, клиенты не видят прерываний
@@ -933,15 +933,15 @@ sequenceDiagram
     Handler->>Handler: Decode base64 plaintext
     Handler->>Handler: Build AAD = "exchange-key|trading-service-1"
     
-    Handler->>Crypto: Encrypt(plaintext, AAD, key_id="kek-exchange-v1")
-    Crypto->>HSM: Find key by label "kek-exchange-v1"
+    Handler->>Crypto: Encrypt(plaintext, AAD, key_id="kek-exchange-key-v1")
+    Crypto->>HSM: Find key by label "kek-exchange-key-v1"
     Crypto->>HSM: Generate random nonce (12 bytes)
     Crypto->>HSM: AES-GCM Encrypt
     HSM-->>Crypto: nonce || ciphertext || tag
     
     Crypto->>Handler: Encrypted data
     Handler->>Handler: Base64 encode
-    Handler-->>Client: {ciphertext:"base64", key_id:"kek-exchange-v1"}
+    Handler-->>Client: {ciphertext:"base64", key_id:"kek-exchange-key-v1"}
     
     Note over Client: Store ciphertext in database
 ```
@@ -958,7 +958,7 @@ sequenceDiagram
     participant HSM as SoftHSM
 
     Client->>TLS: POST /decrypt (mTLS)
-    Note over Client,TLS: {context:"exchange-key", ciphertext:"base64", key_id:"kek-exchange-v1"}
+    Note over Client,TLS: {context:"exchange-key", ciphertext:"base64", key_id:"kek-exchange-key-v1"}
     
     TLS->>TLS: Verify client certificate
     TLS->>ACL: Extract CN & OU
@@ -970,7 +970,7 @@ sequenceDiagram
     Handler->>Handler: Parse nonce || ciphertext || tag
     
     Handler->>Crypto: Decrypt(ciphertext, nonce, tag, AAD, key_id)
-    Crypto->>HSM: Find key by label "kek-exchange-v1"
+    Crypto->>HSM: Find key by label "kek-exchange-key-v1"
     Crypto->>HSM: AES-GCM Decrypt with AAD verification
     
     alt AAD Mismatch
@@ -992,7 +992,7 @@ sequenceDiagram
 ### Threat Model
 
 **Защищаемые активы:**
-1. KEK (kek-exchange-v1, kek-2fa-v1) - КРИТИЧНО
+1. KEK (kek-exchange-key-v1, kek-2fa-v1) - КРИТИЧНО
 2. Plaintext данные в транзите
 3. Приватные ключи сертификатов
 
@@ -1186,7 +1186,7 @@ Response:
   "status": "healthy",
   "hsm_available": true,
   "kek_status": {
-    "kek-exchange-v1": "available",
+    "kek-exchange-key-v1": "available",
     "kek-2fa-v1": "available"
   },
   "uptime_seconds": 3600
@@ -1203,7 +1203,7 @@ Response:
   "client_ip": "10.0.0.5",
   "operation": "encrypt",
   "context": "exchange-key",
-  "key_id": "kek-exchange-v1",
+  "key_id": "kek-exchange-key-v1",
   "status": "success",
   "duration_ms": 5
 }

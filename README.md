@@ -27,7 +27,7 @@ graph TB
         CRYPTO[Crypto Engine<br/>AES-256-GCM]
         
         subgraph "SoftHSM v2"
-            KEK1[kek-exchange-v1<br/>AES-256]
+            KEK1[kek-exchange-key-v1<br/>AES-256]
             KEK2[kek-2fa-v1<br/>AES-256]
         end
     end
@@ -80,12 +80,12 @@ graph TB
 ```yaml
 rotation:
   exchange-key:
-    current: kek-exchange-v2      # Активная версия для новых операций
+    current: kek-exchange-key-v2      # Активная версия для новых операций
     versions:
-      - label: kek-exchange-v1    # Старая версия (для расшифровки)
+      - label: kek-exchange-key-v1    # Старая версия (для расшифровки)
         version: 1
         created_at: '2026-01-09T00:00:00Z'
-      - label: kek-exchange-v2    # Новая версия
+      - label: kek-exchange-key-v2    # Новая версия
         version: 2
         created_at: '2026-01-16T10:30:00Z'
 ```
@@ -294,7 +294,7 @@ flowchart LR
   "client_ou": "Trading",
   "operation": "encrypt",
   "context": "exchange-key",
-  "kek_alias": "kek-exchange-v2",
+  "kek_alias": "kek-exchange-key-v2",
   "status": "success",
   "request_id": "req-abc123"
 }
@@ -621,7 +621,7 @@ cd pki
   - Max версий: 3 (настраивается через `max_versions`)
   - Auto-cleanup: версии старше 30 дней (настраивается через `cleanup_after_days`)
   - PCI DSS compliant - автоматическая очистка устаревших ключей
-- **Версионирование:** kek-exchange-v1 → kek-exchange-v2 → kek-exchange-v3...
+- **Версионирование:** kek-exchange-key-v1 → kek-exchange-key-v2 → kek-exchange-key-v3...
 - **Динамические ID:** Каждая версия получает уникальный 16-значный hex ID на основе timestamp
 - **Zero-downtime:** Старые данные расшифровываются v1, новые шифруются v2
 - **Автоматические проверки:** При старте сервиса проверяются просроченные ключи и избыточные версии
@@ -655,7 +655,7 @@ acl:
 rotation:
   exchange-key:
     rotation_interval_days: 90  # PCI DSS compliant
-    current: kek-exchange-v1
+    current: kek-exchange-key-v1
     versions: [...]
 ```
 
@@ -664,12 +664,12 @@ rotation:
 ```yaml
 rotation:
   exchange-key:
-    current: kek-exchange-v2     # Текущая активная версия
+    current: kek-exchange-key-v2     # Текущая активная версия
     versions:
-      - label: kek-exchange-v1   # Старая версия (доступна для decrypt)
+      - label: kek-exchange-key-v1   # Старая версия (доступна для decrypt)
         version: 1
         created_at: '2026-01-09T00:00:00Z'
-      - label: kek-exchange-v2   # Новая версия (используется для encrypt)
+      - label: kek-exchange-key-v2   # Новая версия (используется для encrypt)
         version: 2
         created_at: '2026-01-16T10:30:00Z'
   
@@ -736,7 +736,7 @@ HSM Service реализует **полное audit logging** всех крип�
 | `client_ip` | IP адрес клиента | `10.0.0.15` |
 | `operation` | Тип операции | `encrypt` или `decrypt` |
 | `context` | Контекст ключа | `exchange-key`, `2fa` |
-| `key_id` | Использованный KEK | `kek-exchange-v2` |
+| `key_id` | Использованный KEK | `kek-exchange-key-v2` |
 | `status` | Статус операции | `success` или `error` |
 | `error` | Сообщение об ошибке (если есть) | `acl_denied: OU not allowed` |
 | `duration_ms` | Время выполнения в миллисекундах | `12` |
@@ -772,7 +772,7 @@ HSM Service реализует **полное audit logging** всех крип�
   "path": "/encrypt",
   "operation": "encrypt",
   "context": "exchange-key",
-  "key_id": "kek-exchange-v2",
+  "key_id": "kek-exchange-key-v2",
   "status": "success",
   "duration_ms": 12,
   "request_id": "req-abc123def456"
@@ -782,7 +782,7 @@ HSM Service реализует **полное audit logging** всех крип�
 **Text format (для debugging):**
 
 ```
-time=2026-01-15T10:30:45Z level=INFO component=audit msg=request client_cn=trading-service-1 client_ou=Trading operation=encrypt context=exchange-key key_id=kek-exchange-v2 status=success duration_ms=12
+time=2026-01-15T10:30:45Z level=INFO component=audit msg=request client_cn=trading-service-1 client_ou=Trading operation=encrypt context=exchange-key key_id=kek-exchange-key-v2 status=success duration_ms=12
 ```
 
 ### Конфигурация
@@ -1002,7 +1002,7 @@ docker compose logs -f hsm-service | \
   "client_ou": "Trading",
   "operation": "encrypt",
   "context": "exchange-key",
-  "key_id": "kek-exchange-v2",
+  "key_id": "kek-exchange-key-v2",
   "status": "success",
   "duration_ms": 12
 }
@@ -1049,8 +1049,8 @@ docker compose logs -f hsm-service | \
   "component": "audit",
   "msg": "key_rotation",
   "context": "exchange-key",
-  "old_key": "kek-exchange-v1",
-  "new_key": "kek-exchange-v2",
+  "old_key": "kek-exchange-key-v1",
+  "new_key": "kek-exchange-key-v2",
   "performed_by": "hsm-admin",
   "reason": "scheduled_90day_rotation"
 }
@@ -1311,7 +1311,7 @@ go test ./internal/...
   "client_cn": "hsm-trading-client-1",
   "client_ou": "Trading",
   "context": "exchange-key",
-  "key_id": "kek-exchange-v2",
+  "key_id": "kek-exchange-key-v2",
   "operation": "encrypt",
   "duration_ms": 12
 }

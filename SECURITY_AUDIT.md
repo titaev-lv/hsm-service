@@ -364,7 +364,7 @@ tlsConfig.OCSPStapling = true
    
    # Verify checksums (automatic on service restart)
    docker restart hsm-service
-   # Logs will show: "KEK integrity verified: kek-exchange-v1"
+   # Logs will show: "KEK integrity verified: kek-exchange-key-v1"
    ```
 
 2. **✅ FIXED: AAD validation enforced on decrypt**

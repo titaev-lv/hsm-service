@@ -18,7 +18,7 @@ export HSM_PIN=1234
 KEKs configured in config.yaml:
 
 1. Config Key: exchange-key
-   Label: kek-exchange-v1
+   Label: kek-exchange-key-v1
    Type: aes
 
 2. Config Key: 2fa
@@ -110,7 +110,7 @@ Next steps:
   "keks": [
     {
       "config_key": "exchange-key",
-      "label": "kek-exchange-v1",
+      "label": "kek-exchange-key-v1",
       "type": "aes"
     },
     {
@@ -147,21 +147,21 @@ Next steps:
 
 ### Ротация KEK
 
-1. Создайте новый KEK: `kek-exchange-v2`
+1. Создайте новый KEK: `kek-exchange-key-v2`
 2. Обновите config.yaml:
 ```yaml
 keys:
   exchange-key-new:
-    label: kek-exchange-v2
+    label: kek-exchange-key-v2
     type: aes
   exchange-key-old:
-    label: kek-exchange-v1
+    label: kek-exchange-key-v1
     type: aes
 ```
 3. Перешифруйте данные через API
 4. Удалите старый KEK:
 ```bash
-./hsm-admin delete-kek --label kek-exchange-v1 --confirm
+./hsm-admin delete-kek --label kek-exchange-key-v1 --confirm
 ```
 
 ### Проверка доступности KEK

@@ -58,7 +58,7 @@ echo "✓ Found $KEK_COUNT KEK(s) in HSM token"
 # Check if required KEKs exist by label
 CHECK_KEK_EXCHANGE=$(pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
   --login --pin "$TOKEN_PIN" \
-  --list-objects --type secrkey 2>/dev/null | grep -c "label:.*kek-exchange-v1" || true)
+  --list-objects --type secrkey 2>/dev/null | grep -c "label:.*kek-exchange-key-v1" || true)
 
 CHECK_KEK_2FA=$(pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
   --login --pin "$TOKEN_PIN" \
@@ -68,11 +68,11 @@ CHECK_KEK_2FA=$(pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
 CREATED_ANY=false
 
 if [ "$CHECK_KEK_EXCHANGE" -eq 0 ]; then
-    echo "⚠️  kek-exchange-v1 not found. Creating..."
-    /app/create-kek "kek-exchange-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-exchange-v1"
+    echo "⚠️  kek-exchange-key-v1 not found. Creating..."
+    /app/create-kek "kek-exchange-key-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-exchange-key-v1"
     CREATED_ANY=true
 else
-    echo "✓ kek-exchange-v1 already exists"
+    echo "✓ kek-exchange-key-v1 already exists"
 fi
 
 if [ "$CHECK_KEK_2FA" -eq 0 ]; then

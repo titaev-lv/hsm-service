@@ -15,7 +15,7 @@ Simple utility to create AES-256 KEKs in HSM using low-level PKCS#11 API.
 ```
 
 **Arguments:**
-- `label` - Key label (e.g., "kek-exchange-v1")
+- `label` - Key label (e.g., "kek-exchange-key-v1")
 - `id-hex` - Key ID in hex format (e.g., "01", "02", "ff")
 - `pin` - HSM user PIN
 
@@ -72,7 +72,7 @@ docker-compose restart
 ## ID Assignment
 
 Use unique hex IDs for each KEK:
-- `01` - kek-exchange-v1
+- `01` - kek-exchange-key-v1
 - `02` - kek-2fa-v1
 - `03` - kek-payment-v1
 - `04-ff` - Available for new KEKs

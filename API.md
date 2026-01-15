@@ -58,7 +58,7 @@ Content-Type: application/json
 ```json
 {
   "ciphertext": "AQIDBAgAAAAAAAAAAAAAAAAAAAAAAAA...",
-  "key_id": "kek-exchange-v1"
+  "key_id": "kek-exchange-key-v1"
 }
 ```
 
@@ -241,7 +241,7 @@ Content-Type: application/json
 {
   "context": "exchange-key",
   "ciphertext": "AQIDBAgAAAAAAAAAAAAAAAAAAAAAAAA...",
-  "key_id": "kek-exchange-v1"
+  "key_id": "kek-exchange-key-v1"
 }
 ```
 
@@ -310,7 +310,7 @@ curl -X POST https://localhost:8443/decrypt \
   -d '{
     "context": "exchange-key",
     "ciphertext": "AQIDBAgAAAAAAAAAAAAAAAAAAAAAAAA...",
-    "key_id": "kek-exchange-v1"
+    "key_id": "kek-exchange-key-v1"
   }'
 ```
 
@@ -325,7 +325,7 @@ response = requests.post(
     json={
         'context': 'exchange-key',
         'ciphertext': ciphertext,  # From encrypt response
-        'key_id': 'kek-exchange-v1'
+        'key_id': 'kek-exchange-key-v1'
     }
 )
 
@@ -355,7 +355,7 @@ Host: localhost:8443
 ```json
 {
   "status": "healthy",
-  "active_keys": ["kek-exchange-v1", "kek-2fa-v1"]
+  "active_keys": ["kek-exchange-key-v1", "kek-2fa-v1"]
 }
 ```
 

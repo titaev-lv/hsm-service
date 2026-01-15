@@ -33,13 +33,13 @@ hsm:
 ```yaml
 rotation:
   exchange-key:
-    current: kek-exchange-v2      # Текущий активный ключ
+    current: kek-exchange-key-v2      # Текущий активный ключ
     rotation_interval_days: 90    # Период ротации
     versions:
-      - label: kek-exchange-v2    # Новый ключ
+      - label: kek-exchange-key-v2    # Новый ключ
         version: 2
         created_at: '2026-01-09T14:30:00Z'
-      - label: kek-exchange-v1    # Старый ключ (период overlap)
+      - label: kek-exchange-key-v1    # Старый ключ (период overlap)
         version: 1
         created_at: '2025-10-10T10:00:00Z'
 ```
@@ -71,7 +71,7 @@ journalctl -u hsm-service -f | grep "reload"
 
 - **Интервал по умолчанию**: 90 дней (PCI DSS Requirement 3.6.4)
 - **Период перекрытия**: 7-30 дней (оба ключа работают одновременно)
-- **Версионирование**: kek-exchange-v1 → kek-exchange-v2 → kek-exchange-v3
+- **Версионирование**: kek-exchange-key-v1 → kek-exchange-key-v2 → kek-exchange-key-v3
 - **Автоматическая очистка**: Старые версии удаляются через `cleanup_after_days` (config.yaml)
 
 ## Проверка статуса ротации
@@ -92,7 +92,7 @@ Key Rotation Status:
 ====================
 
 ✓ Context: exchange-key
-  Label:             kek-exchange-v2
+  Label:             kek-exchange-key-v2
   Version:           2
   Created:           2026-01-09 14:30:00
   Rotation Interval: 90 days
@@ -128,15 +128,15 @@ sudo -E /usr/local/bin/hsm-admin rotate exchange-key
 
 **Что происходит:**
 1. Генерация нового номера версии (v1 → v2)
-2. Создание нового KEK в HSM с меткой `kek-exchange-v2`
+2. Создание нового KEK в HSM с меткой `kek-exchange-key-v2`
 3. **Обновление metadata.yaml** (добавление новой версии в список)
 4. Создание резервной копии `metadata.yaml.backup-TIMESTAMP`
 5. **config.yaml НЕ изменяется** (он статический)
 
 **Пример вывода:**
 ```
-Creating new KEK: kek-exchange-v2
-✓ Created KEK: kek-exchange-v2 (handle: 3, ID: 02, version: 2)
+Creating new KEK: kek-exchange-key-v2
+✓ Created KEK: kek-exchange-key-v2 (handle: 3, ID: 02, version: 2)
 ✓ Updated metadata.yaml with new version
 Created backup: metadata.yaml.backup-20260109-143000
 
@@ -192,8 +192,8 @@ curl -sk https://hsm-service.local:8443/health \
 ```json
 {
   "kek-2fa-v1": "available",
-  "kek-exchange-v1": "available",
-  "kek-exchange-v2": "available"
+  "kek-exchange-key-v1": "available",
+  "kek-exchange-key-v2": "available"
 }
 ```
 
@@ -216,8 +216,8 @@ curl -sk https://hsm-service.local:8443/health \
 curl -sk https://hsm-service.local:8443/health | jq -r '.kek_status | keys[]'
 
 # Вывод показывает все доступные версии:
-# kek-exchange-v1
-# kek-exchange-v2  ← новая версия обнаружена!
+# kek-exchange-key-v1
+# kek-exchange-key-v2  ← новая версия обнаружена!
 # kek-2fa-v1
 ```
 
@@ -311,7 +311,7 @@ def reencrypt_batch(records):
                          cert=(CERT, KEY),
                          verify=CA)
         new_ciphertext = r.json()['ciphertext']
-        new_key_id = r.json()['key_id']  # kek-exchange-v2
+        new_key_id = r.json()['key_id']  # kek-exchange-key-v2
         
         # 3. Обновить БД
         update_record(record['id'], new_ciphertext, new_key_id)
@@ -404,8 +404,8 @@ ORDER BY key_id;
 
 -- Результат показывает прогресс:
 -- key_id            | records | oldest_update       | newest_update
--- kek-exchange-v1   | 1200    | 2025-10-10 10:00:00 | 2026-01-08 15:30:00
--- kek-exchange-v2   | 8800    | 2026-01-09 14:45:00 | 2026-01-09 18:20:00
+-- kek-exchange-key-v1   | 1200    | 2025-10-10 10:00:00 | 2026-01-08 15:30:00
+-- kek-exchange-key-v2   | 8800    | 2026-01-09 14:45:00 | 2026-01-09 18:20:00
 -- ↑ 88% перешифровано
 ```
 
@@ -421,7 +421,7 @@ ORDER BY key_id;
 
 ```sql
 -- Убедиться, что все данные перешифрованы
-SELECT COUNT(*) FROM encrypted_deks WHERE key_id = 'kek-exchange-v1';
+SELECT COUNT(*) FROM encrypted_deks WHERE key_id = 'kek-exchange-key-v1';
 -- Должно быть 0
 ```
 
@@ -461,10 +461,10 @@ hsm:
 ```yaml
 rotation:
   exchange-key:
-    current: kek-exchange-v1
+    current: kek-exchange-key-v1
     rotation_interval_days: 90  # Автоматическая ротация каждые 90 дней
     versions:
-      - label: kek-exchange-v1
+      - label: kek-exchange-key-v1
         version: 1
         created_at: '2026-01-09T00:00:00Z'
 ```
@@ -681,7 +681,7 @@ SELECT
     COUNT(*) as remaining,
     COUNT(*) * 100.0 / (SELECT COUNT(*) FROM encrypted_deks) as percent_remaining
 FROM encrypted_deks
-WHERE key_id = 'kek-exchange-v1'  -- Скомпрометированная версия
+WHERE key_id = 'kek-exchange-key-v1'  -- Скомпрометированная версия
 GROUP BY key_id;
 ```
 
@@ -691,7 +691,7 @@ GROUP BY key_id;
 
 ```bash
 # Финальная проверка
-if [[ $(psql -t -c "SELECT COUNT(*) FROM encrypted_deks WHERE key_id='kek-exchange-v1'") -eq 0 ]]; then
+if [[ $(psql -t -c "SELECT COUNT(*) FROM encrypted_deks WHERE key_id='kek-exchange-key-v1'") -eq 0 ]]; then
     echo "✓ All data re-encrypted, safe to delete old key"
     sudo /usr/local/bin/hsm-admin cleanup exchange-key --version 1 --confirm
 else
@@ -705,7 +705,7 @@ fi
 ```bash
 # 1. Просмотр логов доступа к скомпрометированному ключу
 journalctl -u hsm-service --since "7 days ago" | \
-  grep "kek-exchange-v1" | \
+  grep "kek-exchange-key-v1" | \
   grep -E "decrypt|encrypt" > /tmp/compromised-key-audit.log
 
 # 2. Уведомление security team
@@ -727,7 +727,7 @@ mail -s "URGENT: KEK Compromised - exchange-key-v1" security@company.com < /tmp/
 Формат: `kek-<context>-v<version>`
 
 **Примеры:**
-- kek-exchange-v1, kek-exchange-v2, kek-exchange-v3
+- kek-exchange-key-v1, kek-exchange-key-v2, kek-exchange-key-v3
 - kek-2fa-v1, kek-2fa-v2
 - kek-payment-v1
 
@@ -880,8 +880,8 @@ sudo /opt/hsm-service/scripts/backup-hsm-token.sh
 1. **Changelog** всех ротаций:
 ```markdown
 ## 2026-01-09: exchange-key rotation
-- Old: kek-exchange-v1 (created 2025-10-10)
-- New: kek-exchange-v2 (created 2026-01-09)
+- Old: kek-exchange-key-v1 (created 2025-10-10)
+- New: kek-exchange-key-v2 (created 2026-01-09)
 - Reason: Scheduled 90-day rotation
 - Completed by: ops-team
 - Re-encryption: 10,500 records (4 hours)

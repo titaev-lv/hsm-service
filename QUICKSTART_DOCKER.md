@@ -27,7 +27,6 @@ ls -la pki/client/trading-service-1.*
 
 **Ожидаемый вывод**:
 ```
-pki/ca/ca.key                      ✓
 pki/ca/ca.crt                      ✓
 pki/server/hsm-service.local.crt   ✓
 pki/server/hsm-service.local.key   ✓
@@ -47,9 +46,9 @@ pki/client/trading-service-1.key   ✓
 ```yaml
 rotation:
   exchange-key:
-    current: kek-exchange-v1
+    current: kek-exchange-key-v1
     versions:
-      - label: kek-exchange-v1
+      - label: kek-exchange-key-v1
         version: 1
         created_at: '2026-01-10T12:00:00Z'
   2fa:
@@ -89,7 +88,7 @@ INFO  Initializing SoftHSM token...
 INFO  Loading KEK from inventory...
 INFO  Starting HSM service on port 8443
 INFO  started revoked.yaml auto-reload interval=30s
-INFO  Loaded 2 KEKs: [kek-exchange-v1 kek-2fa-v1]
+INFO  Loaded 2 KEKs: [kek-exchange-key-v1 kek-2fa-v1]
 ```
 
 ---
@@ -106,7 +105,7 @@ docker exec hsm-service /app/hsm-admin list-kek
 **Ожидаемый вывод**:
 ```
 KEK objects in HSM:
-  Label: kek-exchange-v1, ID: 01, Type: AES (256 bits)
+  Label: kek-exchange-key-v1, ID: 01, Type: AES (256 bits)
   Label: kek-2fa-v1, ID: 01, Type: AES (256 bits)
 
 Total: 2 KEK(s)
@@ -114,7 +113,7 @@ Total: 2 KEK(s)
 
 **Что произошло при запуске**:
 - Скрипт `init-hsm.sh` инициализировал SoftHSM токен
-- Создал KEK ключи: `kek-exchange-v1` и `kek-2fa-v1`
+- Создал KEK ключи: `kek-exchange-key-v1` и `kek-2fa-v1`
 - Обновил `metadata.yaml` с метаданными ключей
 - Запустил HSM Service
 
@@ -138,7 +137,7 @@ curl -k https://localhost:8443/health \
   "hsm_available": true,
   "kek_status": {
     "kek-2fa-v1": "available",
-    "kek-exchange-v1": "available"
+    "kek-exchange-key-v1": "available"
   }
 }
 ```
@@ -175,7 +174,7 @@ curl -k -X POST https://localhost:8443/encrypt \
 ```json
 {
   "ciphertext": "plpmmI0StauF6ZWGfEnrlxom23Zt8wS1yPkqTCxgQykMRAkYhgZfLKprYzM=",
-  "key_id": "kek-exchange-v1"
+  "key_id": "kek-exchange-key-v1"
 }
 ```
 
@@ -192,7 +191,7 @@ curl -k -X POST https://localhost:8443/decrypt \
   -d '{
     "context": "exchange-key",
     "ciphertext": "base64_encrypted_data_here...",
-    "key_id": "kek-exchange-v1"
+    "key_id": "kek-exchange-key-v1"
   }'
 ```
 
@@ -376,7 +375,7 @@ curl -k https://localhost:8443/metrics \
 ```json
 {
   "ciphertext": "AQIDBHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8...",
-  "key_id": "kek-exchange-v1"
+  "key_id": "kek-exchange-key-v1"
 }
 ```
 
@@ -393,7 +392,7 @@ curl -k -X POST https://localhost:8443/decrypt \
   -d '{
     "context": "exchange-key",
     "ciphertext": "AQIDBHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8...",
-    "key_id": "kek-exchange-v1"
+    "key_id": "kek-exchange-key-v1"
   }'
 ```
 

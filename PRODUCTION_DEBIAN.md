@@ -495,7 +495,7 @@ curl -k https://localhost:8443/health \
   --cacert /etc/hsm-service/pki/ca/ca.crt
 
 # Expected output:
-# {"status":"healthy","active_keys":["kek-exchange-v1","kek-2fa-v1"]}
+# {"status":"healthy","active_keys":["kek-exchange-key-v1","kek-2fa-v1"]}
 ```
 
 ---

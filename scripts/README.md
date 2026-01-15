@@ -140,7 +140,7 @@ sudo ./scripts/cleanup-old-keys.sh
 Found old key contexts:
 exchange-key-old
 
-Checking key: kek-exchange-v1
+Checking key: kek-exchange-key-v1
   Context: exchange-key-old
   Created: 2025-10-09T10:30:00Z
   Age: 92 days

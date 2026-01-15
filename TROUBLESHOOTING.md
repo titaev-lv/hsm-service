@@ -422,7 +422,7 @@ cat /var/lib/hsm-service/metadata.yaml
 ```bash
 # Создать недостающий ключ
 export HSM_PIN=1234
-./hsm-admin create-kek --label kek-exchange-v1 --context exchange-key
+./hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key
 
 # Проверить
 ./hsm-admin list-kek
