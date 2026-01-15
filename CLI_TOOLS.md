@@ -227,19 +227,20 @@ export HSM_PIN=1234
 **Output**:
 ```
 Starting rotation for context: exchange-key
-Current version: v2
+Loaded metadata with 2 contexts
 Creating new KEK: kek-exchange-v3
+Executing: /app/create-kek kek-exchange-v3 1234 3
+Created metadata backup: metadata.yaml.backup-20260115-143000
+✓ Key rotation completed:
+  Context: exchange-key
+  Old key: kek-exchange-v2 (version 2)
+  New key: kek-exchange-v3 (version 3)
 
-KEK created successfully!
-Handle: 12
-Checksum: x1y2z3...
-
-Updating metadata...
-Rotation completed!
-
-New active version: v3
-Old versions: v1, v2
-Next cleanup: 2024-04-20 (30 days)
+⚠️  IMPORTANT:
+  1. Restart the HSM service to load the new key
+  2. Re-encrypt all data encrypted with the old key
+  3. After 7 days overlap period, delete the old key:
+     hsm-admin delete kek-exchange-v2
 ```
 
 **Что происходит**:
@@ -277,28 +278,26 @@ hsm-admin rotation-status
 
 **Output**:
 ```
-Rotation Status Report
-Generated: 2024-03-25 15:30:00
+Key Rotation Status:
+====================
 
-Context: exchange-key
-  Current version: v3 (kek-exchange-v3)
-  Last rotation: 2024-03-15 14:30:00 (10 days ago)
-  Next recommended: 2024-06-15 (in 80 days)
-  Old versions: 2
-    - v2: 2024-02-01 (can be cleaned up in 20 days)
-    - v1: 2024-01-01 (can be cleaned up in 20 days)
-  
-Context: 2fa
-  Current version: v2 (kek-2fa-v2)
-  Last rotation: 2024-03-20 11:00:00 (5 days ago)
-  Next recommended: 2024-06-20 (in 85 days)
-  Old versions: 1
-    - v1: 2024-01-01 (can be cleaned up in 25 days)
+✓ Context: exchange-key
+  Current:           kek-exchange-v2
+  Version:           2
+  Total Versions:    2
+  Created:           2026-01-09 14:30:00
+  Rotation Interval: 2160h0m0s
+  Next Rotation:     2026-04-09
+  Status:            OK (89 days remaining)
 
-Summary:
-  Total contexts: 2
-  Total KEKs: 6
-  Contexts needing rotation soon (< 30 days): 0
+⚠️  Context: 2fa
+  Current:           kek-2fa-v1
+  Version:           1
+  Total Versions:    1
+  Created:           2025-10-10 10:30:00
+  Rotation Interval: 2160h0m0s
+  Next Rotation:     2026-01-08
+  Status:            NEEDS ROTATION (7 days overdue)
 ```
 
 **Когда использовать**:
@@ -326,30 +325,39 @@ hsm-admin cleanup-old-versions [--dry-run]
 ./hsm-admin cleanup-old-versions --dry-run
 
 # Вывод:
-# [DRY RUN] Would delete:
-#   Context: exchange-key
-#     - kek-exchange-v1 (created: 2024-01-01, age: 90 days)
-#   Context: 2fa
-#     - kek-2fa-v1 (created: 2024-01-01, age: 90 days)
-# Keeping:
-#   - kek-exchange-v2, kek-exchange-v3 (exchange-key)
-#   - kek-2fa-v2 (2fa)
+# === PCI DSS Key Cleanup ===
+# Max versions to keep: 3
+# Delete versions older than: 30 days
+# DRY RUN MODE - No changes will be made
+#
+# Context: exchange-key (current: kek-exchange-v3)
+#   ⚠ kek-exchange-v1 (v1) - created 2025-10-15 - TOO OLD
+#   [DRY-RUN] Would delete kek-exchange-v1 (v1)
+#   Summary: kept 2, deleted 1
+#
+# Context: 2fa (current: kek-2fa-v2)
+#   ✓ No versions to delete
+#
+# DRY RUN COMPLETE - Would delete 1 versions
 
 # Actual cleanup
 ./hsm-admin cleanup-old-versions
 
 # Вывод:
-# Cleaning up old versions across all contexts...
+# === PCI DSS Key Cleanup ===
 # Max versions to keep: 3
-# Cleanup after days: 30
+# Delete versions older than: 30 days
 #
-# Context: exchange-key
-#   Deleting: kek-exchange-v1
-#   ✓ Deleted kek-exchange-v1
+# Context: exchange-key (current: kek-exchange-v3)
+#   ⚠ kek-exchange-v1 (v1) - created 2025-10-15 - TOO OLD
+#   Delete 1 versions? (yes/no): yes
+#   ✓ Deleted kek-exchange-v1 (v1) from HSM
+#   Summary: kept 2, deleted 1
 #
-# Cleanup complete!
-# Total deleted: 1
-# Total kept: 3
+# ✓ Old metadata backed up to: metadata.yaml.backup.20260115-143500
+# ✓ Metadata updated: metadata.yaml
+#
+# CLEANUP COMPLETE - Deleted 1 versions
 ```
 
 **Логика cleanup**:
@@ -382,22 +390,21 @@ hsm-admin update-checksums
 
 **Output**:
 ```
-Updating checksums for all KEKs...
+Computing KEK checksums...
 
-Processing: kek-exchange-v1
-  Old: a1b2c3d4...
-  New: a1b2c3d4... ✓
+Context: exchange-key
+  ✓ kek-exchange-v1 (v1): checksum already up-to-date (a1b2c3d4...)
+  ✓ kek-exchange-v2 (v2): checksum already up-to-date (x1y2z3w4...)
 
-Processing: kek-exchange-v2
-  Old: x1y2z3w4...
-  New: x1y2z3w4... ✓
+Context: 2fa
+  + kek-2fa-v1 (v1): NEW checksum m1n2o3p4...
 
-Processing: kek-2fa-v1
-  Old: m1n2o3p4...
-  New: m1n2o3p4... ✓
+Saving updated metadata to metadata.yaml...
+✓ Updated 1 checksum(s) successfully
 
-Checksums updated: 3
-Metadata saved.
+Next steps:
+1. Restart HSM service to verify checksums on startup
+2. Commit metadata.yaml to version control
 ```
 
 **Когда использовать**:
