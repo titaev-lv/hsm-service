@@ -64,7 +64,9 @@ rotation:
 ## Шаг 3: Запуск HSM Service
 
 ```bash
-# Запустить Docker Compose
+# Собрать Docker образ
+docker build -t hsm-service:latest .
+# Запустить 
 docker compose up -d
 
 # Проверить что контейнер запустился
