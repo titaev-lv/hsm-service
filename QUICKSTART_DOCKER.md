@@ -40,20 +40,16 @@ pki/client/trading-service-1.key   ✓
 
 ## Шаг 2: Создание metadata.yaml
 
-**Важно:** Перед запуском контейнера нужно создать файл `metadata.yaml`, иначе Docker создаст его как **директорию** и всё сломается.
+**Важно:** Перед запуском контейнера нужно создать файл `metadata.yaml` с базовой структурой, иначе:
+- Если файл отсутствует → Docker создаст **директорию** вместо файла
+- Если файл пустой → приложение упадет с ошибкой "metadata not found for context"
 
 ```bash
-# Создать пустой metadata.yaml
-touch metadata.yaml
+# Создать metadata.yaml из примера
+cp metadata.yaml.example metadata.yaml
 ```
 
-**Что произойдет при первом запуске:**
-1. Скрипт `init-hsm.sh` создаст KEK ключи в HSM (`kek-exchange-key-v1`, `kek-2fa-v1`)
-2. Метаданные будут автоматически записаны в `metadata.yaml`
-3. Checksums будут вычислены и добавлены
-4. Файл будет готов к использованию
-
-**Результат** (после первого запуска):
+**Что содержит metadata.yaml.example:**
 ```yaml
 rotation:
   exchange-key:
@@ -61,16 +57,20 @@ rotation:
     versions:
       - label: kek-exchange-key-v1
         version: 1
-        created_at: '2026-01-16T10:30:00Z'
-        checksum: 'a1b2c3d4...'
+        created_at: '2026-01-09T00:00:00Z'
   2fa:
     current: kek-2fa-v1
     versions:
       - label: kek-2fa-v1
         version: 1
-        created_at: '2026-01-16T10:30:00Z'
-        checksum: 'x1y2z3w4...'
+        created_at: '2026-01-09T00:00:00Z'
 ```
+
+**Что произойдет при первом запуске:**
+1. Скрипт `init-hsm.sh` проверит, существуют ли KEK в HSM
+2. Если KEK нет → создаст их (`kek-exchange-key-v1`, `kek-2fa-v1`)
+3. Обновит timestamps в `metadata.yaml` на актуальные
+4. Вычислит и добавит checksums для всех KEK
 
 ---
 
