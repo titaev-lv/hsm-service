@@ -97,11 +97,45 @@ docker compose logs hsm-service
 
 **Ожидаемые логи**:
 ```
-INFO  Initializing SoftHSM token...
-INFO  Loading KEK from inventory...
-INFO  Starting HSM service on port 8443
-INFO  started revoked.yaml auto-reload interval=30s
-INFO  Loaded 2 KEKs: [kek-exchange-key-v1 kek-2fa-v1]
+=========================================
+HSM Service Initialization
+=========================================
+⏳ Initializing SoftHSM token: hsm-token
+✓ Token initialized successfully
+
+Token slots:
+Available slots:
+Slot 0
+    Slot info:
+        Description:      SoftHSM slot ID 0x0                                          
+        Manufacturer ID:  SoftHSM project                 
+        Hardware version: 2.6
+        Firmware version: 2.6
+        Token present:    yes
+    Token info:
+        Manufacturer ID:  SoftHSM project                 
+        Model:            SoftHSM v2      
+        Hardware version: 2.6
+        Firmware version: 2.6
+        Serial number:    xxxxxxxxxxxx
+        Initialized:      yes
+        User PIN init.:   yes
+        Label:            hsm-token
+
+=========================================
+KEK Setup
+=========================================
+✓ Found 2 KEK(s) in HSM token
+✓ kek-exchange-key-v1 already exists
+✓ kek-2fa-v1 already exists
+
+=========================================
+Starting HSM Service...
+=========================================
+
+Loaded KEK: kek-exchange-key-v1 (version 1)
+Loaded KEK: kek-2fa-v1 (version 1)
+Starting HSM service on port 8443
 ```
 
 ---
