@@ -1,5 +1,8 @@
 services:
   hsm-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: hsm-service:latest
     container_name: hsm-service
     hostname: hsm-service

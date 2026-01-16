@@ -86,6 +86,10 @@ fi
 if [ "$CREATED_ANY" = true ]; then
     echo ""
     echo "✓ Default KEKs created"
+    echo ""
+    echo "⏳ Computing KEK checksums..."
+    /app/hsm-admin update-checksums || echo "⚠️  Failed to update checksums"
+    echo "✓ Checksums computed and saved to metadata.yaml"
 fi
 
 echo ""

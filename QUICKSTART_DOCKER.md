@@ -38,11 +38,22 @@ pki/client/trading-service-1.key   ✓
 
 ---
 
-## Шаг 2: Конфигурация metadata.yaml
+## Шаг 2: Создание metadata.yaml
 
-**Файл metadata.yaml** создается автоматически при первом запуске контейнера скриптом `init-hsm.sh`. Он содержит динамические метаданные ключей (версии, timestamps) и обновляется автоматически при ротации.
+**Важно:** Перед запуском контейнера нужно создать файл `metadata.yaml`, иначе Docker создаст его как **директорию** и всё сломается.
 
-**Структура metadata.yaml** (создается автоматически):
+```bash
+# Создать пустой metadata.yaml
+touch metadata.yaml
+```
+
+**Что произойдет при первом запуске:**
+1. Скрипт `init-hsm.sh` создаст KEK ключи в HSM (`kek-exchange-key-v1`, `kek-2fa-v1`)
+2. Метаданные будут автоматически записаны в `metadata.yaml`
+3. Checksums будут вычислены и добавлены
+4. Файл будет готов к использованию
+
+**Результат** (после первого запуска):
 ```yaml
 rotation:
   exchange-key:
@@ -50,13 +61,15 @@ rotation:
     versions:
       - label: kek-exchange-key-v1
         version: 1
-        created_at: '2026-01-10T12:00:00Z'
+        created_at: '2026-01-16T10:30:00Z'
+        checksum: 'a1b2c3d4...'
   2fa:
     current: kek-2fa-v1
     versions:
       - label: kek-2fa-v1
         version: 1
-        created_at: '2026-01-10T12:00:00Z'
+        created_at: '2026-01-16T10:30:00Z'
+        checksum: 'x1y2z3w4...'
 ```
 
 ---
@@ -64,10 +77,8 @@ rotation:
 ## Шаг 3: Запуск HSM Service
 
 ```bash
-# Собрать Docker образ
-docker build -t hsm-service:latest .
-# Запустить 
-docker compose up -d
+# Собрать Docker образ и запустить 
+docker compose up -d --build
 
 # Проверить что контейнер запустился
 docker compose ps
