@@ -117,9 +117,19 @@ docker exec hsm-service /app/hsm-admin list-kek
 
 **Ожидаемый вывод**:
 ```
-KEK objects in HSM:
-  Label: kek-exchange-key-v1, ID: 01, Type: AES (256 bits)
-  Label: kek-2fa-v1, ID: 01, Type: AES (256 bits)
+KEKs configured in config.yaml:
+
+1. Config Key: exchange-key
+   Current: kek-exchange-key-v1
+   Versions: 1
+     * kek-exchange-key-v1 (v1)
+   Type: aes
+
+2. Config Key: 2fa
+   Current: kek-2fa-v1
+   Versions: 1
+     * kek-2fa-v1 (v1)
+   Type: aes
 
 Total: 2 KEK(s)
 ```
