@@ -355,9 +355,34 @@ Host: localhost:8443
 ```json
 {
   "status": "healthy",
-  "active_keys": ["kek-exchange-key-v1", "kek-2fa-v1"]
+  "hsm_available": true,
+  "kek_status": {
+    "kek-exchange-key-v1": "available",
+    "kek-2fa-v1": "available"
+  }
 }
 ```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `status` | string | Общий статус: `healthy` или `degraded` |
+| `hsm_available` | boolean | HSM доступен (`true`) или нет (`false`) |
+| `kek_status` | object | Статус каждого KEK: `"available"` или `"unavailable"` |
+
+### Response (Degraded 503)
+
+```json
+{
+  "status": "degraded",
+  "hsm_available": false,
+  "kek_status": {
+    "kek-exchange-key-v1": "available",
+    "kek-2fa-v1": "unavailable"
+  }
+}
+```
+
+**Примечание:** Если хотя бы один KEK недоступен, статус становится `degraded` и возвращается HTTP 503.
 
 ### Пример (curl)
 

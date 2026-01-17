@@ -25,8 +25,8 @@
 ### Минимальные
 
 - **OS**: Debian 13 (Trixie) или Debian 12 (Bookworm)
-- **CPU**: 2 cores
-- **RAM**: 2 GB
+- **CPU**: 1 cores
+- **RAM**: 1 GB
 - **Disk**: 20 GB
 - **Network**: Статический IP
 
@@ -34,8 +34,8 @@
 
 - **OS**: Debian 13 (Trixie)
 - **CPU**: 4 cores
-- **RAM**: 4 GB
-- **Disk**: 50 GB (SSD)
+- **RAM**: 2 GB
+- **Disk**: 50 GB
 - **Network**: Dedicated network interface
 
 ---
