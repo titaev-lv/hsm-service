@@ -75,7 +75,7 @@ passwd hsm
 hostnamectl set-hostname hsm-service.example.com
 
 # Set timezone
-timedatectl set-timezone Europe/Moscow
+timedatectl set-timezone UTC
 
 # Verify
 hostnamectl
@@ -96,8 +96,8 @@ apt install -y softhsm2 opensc openssl
 softhsm2-util --version
 # SoftHSM 2.6.1
 
-pkcs11-tool --version
-# pkcs11-tool 0.23.0
+dpkg -s opensc | grep Version
+# Version: 0.26.1-2
 ```
 
 ### 2. Установка дополнительных утилит
