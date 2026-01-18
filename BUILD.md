@@ -17,7 +17,18 @@
 ## 🚀 Быстрая сборка
 
 ```bash
-# Собрать все бинарники одной командой
+# 1. Установить системные зависимости
+sudo apt-get install libsofthsm2-dev  # Debian/Ubuntu
+# или
+sudo dnf install softhsm-devel        # RHEL/CentOS
+# или  
+brew install softhsm                  # macOS
+
+# 2. Загрузить Go зависимости
+go mod download
+go mod tidy
+
+# 3. Собрать все бинарники одной командой
 make build
 
 # Результат:
@@ -33,20 +44,23 @@ make build
 mkdir -p build
 
 # Собрать hsm-service
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w -X main.Version=1.0.0" \
+  -trimpath \
   -o build/hsm-service \
   main.go
 
 # Собрать hsm-admin
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
+  -trimpath \
   -o build/hsm-admin \
   ./cmd/hsm-admin
 
 # Собрать create-kek
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
+  -trimpath \
   -o build/create-kek \
   ./cmd/create-kek
 ```
@@ -64,7 +78,24 @@ go version
 
 # Git (для версионирования)
 git --version
+
+# libsofthsm2-dev (ВАЖНО: требуется для CGO компиляции)
+sudo apt-get install libsofthsm2-dev  # Debian/Ubuntu
+# или
+sudo dnf install softhsm-devel        # RHEL/CentOS
+# или
+brew install softhsm                  # macOS
 ```
+
+### Почему нужна libsofthsm2-dev?
+
+Проект использует:
+- `miekg/pkcs11` - CGO пакет (требует PKCS#11 заголовки)
+- `ThalesGroup/crypto11` - зависит от miekg/pkcs11
+
+**❌ ВАЖНО:** Нельзя собирать с `CGO_ENABLED=0`! Будут ошибки `undefined: pkcs11.ObjectHandle`
+
+**✅ Правильно:** Собирать с включенным CGO (по умолчанию) при наличии libsofthsm2-dev
 
 ### Опциональные (для оптимизации)
 
@@ -85,7 +116,7 @@ which strip
 ### 1. hsm-service (основной сервис)
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w -X main.Version=$(git describe --tags --always)" \
   -trimpath \
   -o build/hsm-service \
@@ -93,12 +124,13 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 ```
 
 **Флаги объяснение**:
-- `CGO_ENABLED=0` - статическая компиляция (no libc dependency)
-- `GOOS=linux` - целевая ОС
-- `GOARCH=amd64` - целевая архитектура
+- `GOOS=linux GOARCH=amd64` - целевая ОС и архитектура
 - `-ldflags="-s -w"` - удаление debug информации и symbol table
 - `-X main.Version=...` - встраивание версии в бинарник
 - `-trimpath` - удаление абсолютных путей (security)
+- **CGO ВКЛЮЧЕН** (по умолчанию) - требуется для PKCS#11
+
+⚠️ **НЕ используйте `CGO_ENABLED=0`** - приведет к ошибкам compilation
 
 **Размер**: ~10-15 MB (без UPX), ~5-8 MB (с UPX)
 
@@ -107,7 +139,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 ### 2. hsm-admin (CLI утилита)
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
   -trimpath \
   -o build/hsm-admin \
@@ -127,7 +159,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 ### 3. create-kek (создание KEK)
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
   -trimpath \
   -o build/create-kek \
@@ -147,20 +179,19 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 ### Шаг 1: Build с оптимизациями
 
 ```bash
-# Максимальные оптимизации компилятора
-CGO_ENABLED=0 go build \
+# Стандартная оптимизация (рекомендуется)
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
-  -gcflags="all=-l -B" \
   -trimpath \
   -o build/hsm-service \
   main.go
 ```
 
-**Флаги gcflags**:
-- `-l` - отключить inlining (экономия места)
-- `-B` - отключить bounds checking (небольшое ускорение)
-
-⚠️ **Внимание**: `-gcflags="all=-l -B"` может немного снизить производительность. Для production рекомендуется стандартная сборка без `-gcflags`.
+**Почему именно так:**
+- ✅ CGO включен (требуется для PKCS#11)
+- ✅ `-ldflags="-s -w"` - удаляет debug информацию
+- ✅ `-trimpath` - убирает абсолютные пути
+- ✅ Оптимально для production
 
 ---
 
@@ -222,6 +253,8 @@ GOOS=darwin GOARCH=amd64 go build -o build/hsm-service-darwin-amd64 main.go
 GOOS=darwin GOARCH=arm64 go build -o build/hsm-service-darwin-arm64 main.go
 ```
 
+⚠️ **Важно**: Для кросс-компиляции нужны соответствующие PKCS#11 заголовки. На Linux AMD64 обычно не составляет проблему.
+
 ### Проверка поддерживаемых платформ
 
 ```bash
@@ -236,17 +269,20 @@ go tool dist list | grep linux
 
 ## ✔️ Проверка собранных файлов
 
+
 ### 1. Проверка типа файла
 
 ```bash
 file build/hsm-service
-# build/hsm-service: ELF 64-bit LSB executable, x86-64, statically linked, stripped
+# build/hsm-service: ELF 64-bit LSB executable, x86-64, dynamically linked, stripped
 ```
 
 **Ожидаемо**:
 - ✅ `ELF 64-bit LSB executable`
-- ✅ `statically linked` (no external dependencies)
+- ✅ `dynamically linked` (есть внешние зависимости, например, libsofthsm2)
 - ✅ `stripped` (no debug symbols)
+
+Проект использует CGO и PKCS#11, поэтому всегда будет динамическая линковка с libsofthsm2 и libc.
 
 ---
 
@@ -254,17 +290,19 @@ file build/hsm-service
 
 ```bash
 ldd build/hsm-service
-# not a dynamic executable
+# linux-vdso.so.1 (0x00007bba92814000)
+# libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007bba92400000)
+# /lib64/ld-linux-x86-64.so.2 (0x00007bba92816000)
+
 ```
 
-**Ожидаемо**: `not a dynamic executable` - static binary ✅
+**Ожидаемо**: Зависит от `libsofthsm2.so` и `libc` ✅
 
-**Если видите зависимости**:
-```
-linux-vdso.so.1 => (0x00007ffc...)
-libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6
-```
-→ Значит `CGO_ENABLED=1`, пересоберите с `CGO_ENABLED=0`
+**Это нормально!** Проект использует CGO для PKCS#11, поэтому зависит от libsofthsm2.
+
+**Если видите много других зависимостей:**
+- Попробуйте пересобрать на целевом сервере
+- Или используйте Docker для гарантированной совместимости
 
 ---
 
@@ -272,34 +310,9 @@ libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6
 
 ```bash
 ls -lh build/
-# -rwxr-xr-x 1 user user  12M Jan 14 10:00 hsm-service
-# -rwxr-xr-x 1 user user  10M Jan 14 10:01 hsm-admin
-# -rwxr-xr-x 1 user user 8.5M Jan 14 10:02 create-kek
-```
-
-**Типичные размеры**:
-- hsm-service: 10-15 MB (без UPX), 5-8 MB (с UPX)
-- hsm-admin: 8-12 MB
-- create-kek: 7-10 MB
-
----
-
-### 4. Проверка версии
-
-```bash
-./build/hsm-service --version
-# HSM Service version 1.0.0 (commit abc123)
-```
-
----
-
-### 5. Тестовый запуск
-
-```bash
-# Проверка что бинарник запускается
-./build/hsm-service --help
-./build/hsm-admin --help
-./build/create-kek --help
+# -rwxr-xr-x 1 user user  9.6M Jan 14 10:00 hsm-service
+# -rwxr-xr-x 1 user user  4.0M Jan 14 10:01 hsm-admin
+# -rwxr-xr-x 1 user user 1.7M Jan 14 10:02 create-kek
 ```
 
 ---
@@ -323,19 +336,19 @@ mkdir -p "${RELEASE_DIR}/scripts"
 
 # Собрать бинарники
 echo "Building binaries..."
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w -X main.Version=${VERSION}" \
   -trimpath \
   -o "${RELEASE_DIR}/bin/hsm-service" \
   main.go
 
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
   -trimpath \
   -o "${RELEASE_DIR}/bin/hsm-admin" \
   ./cmd/hsm-admin
 
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+GOOS=linux GOARCH=amd64 go build \
   -ldflags="-s -w" \
   -trimpath \
   -o "${RELEASE_DIR}/bin/create-kek" \
@@ -429,11 +442,6 @@ sudo chmod +x /opt/hsm-service/scripts/*
 ### Checklist
 
 - [ ] Собраны все 3 бинарника (hsm-service, hsm-admin, create-kek)
-- [ ] `CGO_ENABLED=0` (статическая компиляция)
-- [ ] `ldd` показывает `not a dynamic executable`
-- [ ] `file` показывает `statically linked, stripped`
-- [ ] Версия встроена (`--version` работает)
-- [ ] Бинарники запускаются (`--help` работает)
 - [ ] Размеры адекватные (~10-15 MB каждый)
 - [ ] CHECKSUMS.txt создан
 - [ ] Конфигурация включена в пакет
@@ -443,14 +451,18 @@ sudo chmod +x /opt/hsm-service/scripts/*
 
 ## 📊 Сравнение методов сборки
 
-| Метод | Размер | Startup | Dependencies | Рекомендация |
-|-------|--------|---------|--------------|--------------|
-| Standard build | 15 MB | Fast | None | ✅ Production |
-| + strip | 10 MB | Fast | None | ✅ Production |
-| + UPX --best | 5 MB | Medium | None | ⚠️ Только если нужно |
-| Dynamic (CGO=1) | 12 MB | Fast | libc, others | ❌ Не рекомендуется |
+| Метод | Размер | Static | CGO | Рекомендация |
+|-------|--------|--------|-----|--------------|
+| Standard build | 15-20 MB | ❌ No | ✅ Yes | ✅ **Production** |
+| + strip | 10-15 MB | ❌ No | ✅ Yes | ✅ Production |
+| + UPX --best | 5-8 MB | ❌ No | ✅ Yes | ⚠️ Если нужно |
+| CGO_ENABLED=0 | ❌ Error | - | - | ❌ **Не работает!** |
 
-**Рекомендация для production**: Standard build с `-ldflags="-s -w"` (strip встроен)
+**⚠️ ВАЖНО**: Этот проект **НЕ МОЖЕТ** быть собран как static binary (`CGO_ENABLED=0`), потому что использует PKCS#11 (CGO).
+
+**Рекомендация для production**: 
+- Standard build с `-ldflags="-s -w"` 
+- Зависит от libsofthsm2 на целевом сервере (обычно уже установлена)
 
 ---
 
@@ -469,19 +481,19 @@ all: build
 
 build:
 	@echo "Building hsm-service..."
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@GOOS=linux GOARCH=amd64 go build \
 		-ldflags="$(LDFLAGS)" \
 		-trimpath \
 		-o build/hsm-service \
 		main.go
 	@echo "Building hsm-admin..."
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@GOOS=linux GOARCH=amd64 go build \
 		-ldflags="-s -w" \
 		-trimpath \
 		-o build/hsm-admin \
 		./cmd/hsm-admin
 	@echo "Building create-kek..."
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@GOOS=linux GOARCH=amd64 go build \
 		-ldflags="-s -w" \
 		-trimpath \
 		-o build/create-kek \
