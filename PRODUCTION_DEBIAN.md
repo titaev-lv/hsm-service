@@ -210,7 +210,11 @@ openssl verify -CAfile /etc/hsm-service/pki/ca/ca.crt /etc/hsm-service/pki/clien
 
 ## Конфигурация сервиса
 
-### 1. Конфигурация SoftHSM
+### 1. Конфигурация SoftHSM (опционально)
+
+SoftHSM по умолчанию ищет конфиг в `/etc/softhsm/softhsm2.conf`. Если вы используете стандартные пути, этот шаг можно пропустить.
+
+**Если нужно использовать custom пути:**
 
 ```bash
 # Edit SoftHSM config
@@ -226,6 +230,11 @@ objectstore.backend = file
 
 # Logging
 log.level = INFO
+```
+
+**Альтернатива**: Указать путь через переменную окружения (в systemd service):
+```ini
+Environment="SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf"
 ```
 
 ### 2. Инициализация HSM токена
