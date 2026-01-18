@@ -76,50 +76,49 @@ source ~/.hsm-admin.env
 
 ## Команды
 
-### `create-kek`
+### `create-kek` (отдельная утилита)
 
-Создать новый KEK (Key Encryption Key).
+Создать новый KEK (Key Encryption Key) в HSM.
+
+**⚠️ Примечание**: Это **отдельная утилита**, не команда `hsm-admin`. См. [cmd/create-kek/](cmd/create-kek/) для исходного кода.
 
 **Синтаксис**:
 ```bash
-hsm-admin create-kek --label <label> --context <context>
+create-kek <label> <pin> [version]
 ```
 
 **Параметры**:
-- `--label` (обязательный) - уникальное имя KEK (например: `kek-exchange-key-v1`)
-- `--context` (обязательный) - контекст использования (например: `exchange-key`, `2fa`)
+- `<label>` (обязательный) - уникальное имя KEK (например: `kek-exchange-key-v1`)
+- `<pin>` (обязательный) - PIN токена HSM
+- `[version]` (опционально) - версия ключа (по умолчанию: 1)
 
 **Пример**:
 ```bash
+# Create KEK for exchange key (version 1)
+/opt/hsm-service/bin/create-kek "kek-exchange-key-v1" "1234" 1
+
+# Create KEK for 2FA (version 1)
+/opt/hsm-service/bin/create-kek "kek-2fa-v1" "1234" 1
+
+# Using environment variable
 export HSM_PIN=1234
-
-# Create KEK for exchange-key context
-./hsm-admin create-kek \
-  --label kek-exchange-key-v1 \
-  --context exchange-key
-
-# Create KEK for 2FA context
-./hsm-admin create-kek \
-  --label kek-2fa-v1 \
-  --context 2fa
+/opt/hsm-service/bin/create-kek "kek-exchange-key-v2" "$HSM_PIN" 2
 ```
 
 **Output**:
 ```
-Creating KEK...
+Generating 256-bit AES key...
 Label: kek-exchange-key-v1
-Context: exchange-key
-Type: AES-256-GCM
-
-KEK created successfully!
+ID: 1a2b3c4d5e6f7g8h
 Handle: 5
-Checksum: a1b2c3d4e5f6...
+✓ KEK created successfully
 ```
 
 **Когда использовать**:
 - При первоначальной настройке HSM Service
-- При создании нового контекста
+- При создании новой версии KEK
 - При инициализации нового HSM токена
+- Вызывается автоматически во время `hsm-admin rotate`
 
 ---
 
@@ -479,15 +478,16 @@ hsm-admin export-metadata [--output <file>]
 ### Сценарий 1: Начальная настройка
 
 ```bash
-# 1. Set HSM PIN
+# 1. Create initial KEKs using create-kek utility
+/opt/hsm-service/bin/create-kek "kek-exchange-key-v1" "1234" 1
+/opt/hsm-service/bin/create-kek "kek-2fa-v1" "1234" 1
+
+# 2. Verify with hsm-admin
 export HSM_PIN=1234
-
-# 2. Create initial KEKs
-./hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key
-./hsm-admin create-kek --label kek-2fa-v1 --context 2fa
-
-# 3. Verify
 ./hsm-admin list-kek
+
+# 3. Update checksums
+./hsm-admin update-checksums
 
 # 4. Export metadata for backup
 ./hsm-admin export-metadata --output /backup/initial-metadata.json
@@ -535,14 +535,17 @@ nano /etc/hsm-service/config.yaml
 #     NewServiceGroup:
 #       - new-service
 
-# 2. Create KEK
+# 2. Create KEK using create-kek utility
 export HSM_PIN=1234
-./hsm-admin create-kek --label kek-new-service-v1 --context new-service
+/opt/hsm-service/bin/create-kek "kek-new-service-v1" "$HSM_PIN" 1
 
-# 3. Restart service
+# 3. Verify with hsm-admin
+./hsm-admin list-kek
+
+# 4. Restart service
 sudo systemctl restart hsm-service
 
-# 4. Verify
+# 5. Verify
 curl -k https://localhost:8443/health ... | jq .active_keys
 # Should include "kek-new-service-v1"
 ```
