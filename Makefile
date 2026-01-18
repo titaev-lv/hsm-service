@@ -39,7 +39,7 @@ build: $(BINARY_SERVICE) $(BINARY_ADMIN) $(BINARY_KEK)
 $(BINARY_SERVICE):
 	@echo "Building hsm-service..."
 	@mkdir -p $(BUILD_DIR)
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@GOOS=linux GOARCH=amd64 go build \
 		-ldflags="$(LDFLAGS)" \
 		-trimpath \
 		-o $(BINARY_SERVICE) \
@@ -49,7 +49,7 @@ $(BINARY_SERVICE):
 $(BINARY_ADMIN):
 	@echo "Building hsm-admin..."
 	@mkdir -p $(BUILD_DIR)
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@GOOS=linux GOARCH=amd64 go build \
 		-ldflags="-s -w" \
 		-trimpath \
 		-o $(BINARY_ADMIN) \
@@ -59,7 +59,7 @@ $(BINARY_ADMIN):
 $(BINARY_KEK):
 	@echo "Building create-kek..."
 	@mkdir -p $(BUILD_DIR)
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@GOOS=linux GOARCH=amd64 go build \
 		-ldflags="-s -w" \
 		-trimpath \
 		-o $(BINARY_KEK) \
