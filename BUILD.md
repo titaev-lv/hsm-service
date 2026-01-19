@@ -35,11 +35,9 @@ make build
 # - build/hsm-service      (основной сервис)
 # - build/hsm-admin        (CLI утилита)
 # - build/create-kek       (создание KEK ключей)
-```
 
-**Или вручную**:
+Или вручную:
 
-```bash
 # Создать директорию для бинарников
 mkdir -p build
 
