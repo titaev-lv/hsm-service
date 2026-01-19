@@ -174,23 +174,20 @@ ssh hsm@production-server "ls -lh /opt/hsm-service/bin/"
 
 ```bash
 # Создать директории
-sudo mkdir -p /etc/hsm-service/pki/{ca,server,client}
+sudo mkdir -p /etc/hsm-service/pki/{ca,server}
 
 # Скопировать сертификаты с CA-сервера или локально
 sudo cp /path/to/ca.crt /etc/hsm-service/pki/ca/
 sudo cp /path/to/hsm-service.crt /etc/hsm-service/pki/server/
 sudo cp /path/to/hsm-service.key /etc/hsm-service/pki/server/
-sudo cp /path/to/client*.crt /etc/hsm-service/pki/client/  # для тестирования
 
 # Set ownership
 sudo chown -R hsm:hsm /etc/hsm-service/pki
 
 # Set permissions (КРИТИЧЕСКИ ВАЖНО!)
 sudo chmod 600 /etc/hsm-service/pki/server/*.key
-sudo chmod 600 /etc/hsm-service/pki/client/*.key
 sudo chmod 644 /etc/hsm-service/pki/ca/*.crt
 sudo chmod 644 /etc/hsm-service/pki/server/*.crt
-sudo chmod 644 /etc/hsm-service/pki/client/*.crt
 ```
 
 **Проверка**:
@@ -198,15 +195,9 @@ sudo chmod 644 /etc/hsm-service/pki/client/*.crt
 # Проверить серверный сертификат
 openssl verify -CAfile /etc/hsm-service/pki/ca/ca.crt /etc/hsm-service/pki/server/hsm-service.crt
 # /etc/hsm-service/pki/server/hsm-service.crt: OK
-
-# Проверить клиентский сертификат
-openssl verify -CAfile /etc/hsm-service/pki/ca/ca.crt /etc/hsm-service/pki/client/trading-service-1.crt
-# /etc/hsm-service/pki/client/trading-service-1.crt: OK
 ```
 
 ```
-
----
 
 ## Конфигурация сервиса
 
@@ -216,7 +207,6 @@ SoftHSM по умолчанию ищет конфиг в `/etc/softhsm/softhsm2.
 
 **Если нужно использовать custom пути:**
 
-```bash
 # Edit SoftHSM config
 sudo nano /etc/softhsm/softhsm2.conf
 ```
