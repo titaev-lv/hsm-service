@@ -230,25 +230,63 @@ Environment="SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf"
 ### 2. Инициализация HSM токена
 
 ```bash
-# Initialize token
-softhsm2-util --init-token \
+# Initialize token (от root)
+sudo softhsm2-util --init-token \
   --slot 0 \
   --label "hsm-token" \
   --so-pin 5678 \
   --pin 1234
 
 # ВАЖНО: Используйте сильные PIN'ы на production!
+# Пример генерации для Prod: openssl rand -hex 32
 # Запишите PIN в безопасное место (KMS, Vault)
 
-# Verify
-softhsm2-util --show-slots
+# ⚠️ КРИТИЧЕСКИ ВАЖНО: Исправить права доступа после инициализации
+# SoftHSM создает файлы токена от root, но hsm пользователь должен иметь доступ
+sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
+sudo chmod 700 /var/lib/softhsm/tokens/
+sudo find /var/lib/softhsm/tokens/ -type f -exec chmod 600 {} \;
+
+# Verify (от root)
+sudo softhsm2-util --show-slots
+
+# Verify (от пользователя hsm - должно работать)
+sudo -u hsm softhsm2-util --show-slots
+```
+
+**⚠️ Проверка отказа в доступе при использовании от hsm:**
+
+Если пользователь `hsm` получает ошибку:
+```
+ERROR: Could not load the SoftHSM configuration.
+ERROR: Please verify that the SoftHSM configuration is correct.
+```
+
+**Решение:**
+
+```bash
+# 1. Убедиться что конфиг доступен для чтения
+sudo cat /etc/softhsm/softhsm2.conf
+# Если файл не существует или не доступен, проверить права
+
+# 2. Если конфиг в custom пути, установить переменную окружения
+export SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf
+sudo -u hsm sh -c 'export SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf && softhsm2-util --show-slots'
+
+# 3. Проверить права на директорию токенов
+ls -la /var/lib/softhsm/
+ls -la /var/lib/softhsm/tokens/
+
+# 4. Если права неправильные, исправить
+sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
+sudo chmod 700 /var/lib/softhsm/tokens/
 ```
 
 ### 3. Конфигурация HSM Service
 
 ```bash
 # Copy config template
-sudo cp /opt/hsm-service/config.yaml.example /etc/hsm-service/config.yaml
+sudo cp /path/to/config.yaml.example /etc/hsm-service/config.yaml
 
 # Edit configuration
 sudo nano /etc/hsm-service/config.yaml
@@ -311,12 +349,7 @@ server:
 sudo mkdir -p /var/lib/hsm-service
 
 # Create initial metadata
-sudo nano /var/lib/hsm-service/metadata.yaml
-```
-
-**Содержимое**:
-```yaml
-rotation: {}
+sudo touch /var/lib/hsm-service/metadata.yaml
 ```
 
 Установка прав:
@@ -349,7 +382,6 @@ sudo su - hsm
 export HSM_PIN=1234  # Ваш PIN!
 
 # Шаг 1: Создать ключи в HSM с помощью create-kek
-echo "Creating physical keys in HSM..."
 /opt/hsm-service/bin/create-kek "kek-exchange-key-v1" "$HSM_PIN" 1
 /opt/hsm-service/bin/create-kek "kek-2fa-v1" "$HSM_PIN" 1
 
@@ -1232,15 +1264,57 @@ sudo -u hsm /opt/hsm-service/hsm-service --help
 sudo -u hsm sh -c 'export HSM_PIN=1234 && /opt/hsm-service/hsm-service'
 ```
 
-### Problem: Permission denied на tokens
+### Problem: Permission denied на tokens или "Could not load the SoftHSM configuration"
+
+Если пользователь `hsm` получает ошибку при `softhsm2-util --show-slots`:
+```
+ERROR: Could not load the SoftHSM configuration.
+ERROR: Please verify that the SoftHSM configuration is correct.
+```
+
+**Решение:**
 
 ```bash
-# Fix ownership
-sudo chown -R hsm:hsm /var/lib/softhsm/tokens
+# 1. Проверить права на директорию токенов
+ls -la /var/lib/softhsm/
+# Должно быть: drwx------ hsm hsm
 
-# Fix permissions
-sudo chmod 700 /var/lib/softhsm/tokens
+# 2. Исправить владельца и права
+sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
+sudo chmod 700 /var/lib/softhsm/tokens/
+sudo find /var/lib/softhsm/tokens/ -type f -exec chmod 600 {} \;
+
+# 3. Если конфиг SoftHSM не доступен
+sudo cat /etc/softhsm/softhsm2.conf
+ls -la /etc/softhsm/softhsm2.conf
+
+# 4. Если нужен доступ через переменную окружения
+export SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf
+sudo -u hsm sh -c 'SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf softhsm2-util --show-slots'
+
+# 5. Проверить что всё работает
+sudo -u hsm softhsm2-util --show-slots
+# Expected:
+# Slot 0
+#     Slot info:
+#         Description      : SoftHSM slot ID 0x0
+#         Manufacturer ID  : SoftHSM project
+#         Hardware version : 2.6
+#         Firmware version : 2.6
+#         Serial number    : gaSJbNtm
+#         Initialized      : yes
+#     Token info:
+#         Manufacturer ID  : SoftHSM project
+#         Model            : SoftHSM v2
+#         Hardware version : 2.6
+#         Firmware version : 2.6
+#         Serial number    : 123456789ABCDEF0
+#         Initialized      : yes
+#         User PIN init.   : yes
+#         Label            : hsm-token
 ```
+
+**Ключевой момент:** Инициализация токена должна быть от `root`, но после этого нужно **обязательно** исправить права так, чтобы пользователь `hsm` мог читать файлы токена.
 
 ### Problem: Certificate errors
 
