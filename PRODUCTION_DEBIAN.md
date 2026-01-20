@@ -268,7 +268,7 @@ ERROR: Please verify that the SoftHSM configuration is correct.
 
 ```bash
 # 1. Убедиться что конфиг доступен для чтения
-sudo cat /etc/softhsm/softhsm2.conf
+sudo -u hsm cat /etc/softhsm/softhsm2.conf
 # Если файл не существует или не доступен, проверить права
 
 # 2. Если конфиг в custom пути, установить переменную окружения
@@ -282,6 +282,8 @@ ls -la /var/lib/softhsm/tokens/
 # 4. Если права неправильные, исправить
 sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
 sudo chmod 700 /var/lib/softhsm/tokens/
+sudo chown hsm:hsm /var/lib/softhsm
+sudo chown -R hsm:hsm /etc/softhsm
 ```
 
 ### 3. Конфигурация HSM Service
@@ -389,33 +391,37 @@ export HSM_PIN=1234  # Ваш PIN!
 
 # Шаг 2: Инициализировать metadata.yaml с контекстами
 # Это связывает физические ключи с логическими контекстами
-cat > /var/lib/hsm-service/metadata.yaml << 'EOF'
+# CURRENT_DATE подставляется автоматически в ISO8601 формат
+CURRENT_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+cat > /var/lib/hsm-service/metadata.yaml << EOF
 rotation:
   exchange-key:
     current: kek-exchange-key-v1
     versions:
       - label: kek-exchange-key-v1
         version: 1
-        created_at: "2026-01-19T00:00:00Z"
+        created_at: "$CURRENT_DATE"
   2fa:
     current: kek-2fa-v1
     versions:
       - label: kek-2fa-v1
         version: 1
-        created_at: "2026-01-19T00:00:00Z"
+        created_at: "$CURRENT_DATE"
 EOF
 
 # Шаг 3: Обновить checksums для проверки целостности
-/opt/hsm-service/bin/hsm-admin update-checksums
+# ВАЖНО: Указать путь к config.yaml через флаг -config
+/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml update-checksums
 
 # Шаг 4: Проверить что всё настроено правильно
 echo ""
 echo "Checking KEKs in HSM:"
-/opt/hsm-service/bin/hsm-admin list-kek
+/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml list-kek
 
 echo ""
 echo "Checking rotation status:"
-/opt/hsm-service/bin/hsm-admin rotation-status
+/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml rotation-status
 ```
 
 **Как это работает:**
@@ -443,12 +449,23 @@ echo "Checking rotation status:"
 
 **Доступные hsm-admin команды:**
 ```bash
-hsm-admin list-kek              # Список всех KEK'ов
-hsm-admin export-metadata       # Экспортировать metadata в JSON
-hsm-admin rotate <context>      # Ротировать KEK контекста на новую версию
-hsm-admin rotation-status       # Статус ротации всех ключей
-hsm-admin cleanup-old-versions  # Удалить старые версии (PCI DSS)
-hsm-admin update-checksums      # Обновить checksums
+# Все команды должны содержать флаг -config со путем к конфигу
+CONFIG_FILE="/etc/hsm-service/config.yaml"
+
+hsm-admin -config "$CONFIG_FILE" list-kek              # Список всех KEK'ов
+hsm-admin -config "$CONFIG_FILE" export-metadata       # Экспортировать metadata в JSON
+hsm-admin -config "$CONFIG_FILE" rotate <context>      # Ротировать KEK контекста на новую версию
+hsm-admin -config "$CONFIG_FILE" rotation-status       # Статус ротации всех ключей
+hsm-admin -config "$CONFIG_FILE" cleanup-old-versions  # Удалить старые версии (PCI DSS)
+hsm-admin -config "$CONFIG_FILE" update-checksums      # Обновить checksums
+```
+
+**Альтернатива: Использовать переменную окружения CONFIG_PATH**
+```bash
+export CONFIG_PATH="/etc/hsm-service/config.yaml"
+
+hsm-admin list-kek              # Без флага -config
+hsm-admin rotation-status
 ```
 
 ---
@@ -477,6 +494,7 @@ WorkingDirectory=/opt/hsm-service
 # Environment
 Environment="HSM_PIN=1234"
 Environment="SLOT_LABEL=hsm-token"
+Environment="CONFIG_PATH=/etc/hsm-service/config.yaml"
 EnvironmentFile=-/etc/hsm-service/environment
 
 # Binary
@@ -1264,6 +1282,30 @@ sudo -u hsm /opt/hsm-service/hsm-service --help
 
 # Test manually
 sudo -u hsm sh -c 'export HSM_PIN=1234 && /opt/hsm-service/hsm-service'
+```
+
+### Problem: hsm-admin ошибка "no such file or directory: config.yaml"
+
+Если при запуске `hsm-admin` получаете ошибку:
+```
+Failed to update checksums: failed to load config: read config file: open config.yaml: no such file or directory
+```
+
+**Решение:** `hsm-admin` нужно указать явно где находится конфиг через флаг `-config`:
+
+```bash
+# Способ 1: Флаг -config
+/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml update-checksums
+/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml rotation-status
+/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml list-kek
+
+# Способ 2: Переменная окружения CONFIG_PATH
+export CONFIG_PATH=/etc/hsm-service/config.yaml
+/opt/hsm-service/bin/hsm-admin update-checksums
+/opt/hsm-service/bin/hsm-admin rotation-status
+
+# Способ 3: В systemd service уже установлена переменная CONFIG_PATH
+# Если запускать через systemd, переменная подставится автоматически
 ```
 
 ### Problem: Permission denied на tokens или "Could not load the SoftHSM configuration"
