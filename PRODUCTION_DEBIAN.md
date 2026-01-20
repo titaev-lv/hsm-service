@@ -133,9 +133,10 @@ sudo mkdir -p /etc/hsm-service
 
 # Set ownership
 sudo chown -R hsm:hsm /opt/hsm-service
-sudo chown -R hsm:hsm /var/lib/softhsm/tokens
+sudo chown -R hsm:hsm /var/lib/softhsm
 sudo chown -R hsm:hsm /var/log/hsm-service
 sudo chown -R hsm:hsm /etc/hsm-service
+sudo chown -R hsm:hsm /etc/softhsm
 
 # Set permissions
 sudo chmod 755 /opt/hsm-service
@@ -246,6 +247,7 @@ sudo softhsm2-util --init-token \
 sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
 sudo chmod 700 /var/lib/softhsm/tokens/
 sudo find /var/lib/softhsm/tokens/ -type f -exec chmod 600 {} \;
+sudo chown hsm:hsm /etc/softhsm/softhsm2.conf
 
 # Verify (от root)
 sudo softhsm2-util --show-slots
