@@ -725,14 +725,11 @@ table inet filter {
         # ICMP (ping) from trusted networks
         ip saddr $TRUSTED_NETWORKS icmp type echo-request limit rate 5/second accept
 
-        # ⚠️ ВАЖНО: Rate limiting ПОСЛЕ проверки разрешённых IP!
-        # Иначе будут пропущены соединения со всех IP адресов
-        ct state new limit rate 100/second burst 200 packets accept
+        # Log dropped packets (для debugging блокировок firewall)
+        # log prefix "nftables-drop: " level debug
+        tcp flags syn ct state new log prefix "nftables-drop: " level debug drop
 
-        # Log dropped packets (optional, для debugging)
-        # log prefix "nftables-drop: " drop
-
-        # Drop everything else
+        # Drop everything else (запрещены все остальные соединения)
         drop
     }
 
