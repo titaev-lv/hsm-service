@@ -497,11 +497,11 @@ User=hsm
 Group=hsm
 WorkingDirectory=/opt/hsm-service
 
-# Environment
-Environment="HSM_PIN=1234"
+# Environment - НЕ ХРАНИТЬ PIN здесь! Используйте EnvironmentFile!
 Environment="SLOT_LABEL=hsm-token"
 Environment="CONFIG_PATH=/etc/hsm-service/config.yaml"
-EnvironmentFile=-/etc/hsm-service/environment
+# PIN загружается из защищённого файла /etc/hsm-service/environment
+EnvironmentFile=/etc/hsm-service/environment
 
 # Binary
 ExecStart=/opt/hsm-service/bin/hsm-service
@@ -572,23 +572,48 @@ sysctl net.core.somaxconn
 sysctl net.ipv4.tcp_tw_reuse
 ```
 
-### 3. Создание environment file (рекомендуется)
+### 3. Создание environment file (ОБЯЗАТЕЛЬНО для production!)
+
+**⚠️ КРИТИЧЕСКИ ВАЖНО**: НЕ ХРАНИТЬ PIN в systemd unit файле! Используйте отдельный защищённый файл.
 
 ```bash
 sudo nano /etc/hsm-service/environment
 ```
 
-**Содержимое**:
+**Содержимое** (с вашим реальным PIN):
 ```bash
-HSM_PIN=your-secure-pin-here
-SLOT_LABEL=hsm-token
+# ⚠️ БЕЗОПАСНОСТЬ: Этот файл содержит secrets!
+# Не коммитить в git, не выкладывать в публику!
+
+# HSM PIN (используется для доступа к ключам в HSM)
+HSM_PIN=your-secret-pin-here-use-strong-pin
+
+# Логирование
 LOG_LEVEL=info
 ```
 
-**Установка прав** (важно!):
+**Установка безопасных прав** (ОБЯЗАТЕЛЬНО!):
 ```bash
+# Владелец: root, доступ только для чтения пользователем hsm
 sudo chown root:hsm /etc/hsm-service/environment
 sudo chmod 640 /etc/hsm-service/environment
+
+# Проверка (должно быть -rw-r-----)
+ls -la /etc/hsm-service/environment
+# -rw-r----- 1 root hsm 256 Jan 22 10:00 /etc/hsm-service/environment
+```
+
+**Генерация сильного PIN для production:**
+
+```bash
+# Вместо слабого "1234", используйте криптографически стойкий PIN:
+openssl rand -hex 16
+# Пример вывода: a7f3e9c2b5d8f1a4c6e9b2d5f8a1c4e7
+
+# Или используйте KMS/Vault для управления PIN'ами:
+# - AWS Secrets Manager
+# - HashiCorp Vault
+# - Azure Key Vault
 ```
 
 ### 4. Перезагрузка systemd и запуск
@@ -1413,6 +1438,124 @@ sudo nft -f /etc/nftables.conf
 sudo dmesg | grep nft
 ```
 
+### Problem: PIN видим в процессах (утечка безопасности)
+
+Если PIN хранится в systemd unit файле, его можно увидеть через `ps` или `systemctl show`:
+
+```bash
+# ПЛОХО - PIN видим!
+systemctl show hsm-service | grep HSM_PIN
+# Environment=HSM_PIN=1234 ...
+
+# Или через процесс
+ps aux | grep hsm-service
+# hsm  1234  ...  /opt/hsm-service/bin/hsm-service
+# Переменные окружения видны в /proc/1234/environ
+```
+
+**Решение:**
+
+```bash
+# 1. Никогда не используйте Environment="HSM_PIN=..." в systemd файле!
+# 2. Всегда используйте отдельный файл с ограниченными правами:
+sudo nano /etc/hsm-service/environment
+# HSM_PIN=your-strong-pin-here
+
+# 3. Установите правильные права:
+sudo chown root:hsm /etc/hsm-service/environment
+sudo chmod 640 /etc/hsm-service/environment  # Только root и группа hsm
+
+# 4. В systemd файле используйте:
+# EnvironmentFile=/etc/hsm-service/environment  # Не EnvironmentFile=-
+
+# 5. Для production рекомендуется использовать KMS/Vault:
+#    - HashiCorp Vault (локально)
+#    - AWS Secrets Manager
+#    - Azure Key Vault
+#    - Kubernetes Secrets (если на k8s)
+```
+
+**Проверка что PIN не утекает:**
+
+```bash
+# PIN НЕ должен быть видим
+systemctl show hsm-service | grep HSM_PIN
+# (пусто - правильно!)
+
+# PIN НЕ должен быть в конфиге
+cat /etc/systemd/system/hsm-service.service | grep HSM_PIN
+# (пусто - правильно!)
+
+# PIN только в защищённом файле
+ls -la /etc/hsm-service/environment
+# -rw-r----- 1 root hsm 256 ...
+```
+
+### Problem: Production PIN Management
+
+Для серьезной production рекомендуются эти методы:
+
+**1. HashiCorp Vault (самый надежный):**
+
+```bash
+# Установить Vault на отдельном хосте/контейнере
+# Записать PIN в Vault:
+vault kv put secret/hsm-service hsm_pin="your-pin"
+
+# В systemd скрипте, получить PIN из Vault:
+ExecStartPre=/opt/hsm-service/scripts/get-pin-from-vault.sh
+EnvironmentFile=/tmp/hsm-pin.env
+```
+
+**2. AWS Secrets Manager (если на AWS):**
+
+```bash
+# Сохранить PIN:
+aws secretsmanager create-secret \
+  --name hsm-service/pin \
+  --secret-string "your-pin"
+
+# В systemd скрипте:
+ExecStartPre=/opt/hsm-service/scripts/get-pin-from-aws.sh
+EnvironmentFile=/tmp/hsm-pin.env
+```
+
+**3. Kubernetes Secrets (если на k8s):**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hsm-service-pin
+type: Opaque
+stringData:
+  HSM_PIN: "your-pin"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hsm-service
+spec:
+  containers:
+  - name: hsm-service
+    env:
+    - name: HSM_PIN
+      valueFrom:
+        secretKeyRef:
+          name: hsm-service-pin
+          key: HSM_PIN
+```
+
+**4. Локальный защищённый файл (минимум для production):**
+
+```bash
+# /etc/hsm-service/environment
+# Права: 640 (root:hsm)
+# Содержимое никогда не выводить, не логировать, не коммитить
+
+HSM_PIN=your-strong-random-pin-generated-with-openssl-rand
+```
+
 ---
 
 ## Мониторинг производительности
@@ -1477,7 +1620,10 @@ sudo journalctl -u hsm-service -f
 
 Перед запуском в production:
 
-- [ ] Изменены default PIN'ы (не 1234!)
+- [ ] **БЕЗОПАСНОСТЬ PIN**: HSM_PIN в файле `/etc/hsm-service/environment` с правами 640, НЕ в systemd unit!
+- [ ] PIN - криптографически сильный (openssl rand -hex 16), НЕ "1234"
+- [ ] Рассмотрен KMS/Vault для управления PIN'ами (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault)
+- [ ] Изменены default SO_PIN и HSM_PIN для токена
 - [ ] Настроены сильные сертификаты (не self-signed)
 - [ ] Настроен nftables firewall
 - [ ] Настроен Prometheus мониторинг
@@ -1492,6 +1638,8 @@ sudo journalctl -u hsm-service -f
 - [ ] Настроен disaster recovery plan
 - [ ] Документированы operational procedures
 - [ ] Обучены операторы
+- [ ] Проверено что PIN не видим в процессах: `systemctl show hsm-service | grep PIN`
+- [ ] Проверено что конфиг-файл не попал в git: `.gitignore` содержит `/etc/hsm-service/`
 
 ---
 
