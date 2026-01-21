@@ -304,6 +304,15 @@ server:
     ca_path: /etc/hsm-service/pki/ca/ca.crt
     cert_path: /etc/hsm-service/pki/server/hsm-service.crt
     key_path: /etc/hsm-service/pki/server/hsm-service.key
+  # HTTP/2 optimization for high-load scenarios  
+  http2:
+    max_concurrent_streams: "2000"       # Default: ~250, increase for high throughput
+    initial_window_size: "4M"            # Default: 64KB, larger for better flow control
+    max_frame_size: "1M"                 # Default: 16KB, reduce syscalls
+    max_header_list_size: "2M"           # Support large mTLS certificates
+    idle_timeout_seconds: 120            # Connection reuse
+    max_upload_buffer_per_conn: "4M"     # Memory budget per connection
+    max_upload_buffer_per_stream: "4M"   # Memory budget per stream
 
 hsm:
   pkcs11_lib: /usr/lib/softhsm/libsofthsm2.so
@@ -332,17 +341,6 @@ rate_limit:
 logging:
   level: info
   format: json
-
-# HTTP/2 optimization for high-load scenarios
-server:
-  http2:
-    max_concurrent_streams: "2000"       # Default: ~250, increase for high throughput
-    initial_window_size: "4M"            # Default: 64KB, larger for better flow control
-    max_frame_size: "1M"                 # Default: 16KB, reduce syscalls
-    max_header_list_size: "2M"           # Support large mTLS certificates
-    idle_timeout_seconds: 120            # Connection reuse
-    max_upload_buffer_per_conn: "4M"     # Memory budget per connection
-    max_upload_buffer_per_stream: "4M"   # Memory budget per stream
 ```
 
 **Примечание:** Значения в `http2` секции можно указывать в килобайтах (k/K) или мегабайтах (m/M), например: `"4M"`, `"512k"`, или просто байтами `"1048576"`.
@@ -372,6 +370,9 @@ sudo nano /etc/hsm-service/pki/revoked.yaml
 **Содержимое**:
 ```yaml
 revoked: []
+```
+```bash
+sudo chown hsm:hsm /etc/hsm-service/pki/revoked.yaml
 ```
 
 ### 6. Создание начальных KEK
@@ -411,17 +412,16 @@ rotation:
 EOF
 
 # Шаг 3: Обновить checksums для проверки целостности
-# ВАЖНО: Указать путь к config.yaml через флаг -config
-/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml update-checksums
+/opt/hsm-service/bin/hsm-admin update-checksums
 
 # Шаг 4: Проверить что всё настроено правильно
 echo ""
 echo "Checking KEKs in HSM:"
-/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml list-kek
+/opt/hsm-service/bin/hsm-admin list-kek
 
 echo ""
 echo "Checking rotation status:"
-/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml rotation-status
+/opt/hsm-service/bin/hsm-admin rotation-status
 ```
 
 **Как это работает:**

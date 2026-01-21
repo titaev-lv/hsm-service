@@ -23,7 +23,7 @@ func rotateKeyCommand(args []string) error {
 	log.Printf("Starting rotation for context: %s", contextName)
 
 	// 1. Load config to get metadata path
-	cfg, err := config.LoadConfig("config.yaml")
+	cfg, err := config.LoadConfig(getConfigPath())
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -216,7 +216,7 @@ func copyFile(src, dst string) error {
 
 // checkRotationStatus checks rotation status for all keys
 func checkRotationStatusCommand() error {
-	cfg, err := config.LoadConfig("config.yaml")
+	cfg, err := config.LoadConfig(getConfigPath())
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
