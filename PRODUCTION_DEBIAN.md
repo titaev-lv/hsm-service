@@ -661,11 +661,11 @@ curl -k https://localhost:8443/health \
 
 ```bash
 # Install nftables
-apt install -y nftables
+sudo apt install -y nftables
 
 # Enable service
-systemctl enable nftables
-systemctl start nftables
+sudo systemctl enable nftables
+sudo systemctl start nftables
 ```
 
 ### 2. Базовая конфигурация
@@ -713,13 +713,10 @@ table inet filter {
         # Drop invalid connections
         ct state invalid drop
 
-        # Rate limiting for new connections
-        ct state new limit rate 100/second burst 200 packets accept
-
-        # SSH from trusted networks only
+        # SSH from trusted networks only (ПЕРЕД rate limiting!)
         ip saddr $TRUSTED_NETWORKS tcp dport $SSH_PORT ct state new accept
 
-        # HSM Service (mTLS) from allowed clients only
+        # HSM Service (mTLS) from allowed clients only (ПЕРЕД rate limiting!)
         ip saddr $ALLOWED_CLIENTS tcp dport $HSM_PORT ct state new accept
 
         # Prometheus metrics (optional, from monitoring server)
@@ -727,6 +724,10 @@ table inet filter {
 
         # ICMP (ping) from trusted networks
         ip saddr $TRUSTED_NETWORKS icmp type echo-request limit rate 5/second accept
+
+        # ⚠️ ВАЖНО: Rate limiting ПОСЛЕ проверки разрешённых IP!
+        # Иначе будут пропущены соединения со всех IP адресов
+        ct state new limit rate 100/second burst 200 packets accept
 
         # Log dropped packets (optional, для debugging)
         # log prefix "nftables-drop: " drop
