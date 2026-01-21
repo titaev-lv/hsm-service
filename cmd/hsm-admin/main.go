@@ -82,7 +82,11 @@ func printUsage() {
 	fmt.Println("HSM Admin Tool - KEK Management")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  hsm-admin <command> [options]")
+	fmt.Println("  hsm-admin [global-options] <command> [command-options]")
+	fmt.Println()
+	fmt.Println("Global Options:")
+	fmt.Println("  -config <path>   Path to config.yaml")
+	fmt.Println("  -c <path>        Short form for -config")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  create-kek        Create a new KEK")
@@ -95,6 +99,8 @@ func printUsage() {
 	fmt.Println("  update-checksums  Compute and update KEK checksums (integrity verification)")
 	fmt.Println()
 	fmt.Println("Examples:")
+	fmt.Println("  hsm-admin --config /etc/hsm-service/config.yaml list-kek")
+	fmt.Println("  hsm-admin -c /etc/hsm-service/config.yaml update-checksums")
 	fmt.Println("  hsm-admin create-kek --label kek-trading-v1 --context trading")
 	fmt.Println("  hsm-admin list-kek")
 	fmt.Println("  hsm-admin delete-kek --label kek-old-v1 --confirm")
@@ -106,7 +112,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Environment Variables:")
 	fmt.Println("  HSM_PIN          HSM token PIN (required)")
-	fmt.Println("  CONFIG_PATH      Path to config.yaml (default: config.yaml)")
+	fmt.Println("  CONFIG_PATH      Path to config.yaml (searched: /etc/hsm-service/config.yaml if not set)")
 }
 
 func createKEK(args []string) {
