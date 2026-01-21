@@ -37,9 +37,10 @@ func main() {
 	log.SetOutput(multiWriter)
 
 	// 1. Load configuration
-	cfg, err := config.LoadConfig("config.yaml")
+	configPath := getConfigPath()
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("Failed to load config from %s: %v", configPath, err)
 	}
 
 	// 2. Load metadata
@@ -205,4 +206,30 @@ func performAutoCleanup(hsmCfg *config.HSMConfig, metadata *config.Metadata) err
 	}
 
 	return nil
+}
+
+// getConfigPath returns the path to config.yaml, searching in multiple locations
+// Priority:
+// 1. CONFIG_PATH environment variable
+// 2. ./config.yaml (current directory)
+// 3. /etc/hsm-service/config.yaml (production location)
+func getConfigPath() string {
+	// Check CONFIG_PATH environment variable first
+	if path := os.Getenv("CONFIG_PATH"); path != "" {
+		return path
+	}
+
+	// Check in current directory
+	if _, err := os.Stat("config.yaml"); err == nil {
+		return "config.yaml"
+	}
+
+	// Check in /etc/hsm-service/ (production location)
+	etcPath := "/etc/hsm-service/config.yaml"
+	if _, err := os.Stat(etcPath); err == nil {
+		return etcPath
+	}
+
+	// Return default (will cause error if file doesn't exist)
+	return "config.yaml"
 }

@@ -23,19 +23,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	command := os.Args[1]
+	// Parse global flags
+	configFlag := flag.String("config", "", "Path to config.yaml")
+	configFlagC := flag.String("c", "", "Path to config.yaml (short form)")
+	flag.Parse()
+
+	// Determine config path (set as environment variable for subcommands)
+	configPath := *configFlag
+	if configPath == "" && *configFlagC != "" {
+		configPath = *configFlagC
+	}
+	if configPath != "" {
+		os.Setenv("CONFIG_PATH", configPath)
+	}
+
+	// Get command from remaining arguments
+	args := flag.Args()
+	if len(args) == 0 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	command := args[0]
 
 	switch command {
 	case "create-kek":
-		createKEK(os.Args[2:])
+		createKEK(args[1:])
 	case "list-kek":
-		listKEK(os.Args[2:])
+		listKEK(args[1:])
 	case "delete-kek":
-		deleteKEK(os.Args[2:])
+		deleteKEK(args[1:])
 	case "export-metadata":
-		exportMetadata(os.Args[2:])
+		exportMetadata(args[1:])
 	case "rotate":
-		if err := rotateKeyCommand(os.Args[2:]); err != nil {
+		if err := rotateKeyCommand(args[1:]); err != nil {
 			log.Fatalf("Rotation failed: %v", err)
 		}
 	case "rotation-status":
@@ -43,11 +64,11 @@ func main() {
 			log.Fatalf("Failed to check rotation status: %v", err)
 		}
 	case "cleanup-old-versions":
-		if err := cleanupOldVersionsCommand(os.Args[2:]); err != nil {
+		if err := cleanupOldVersionsCommand(args[1:]); err != nil {
 			log.Fatalf("Failed to cleanup old versions: %v", err)
 		}
 	case "update-checksums":
-		if err := updateChecksumsCommand(os.Args[2:]); err != nil {
+		if err := updateChecksumsCommand(args[1:]); err != nil {
 			log.Fatalf("Failed to update checksums: %v", err)
 		}
 	default:
@@ -421,8 +442,22 @@ func exportMetadata(args []string) {
 }
 
 func getConfigPath() string {
+	// 1. Check CONFIG_PATH environment variable
 	if path := os.Getenv("CONFIG_PATH"); path != "" {
 		return path
 	}
+
+	// 2. Check in current directory
+	if _, err := os.Stat(defaultConfigPath); err == nil {
+		return defaultConfigPath
+	}
+
+	// 3. Check in /etc/hsm-service/
+	etcPath := "/etc/hsm-service/config.yaml"
+	if _, err := os.Stat(etcPath); err == nil {
+		return etcPath
+	}
+
+	// 4. Return default (will cause error if file doesn't exist)
 	return defaultConfigPath
 }

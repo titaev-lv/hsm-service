@@ -449,23 +449,29 @@ echo "Checking rotation status:"
 
 **Доступные hsm-admin команды:**
 ```bash
-# Все команды должны содержать флаг -config со путем к конфигу
-CONFIG_FILE="/etc/hsm-service/config.yaml"
+# hsm-admin автоматически ищет config.yaml в этом порядке:
+# 1. Переменная окружения CONFIG_PATH
+# 2. Текущая директория (./config.yaml)
+# 3. /etc/hsm-service/config.yaml
 
-hsm-admin -config "$CONFIG_FILE" list-kek              # Список всех KEK'ов
-hsm-admin -config "$CONFIG_FILE" export-metadata       # Экспортировать metadata в JSON
-hsm-admin -config "$CONFIG_FILE" rotate <context>      # Ротировать KEK контекста на новую версию
-hsm-admin -config "$CONFIG_FILE" rotation-status       # Статус ротации всех ключей
-hsm-admin -config "$CONFIG_FILE" cleanup-old-versions  # Удалить старые версии (PCI DSS)
-hsm-admin -config "$CONFIG_FILE" update-checksums      # Обновить checksums
-```
+# Способ 1: Явно указать флагом (перед командой)
+hsm-admin -config /etc/hsm-service/config.yaml list-kek
+hsm-admin -config /etc/hsm-service/config.yaml update-checksums
+hsm-admin -config /etc/hsm-service/config.yaml rotation-status
 
-**Альтернатива: Использовать переменную окружения CONFIG_PATH**
-```bash
-export CONFIG_PATH="/etc/hsm-service/config.yaml"
+# Способ 2: Короткая форма флага -c
+hsm-admin -c /etc/hsm-service/config.yaml list-kek
 
-hsm-admin list-kek              # Без флага -config
+# Способ 3: Через переменную окружения (рекомендуется)
+export CONFIG_PATH=/etc/hsm-service/config.yaml
+hsm-admin list-kek
+hsm-admin update-checksums
 hsm-admin rotation-status
+
+# Способ 4: По умолчанию (если файл в /etc/hsm-service/)
+# При запуске от пользователя hsm, конфиг найдется автоматически
+hsm-admin list-kek
+hsm-admin update-checksums
 ```
 
 ---
@@ -1291,21 +1297,39 @@ sudo -u hsm sh -c 'export HSM_PIN=1234 && /opt/hsm-service/hsm-service'
 Failed to update checksums: failed to load config: read config file: open config.yaml: no such file or directory
 ```
 
-**Решение:** `hsm-admin` нужно указать явно где находится конфиг через флаг `-config`:
+**Решение:** `hsm-admin` автоматически ищет конфиг в следующем порядке:
+1. Переменная окружения `CONFIG_PATH`
+2. Текущая директория (`./config.yaml`)
+3. `/etc/hsm-service/config.yaml`
+
+Если конфиг в `/etc/hsm-service/config.yaml`, то команда должна работать без флагов:
 
 ```bash
-# Способ 1: Флаг -config
+# Способ 1: Автоматическое обнаружение (конфиг в /etc/hsm-service/)
+/opt/hsm-service/bin/hsm-admin update-checksums
+/opt/hsm-service/bin/hsm-admin rotation-status
+/opt/hsm-service/bin/hsm-admin list-kek
+
+# Способ 2: Явно указать флагом -config (перед командой)
 /opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml update-checksums
 /opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml rotation-status
-/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml list-kek
 
-# Способ 2: Переменная окружения CONFIG_PATH
+# Способ 3: Короткая форма -c
+/opt/hsm-service/bin/hsm-admin -c /etc/hsm-service/config.yaml update-checksums
+
+# Способ 4: Через переменную окружения CONFIG_PATH
 export CONFIG_PATH=/etc/hsm-service/config.yaml
 /opt/hsm-service/bin/hsm-admin update-checksums
 /opt/hsm-service/bin/hsm-admin rotation-status
+```
 
-# Способ 3: В systemd service уже установлена переменная CONFIG_PATH
-# Если запускать через systemd, переменная подставится автоматически
+**Важно:** Флаг конфига должен быть указан ПЕРЕД командой:
+```bash
+# ✓ Правильно
+hsm-admin -config /path/to/config.yaml update-checksums
+
+# ✗ Неправильно
+hsm-admin update-checksums -config /path/to/config.yaml
 ```
 
 ### Problem: Permission denied на tokens или "Could not load the SoftHSM configuration"
