@@ -538,6 +538,10 @@ WantedBy=multi-user.target
 Для максимальной производительности настройте параметры ядра:
 
 ```bash
+echo "nf_conntrack" | sudo tee /etc/modules-load.d/nf_conntrack.conf
+```
+
+```bash
 # Edit sysctl configuration
 sudo nano /etc/sysctl.d/99-hsm-service.conf
 ```
@@ -568,8 +572,8 @@ net.netfilter.nf_conntrack_max = 524288
 sudo sysctl -p /etc/sysctl.d/99-hsm-service.conf
 
 # Verify
-sysctl net.core.somaxconn
-sysctl net.ipv4.tcp_tw_reuse
+sudo sysctl net.core.somaxconn
+sudo sysctl net.ipv4.tcp_tw_reuse
 ```
 
 ### 3. Создание environment file (ОБЯЗАТЕЛЬНО для production!)
@@ -607,8 +611,9 @@ ls -la /etc/hsm-service/environment
 
 ```bash
 # Вместо слабого "1234", используйте криптографически стойкий PIN:
-openssl rand -hex 16
-# Пример вывода: a7f3e9c2b5d8f1a4c6e9b2d5f8a1c4e7
+openssl rand -hex 32
+# Пример вывода: 125a1bf04387ed172eda63b3c6a341a84e23eb2b78a39efd7c23b0d2340ae02d
+
 
 # Или используйте KMS/Vault для управления PIN'ами:
 # - AWS Secrets Manager
