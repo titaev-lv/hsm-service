@@ -799,7 +799,7 @@ print_success "Rotated to v3 and v4"
 
 print_test "Test 10.2: Verify 4 versions exist"
 # Read metadata from container (source of truth)
-VERSION_COUNT=$(docker exec hsm-service grep -c "label: kek-exchange-v" /app/metadata.yaml)
+VERSION_COUNT=$(docker exec hsm-service grep -c "label: kek-exchange-key-v" /app/metadata.yaml)
 if [ "$VERSION_COUNT" -ne 4 ]; then
     echo "Metadata in container:"
     docker exec hsm-service cat /app/metadata.yaml
@@ -919,7 +919,7 @@ echo "Updated metadata.yaml content:"
 cat "$PROJECT_ROOT/metadata.yaml"
 echo ""
 
-VERSION_COUNT_AFTER=$(grep -c "label: kek-exchange-v" "$PROJECT_ROOT/metadata.yaml")
+VERSION_COUNT_AFTER=$(grep -c "label: kek-exchange-key-v" "$PROJECT_ROOT/metadata.yaml")
 echo "Version count after cleanup: $VERSION_COUNT_AFTER"
 echo ""
 
