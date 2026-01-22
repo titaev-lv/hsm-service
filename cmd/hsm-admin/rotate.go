@@ -178,8 +178,7 @@ func rotateKeyCommand(args []string) error {
 	log.Printf("  1. Restart the HSM service to load the new key")
 	log.Printf("  2. Re-encrypt all data encrypted with the old key")
 	log.Printf("  3. After 7 days overlap period, delete the old key:")
-	log.Printf("     hsm-admin delete %s", currentLabel)
-	log.Printf("     hsm-admin delete %s", currentLabel)
+	log.Printf("     hsm-admin delete-kek --label %s --confirm", currentLabel)
 
 	return nil
 }
