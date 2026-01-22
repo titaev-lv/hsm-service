@@ -914,90 +914,24 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-**3. Создать скрипт проверки:**
+**3. Скрипт уже обновлен:**
 
-```bash
-sudo nano /opt/hsm-service/scripts/check-key-rotation.sh
-```
+Скрипт `scripts/check-key-rotation.sh` был обновлен для поддержки **обоих окружений** (Docker и Production):
 
-**Содержимое:**
-```bash
-#!/bin/bash
-set -euo pipefail
+✅ **Автоматическое обнаружение окружения**:
+- Проверяет Docker или systemd
+- Выбирает правильные пути (`docker exec` vs `/opt/hsm-service/bin/hsm-admin`)
+- Загружает переменные из `/etc/hsm-service/environment` на Production
 
-LOG_FILE="/var/log/hsm-service/rotation.log"
-ALERT_EMAIL="${ALERT_EMAIL:-ops@company.com}"
-AUTO_ROTATE="${AUTO_ROTATE:-false}"
-SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
+✅ **Автоматическая ротация** (если включена `AUTO_ROTATE=true`):
+- Ротирует все просроченные ключи
+- Отправляет алерты при ошибках
+- Поддерживает Slack/Email/Telegram уведомления
 
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
-}
-
-check_rotation_status() {
-    /opt/hsm-service/bin/hsm-admin rotation-status | tee /tmp/rotation-status.txt
-}
-
-send_alert() {
-    local subject=$1
-    local body=$2
-    
-    # Email alert (опционально)
-    if command -v mail >/dev/null 2>&1; then
-        echo "$body" | mail -s "$subject" "$ALERT_EMAIL"
-    fi
-    
-    # Slack webhook (опционально)
-    if [[ -n "$SLACK_WEBHOOK" ]]; then
-        curl -X POST "$SLACK_WEBHOOK" \
-          -H 'Content-Type: application/json' \
-          -d "{\"text\":\"⚠️  $subject\n\n\`\`\`$body\`\`\`\"}"
-    fi
-}
-
-perform_rotation() {
-    local context=$1
-    
-    log "Starting automatic rotation for context: $context"
-    
-    if /opt/hsm-service/bin/hsm-admin rotate "$context"; then
-        log "✓ Rotation completed for $context"
-        
-        # Отправить webhook приложениям (опционально)
-        if [[ -n "${APP_WEBHOOK:-}" ]]; then
-            curl -X POST "$APP_WEBHOOK" \
-              -H "Content-Type: application/json" \
-              -d "{\"event\":\"key_rotation\",\"context\":\"$context\",\"timestamp\":\"$(date -Iseconds)\"}"
-        fi
-        
-        return 0
-    else
-        log "✗ Rotation failed for $context"
-        send_alert "HSM Rotation FAILED: $context" \
-                   "Automatic rotation failed. Manual intervention required.\n\nCheck logs: sudo journalctl -u hsm-service -n 50"
-        return 1
-    fi
-}
-
-main() {
-    log "Starting key rotation check..."
-    
-    check_rotation_status
-    
-    # Найти ключи, требующие ротации (поиск "NEEDS ROTATION")
-    OVERDUE_KEYS=$(grep -i "needs rotation" /tmp/rotation-status.txt | awk '{print $1}' | tr -d ':' || true)
-    
-    if [[ -z "$OVERDUE_KEYS" ]]; then
-        log "All keys are up to date"
-        exit 0
-    fi
-    
-    log "Keys requiring rotation: $OVERDUE_KEYS"
-    
-    if [[ "$AUTO_ROTATE" == "true" ]]; then
-        # Автоматическая ротация
-        log "AUTO_ROTATE enabled, performing automatic rotation"
-        for context in $OVERDUE_KEYS; do
+✅ **Синтаксис правильный**:
+- Использует `/opt/hsm-service/bin/hsm-admin` с флагом `-config`
+- Работает на Production без Docker
+- Логи в `/var/log/hsm-service/rotation.log`
             perform_rotation "$context"
         done
     else

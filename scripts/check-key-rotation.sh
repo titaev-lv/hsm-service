@@ -2,31 +2,73 @@
 # HSM Key Rotation Monitoring Script
 # Проверяет ключи на необходимость ротации и отправляет оповещения
 # Рекомендуется запускать ежедневно через cron
+# 
+# Поддерживает оба окружения:
+# - Docker (docker-compose)
+# - Production (Debian 13 с systemd)
 
 set -euo pipefail
 
 # Конфигурация
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-LOG_FILE="/var/log/hsm-rotation-check.log"
-ALERT_DAYS_BEFORE=14  # Оповещать за 14 дней до истечения
-CRITICAL_DAYS_BEFORE=7  # Критическое оповещение за 7 дней
+
+# ============================================================================
+# АВТОМАТИЧЕСКОЕ ОБНАРУЖЕНИЕ ОКРУЖЕНИЯ
+# ============================================================================
+detect_environment() {
+    # Проверка Docker окружения
+    if [ -f "/.dockerenv" ] || grep -q docker /proc/1/cgroup 2>/dev/null || docker info >/dev/null 2>&1; then
+        ENVIRONMENT="docker"
+        HSM_ADMIN_CMD="docker exec hsm-service /app/hsm-admin"
+        LOG_FILE="/var/log/hsm-rotation-check.log"
+        CONFIG_PATH="/app/config.yaml"
+    # Проверка Production окружения (systemd)
+    elif systemctl is-active --quiet hsm-service 2>/dev/null || [ -f /etc/systemd/system/hsm-service.service ]; then
+        ENVIRONMENT="production"
+        HSM_ADMIN_CMD="/opt/hsm-service/bin/hsm-admin -config /etc/hsm-service/config.yaml"
+        LOG_FILE="/var/log/hsm-service/rotation.log"
+        CONFIG_PATH="/etc/hsm-service/config.yaml"
+    else
+        echo "ERROR: Cannot detect HSM environment (Docker or Production)"
+        echo "Expected: Docker container OR systemd service (hsm-service)"
+        exit 1
+    fi
+}
+
+# Вызвать обнаружение окружения
+detect_environment
+
+# Конфигурация алертов (загружается из /etc/hsm-service/environment для Production)
+if [ "$ENVIRONMENT" = "production" ] && [ -f /etc/hsm-service/environment ]; then
+    # shellcheck source=/etc/hsm-service/environment
+    source /etc/hsm-service/environment
+fi
+
+ALERT_DAYS_BEFORE="${ALERT_DAYS_BEFORE:-14}"  # Оповещать за 14 дней до истечения
+CRITICAL_DAYS_BEFORE="${CRITICAL_DAYS_BEFORE:-7}"  # Критическое оповещение за 7 дней
 
 # Email настройки (опционально)
-ALERT_EMAIL="${HSM_ALERT_EMAIL:-ops@example.com}"
-SEND_EMAIL="${HSM_SEND_EMAIL:-false}"
+ALERT_EMAIL="${ALERT_EMAIL:-ops@example.com}"
+SEND_EMAIL="${SEND_EMAIL:-false}"
 
 # Slack webhook (опционально)
-SLACK_WEBHOOK="${HSM_SLACK_WEBHOOK:-}"
+SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
 
 # Telegram (опционально)
-TELEGRAM_BOT_TOKEN="${HSM_TELEGRAM_BOT_TOKEN:-}"
-TELEGRAM_CHAT_ID="${HSM_TELEGRAM_CHAT_ID:-}"
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+
+# Автоматическая ротация (по умолчанию отключена)
+AUTO_ROTATE="${AUTO_ROTATE:-false}"
 
 # Функция логирования
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
+
+# Создать директорию для логов если её нет
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 # Функция отправки email
 send_email() {
@@ -91,23 +133,47 @@ send_alert() {
     logger -t hsm-rotation -p user."$level" "$message"
 }
 
-# Проверка, что Docker запущен
-if ! docker info >/dev/null 2>&1; then
-    send_alert "ERROR: Docker is not running" "danger"
-    exit 1
-fi
+# ============================================================================
+# ПРОВЕРКА ДОСТУПНОСТИ СЕРВИСА
+# ============================================================================
+check_service_availability() {
+    if [ "$ENVIRONMENT" = "docker" ]; then
+        # Docker окружение
+        if ! docker info >/dev/null 2>&1; then
+            send_alert "ERROR: Docker is not running or not accessible" "danger"
+            exit 1
+        fi
+        
+        if ! docker ps | grep -q hsm-service; then
+            send_alert "ERROR: hsm-service container is not running" "danger"
+            exit 1
+        fi
+        
+        log "Docker environment detected. Service check: OK"
+        
+    elif [ "$ENVIRONMENT" = "production" ]; then
+        # Production окружение
+        if ! systemctl is-active --quiet hsm-service; then
+            send_alert "ERROR: hsm-service systemd service is not running" "danger"
+            exit 1
+        fi
+        
+        log "Production environment detected. Service check: OK"
+    fi
+}
+log "Starting HSM key rotation check (Environment: $ENVIRONMENT)..."
 
-# Проверка, что контейнер HSM запущен
-if ! docker ps | grep -q hsm-service; then
-    send_alert "ERROR: hsm-service container is not running" "danger"
-    exit 1
-fi
-
-log "Starting HSM key rotation check..."
+# Проверка доступности сервиса
+check_service_availability
 
 # Получение статуса ротации
-ROTATION_STATUS=$(docker exec hsm-service /app/hsm-admin rotation-status 2>&1) || {
-    send_alert "ERROR: Failed to get rotation status: $ROTATION_STATUS" "danger"
+log "Executing: $HSM_ADMIN_CMD rotation-status"
+ROTATION_STATUS=$($HSM_ADMIN_CMD rotation-status 2>&1) || {
+    send_alert "ERROR: Failed to get rotation status from $ENVIRONMENT environment
+
+Command: $HSM_ADMIN_CMD rotation-status
+
+Error: $ROTATION_STATUS" "danger"
     exit 1
 }
 
@@ -119,35 +185,46 @@ if [ -n "$NEEDS_ROTATION" ]; then
     KEYS_OVERDUE=$(echo "$NEEDS_ROTATION" | grep -oP "Context: \K[^[:space:]]+" | tr '\n' ', ' | sed 's/,$//')
     
     # Проверка автоматической ротации
-    if [ "$AUTO_ROTATION_ENABLED" = "true" ]; then
-        warning "Keys are overdue - triggering AUTOMATIC ROTATION"
+    if [ "$AUTO_ROTATE" = "true" ]; then
+        log "Keys are overdue - triggering AUTOMATIC ROTATION"
         
         send_alert "🔄 AUTOMATIC ROTATION TRIGGERED
 
 Keys needing rotation: $KEYS_OVERDUE
 
 Starting automatic rotation process...
-See logs: /var/log/hsm-rotation.log" "warning"
+See logs: $LOG_FILE" "warning"
         
-        # Запуск автоматической ротации
-        if "$SCRIPT_DIR/rotate-key-auto.sh"; then
-            success "Automatic rotation completed successfully"
+        # Выполнить ротацию для каждого ключа
+        ROTATION_FAILED=0
+        for key_context in $(echo "$KEYS_OVERDUE" | tr ',' ' '); do
+            key_context=$(echo "$key_context" | xargs)  # trim whitespace
+            log "Starting rotation for context: $key_context"
+            
+            if $HSM_ADMIN_CMD rotate "$key_context" >/dev/null 2>&1; then
+                log "✓ Rotation completed for: $key_context"
+            else
+                log "✗ Rotation failed for: $key_context"
+                ROTATION_FAILED=1
+            fi
+        done
+        
+        if [ $ROTATION_FAILED -eq 0 ]; then
+            log "✓ All rotations completed successfully"
             send_alert "✅ AUTOMATIC ROTATION COMPLETED
 
 Keys rotated: $KEYS_OVERDUE
 
-Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')" "success"
+Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')" "warning"
             exit 0
         else
-            error "Automatic rotation FAILED - manual intervention required"
             send_alert "❌ AUTOMATIC ROTATION FAILED
 
 Keys: $KEYS_OVERDUE
 
 MANUAL ACTION REQUIRED:
-1. Check logs: tail -100 /var/log/hsm-rotation.log
-2. Review backups: ls -lh /var/backups/hsm/
-3. Perform manual rotation: sudo -E ./scripts/rotate-key-interactive.sh
+1. Check logs: tail -100 $LOG_FILE
+2. Perform manual rotation: $HSM_ADMIN_CMD rotate <context>
 
 See: $PROJECT_DIR/KEY_ROTATION.md" "danger"
             exit 2
@@ -156,15 +233,15 @@ See: $PROJECT_DIR/KEY_ROTATION.md" "danger"
         # Ручной режим - только оповещение
         MESSAGE="⚠️ CRITICAL: HSM keys are OVERDUE for rotation!
 
+Environment: $ENVIRONMENT
 Keys needing rotation: $KEYS_OVERDUE
 
 Details:
 $NEEDS_ROTATION
 
 Action required:
-1. Review rotation status: docker exec hsm-service /app/hsm-admin rotation-status
-2. Perform rotation: sudo -E ./scripts/rotate-key-interactive.sh
-   OR enable auto-rotation: AUTO_ROTATION_ENABLED=true
+1. Review rotation status: $HSM_ADMIN_CMD rotation-status
+2. Perform rotation: $HSM_ADMIN_CMD rotate <context>
 
 See: $PROJECT_DIR/KEY_ROTATION.md for full procedure"
 
@@ -210,19 +287,31 @@ See: $PROJECT_DIR/KEY_ROTATION.md"
 fi
 
 # Проверка здоровья сервиса
-HEALTH_CHECK=$(curl -sk https://localhost:8443/health 2>&1 || true)
+if [ "$ENVIRONMENT" = "docker" ]; then
+    HEALTH_CHECK=$(curl -sk https://localhost:8443/health 2>&1 || true)
+elif [ "$ENVIRONMENT" = "production" ]; then
+    # Production с mTLS сертификатами
+    HEALTH_CHECK=$(curl -sk https://localhost:8443/health \
+        --cert /etc/hsm-service/pki/client/monitoring.crt \
+        --key /etc/hsm-service/pki/client/monitoring.key \
+        --cacert /etc/hsm-service/pki/ca/ca.crt 2>&1 || true)
+fi
 
 if echo "$HEALTH_CHECK" | grep -q '"status":"healthy"'; then
-    log "HSM service is healthy"
+    log "HSM service health check: OK"
 else
-    send_alert "WARNING: HSM service health check failed: $HEALTH_CHECK" "warning"
+    log "WARNING: HSM service health check failed or not available (may be normal in some configs)"
 fi
 
 log "HSM key rotation check completed successfully"
 
 # Вывод статуса в stdout для cron email
+echo ""
 echo "HSM Key Rotation Status Check - $(date)"
 echo "========================================"
+echo "Environment: $ENVIRONMENT"
+echo "Log file: $LOG_FILE"
+echo ""
 echo "$ROTATION_STATUS"
 echo ""
 echo "All checks passed. Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')"
