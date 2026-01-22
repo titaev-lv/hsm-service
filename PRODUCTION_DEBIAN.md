@@ -881,7 +881,7 @@ After=network.target hsm-service.service
 Type=oneshot
 User=hsm
 WorkingDirectory=/opt/hsm-service
-Environment="HSM_PIN_FILE=/etc/hsm-service/pin.txt"
+EnvironmentFile=/etc/hsm-service/environment
 Environment="AUTO_ROTATE=true"
 ExecStart=/opt/hsm-service/scripts/check-key-rotation.sh
 StandardOutput=journal
@@ -905,8 +905,7 @@ Requires=hsm-rotation-check.service
 
 [Timer]
 # Проверять каждый день в 3:00
-OnCalendar=daily
-OnCalendar=03:00
+OnCalendar=*-*-* 03:00:00
 # Запустить через 5 минут после boot
 OnBootSec=5min
 Persistent=true
@@ -936,7 +935,7 @@ log() {
 }
 
 check_rotation_status() {
-    /usr/local/bin/hsm-admin rotation-status | tee /tmp/rotation-status.txt
+    /opt/hsm-service/bin/hsm-admin rotation-status | tee /tmp/rotation-status.txt
 }
 
 send_alert() {
@@ -961,7 +960,7 @@ perform_rotation() {
     
     log "Starting automatic rotation for context: $context"
     
-    if /usr/local/bin/hsm-admin rotate "$context"; then
+    if /opt/hsm-service/bin/hsm-admin rotate "$context"; then
         log "✓ Rotation completed for $context"
         
         # Отправить webhook приложениям (опционально)
@@ -986,7 +985,7 @@ main() {
     check_rotation_status
     
     # Найти ключи, требующие ротации (поиск "NEEDS ROTATION")
-    OVERDUE_KEYS=$(grep "NEEDS ROTATION" /tmp/rotation-status.txt | awk '{print $3}' | tr -d ':' || true)
+    OVERDUE_KEYS=$(grep -i "needs rotation" /tmp/rotation-status.txt | awk '{print $1}' | tr -d ':' || true)
     
     if [[ -z "$OVERDUE_KEYS" ]]; then
         log "All keys are up to date"
@@ -1091,16 +1090,17 @@ sudo nano /etc/ssmtp/ssmtp.conf
 # Создать Incoming Webhook в Slack
 # https://api.slack.com/messaging/webhooks
 
-# Добавить в environment
-sudo nano /etc/systemd/system/hsm-rotation-check.service
+# Добавить в environment файл
+sudo nano /etc/hsm-service/environment
 
-# В секцию [Service] добавить:
-Environment="SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-Environment="ALERT_EMAIL=ops@company.com"
-Environment="APP_WEBHOOK=https://your-app.com/api/webhooks/key-rotation"
+# Добавить переменные:
+SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+ALERT_EMAIL=ops@company.com
+APP_WEBHOOK=https://your-app.com/api/webhooks/key-rotation
 
-# Применить
-sudo systemctl daemon-reload
+# Убедиться в правильных правах
+sudo chown root:hsm /etc/hsm-service/environment
+sudo chmod 640 /etc/hsm-service/environment
 ```
 
 ### Режимы работы
