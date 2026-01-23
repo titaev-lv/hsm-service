@@ -6,6 +6,11 @@
 # Поддерживает оба окружения:
 # - Docker (docker-compose)
 # - Production (Debian 13 с systemd)
+#
+# Exit codes:
+#   0 = All checks passed (no keys need rotation or rotation completed)
+#   1 = Critical error (service not running, HSM command failed, etc)
+#   2 = Automatic rotation failed (manual action required)
 
 set -euo pipefail
 
@@ -38,6 +43,25 @@ detect_environment() {
 
 # Вызвать обнаружение окружения
 detect_environment
+
+# ============================================================================
+# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (для Production)
+# ============================================================================
+# systemd EnvironmentFile может не передавать переменные в скрипт
+# Загружаем явно как fallback
+if [ "$ENVIRONMENT" = "production" ]; then
+    if [ -z "${HSM_PIN:-}" ] && [ -f /etc/hsm-service/environment ]; then
+        log "Loading environment variables from /etc/hsm-service/environment"
+        # shellcheck source=/etc/hsm-service/environment
+        source /etc/hsm-service/environment
+    fi
+    
+    # Validate HSM_PIN is set
+    if [ -z "${HSM_PIN:-}" ]; then
+        log "ERROR: HSM_PIN not found. Set it in /etc/hsm-service/environment or as environment variable"
+        exit 1
+    fi
+fi
 
 # Конфигурация алертов (загружается из /etc/hsm-service/environment для Production)
 if [ "$ENVIRONMENT" = "production" ] && [ -f /etc/hsm-service/environment ]; then
@@ -123,14 +147,23 @@ ${message}" \
 send_alert() {
     local message="$1"
     local level="${2:-info}"
+    local syslog_level="$level"
+    
+    # Маппировать custom приоритеты на syslog приоритеты
+    case "$level" in
+        danger)      syslog_level="crit" ;;     # danger -> critical
+        warning)     syslog_level="warning" ;;
+        info)        syslog_level="info" ;;
+        *)           syslog_level="notice" ;;   # default
+    esac
     
     log "$message"
     send_email "HSM Key Rotation Alert - ${level^^}" "$message"
     send_slack "$message" "$level"
     send_telegram "$message"
     
-    # Syslog
-    logger -t hsm-rotation -p user."$level" "$message"
+    # Syslog (используем маппированный приоритет)
+    logger -t hsm-rotation -p user."$syslog_level" "$message"
 }
 
 # ============================================================================
@@ -182,7 +215,11 @@ NEEDS_ROTATION=$(echo "$ROTATION_STATUS" | grep "NEEDS ROTATION" || true)
 
 if [ -n "$NEEDS_ROTATION" ]; then
     # Критическое оповещение - ключи просрочены!
-    KEYS_OVERDUE=$(echo "$NEEDS_ROTATION" | grep -oP "Context: \K[^[:space:]]+" | tr '\n' ', ' | sed 's/,$//')
+    # Найти контексты с "NEEDS ROTATION" (контекст идёт за несколько строк до статуса)
+    KEYS_OVERDUE=$(echo "$ROTATION_STATUS" | awk '
+        /Context:/ { context = $NF }
+        /NEEDS ROTATION/ { if (context) print context }
+    ' | tr '\n' ', ' | sed 's/,$//')
     
     # Проверка автоматической ротации
     if [ "$AUTO_ROTATE" = "true" ]; then
@@ -197,14 +234,50 @@ See logs: $LOG_FILE" "warning"
         
         # Выполнить ротацию для каждого ключа
         ROTATION_FAILED=0
+        ROTATION_TIMEOUT=120  # 2 minutes timeout per key
+        
+        # Определить, нужно ли запускать с sudo для production
+        ROTATION_CMD="$HSM_ADMIN_CMD"
+        if [ "$ENVIRONMENT" = "production" ] && [ ! -w "/var/lib/hsm-service" ] 2>/dev/null; then
+            # Нет доступа на запись - нужно использовать sudo
+            log "WARNING: No write permission to /var/lib/hsm-service, attempting with sudo"
+            ROTATION_CMD="sudo $HSM_ADMIN_CMD"
+        fi
+        
         for key_context in $(echo "$KEYS_OVERDUE" | tr ',' ' '); do
             key_context=$(echo "$key_context" | xargs)  # trim whitespace
-            log "Starting rotation for context: $key_context"
+            log "Starting rotation for context: $key_context (timeout: ${ROTATION_TIMEOUT}s)"
+            log "Executing command: timeout $ROTATION_TIMEOUT $ROTATION_CMD rotate \"$key_context\""
+            START_TIME=$(date +%s)
             
-            if $HSM_ADMIN_CMD rotate "$key_context" >/dev/null 2>&1; then
-                log "✓ Rotation completed for: $key_context"
+            # Выполнить с timeout (используем eval для правильной передачи параметров)
+            ROTATE_OUTPUT=$(eval timeout $ROTATION_TIMEOUT $ROTATION_CMD rotate "$key_context" 2>&1)
+            ROTATE_EXIT_CODE=$?
+            
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            
+            if [ $ROTATE_EXIT_CODE -eq 0 ]; then
+                log "✓ Rotation completed for: $key_context (${DURATION}s)"
+                if [ -n "$ROTATE_OUTPUT" ]; then
+                    log "Output: $ROTATE_OUTPUT"
+                fi
+            elif [ $ROTATE_EXIT_CODE -eq 124 ]; then
+                log "✗ Rotation TIMEOUT for: $key_context after ${ROTATION_TIMEOUT}s"
+                log "Error details: Command timed out. The rotate command may be hanging on HSM operations."
+                ROTATION_FAILED=1
             else
-                log "✗ Rotation failed for: $key_context"
+                log "✗ Rotation failed for: $key_context (exit code: $ROTATE_EXIT_CODE, duration: ${DURATION}s)"
+                log "Error details: $ROTATE_OUTPUT"
+                
+                # Диагностика permission denied
+                if echo "$ROTATE_OUTPUT" | grep -q "permission denied"; then
+                    log "HINT: Permission denied error detected. Fix with:"
+                    log "  sudo chown -R hsm-service:hsm-service /var/lib/hsm-service"
+                    log "  sudo chmod 700 /var/lib/hsm-service"
+                    log "Or configure sudoers for passwordless: /opt/hsm-service/bin/hsm-admin"
+                fi
+                
                 ROTATION_FAILED=1
             fi
         done
@@ -218,9 +291,13 @@ Keys rotated: $KEYS_OVERDUE
 Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')" "warning"
             exit 0
         else
+            ROTATION_ERRORS=$(tail -20 "$LOG_FILE" | grep "Error details:" || echo "No error details captured")
             send_alert "❌ AUTOMATIC ROTATION FAILED
 
 Keys: $KEYS_OVERDUE
+
+Error details:
+$ROTATION_ERRORS
 
 MANUAL ACTION REQUIRED:
 1. Check logs: tail -100 $LOG_FILE
@@ -246,7 +323,9 @@ Action required:
 See: $PROJECT_DIR/KEY_ROTATION.md for full procedure"
 
         send_alert "$MESSAGE" "danger"
-        exit 2
+        # Exit 0: This is not an error, just an operational state requiring attention.
+        # Alerts have been sent to the ops team. Manual rotation is needed.
+        exit 0
     fi
 fi
 

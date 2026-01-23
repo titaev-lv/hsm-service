@@ -356,7 +356,7 @@ sudo touch /var/lib/hsm-service/metadata.yaml
 
 Установка прав:
 ```bash
-sudo chown hsm:hsm /var/lib/hsm-service/metadata.yaml
+sudo chown -R hsm:hsm /var/lib/hsm-service
 sudo chmod 644 /var/lib/hsm-service/metadata.yaml
 ```
 
@@ -880,16 +880,33 @@ After=network.target hsm-service.service
 [Service]
 Type=oneshot
 User=hsm
+Group=hsm
 WorkingDirectory=/opt/hsm-service
-EnvironmentFile=/etc/hsm-service/environment
+
+# Load environment variables (EnvironmentFile с минусом игнорирует ошибку если файла нет)
+EnvironmentFile=-/etc/hsm-service/environment
+
+# Явно передавать переменные в скрипт
+PassEnvironment=HSM_PIN AUTO_ROTATE ALERT_EMAIL SEND_EMAIL SLACK_WEBHOOK TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
+
+# Ensure variables are exported to child processes
 Environment="AUTO_ROTATE=true"
-ExecStart=/opt/hsm-service/scripts/check-key-rotation.sh
+
+# Shell interpreter to ensure proper variable expansion
+ExecStart=/bin/bash /opt/hsm-service/scripts/check-key-rotation.sh
+
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=hsm-rotation-check
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+**Примечание:**
+- `EnvironmentFile=-/etc/hsm-service/environment` загружает переменные из файла (минус = игнорировать ошибки)
+- `PassEnvironment=` явно передает переменные из systemd в скрипт
+- `ExecStart=/bin/bash` гарантирует что переменные правильно передаются shell скрипту
 
 **2. Создать systemd timer:**
 
@@ -932,24 +949,18 @@ WantedBy=timers.target
 - Использует `/opt/hsm-service/bin/hsm-admin` с флагом `-config`
 - Работает на Production без Docker
 - Логи в `/var/log/hsm-service/rotation.log`
-            perform_rotation "$context"
-        done
-    else
-        # Только алерты
-        log "AUTO_ROTATE disabled, sending alerts only"
-        send_alert "HSM Keys Need Rotation" "$(cat /tmp/rotation-status.txt)"
-    fi
-}
 
-main
-```
+✅ **Исправлены проблемы с извлечением контекстов**:
+- Корректно обнаруживает контексты с `NEEDS ROTATION` статусом
+- Использует awk для правильного маппирования контекстов к статусам
+- Маппирует custom приоритеты на syslog приоритеты
+
+> **Если у вас старая версия скрипта и возникла ошибка**: см. [QUICK_FIX_ROTATION.md](QUICK_FIX_ROTATION.md)
 
 **4. Установить права:**
 
 ```bash
 sudo chmod +x /opt/hsm-service/scripts/check-key-rotation.sh
-sudo mkdir -p /var/log/hsm-service
-sudo chown hsm:hsm /var/log/hsm-service
 ```
 
 **5. Активировать timer:**
@@ -1003,7 +1014,7 @@ sudo nano /var/lib/hsm-service/metadata.yaml
 sudo systemctl start hsm-rotation-check.service
 
 # Проверить, что ротация сработала
-sudo /usr/local/bin/hsm-admin rotation-status
+/opt/hsm-service/bin/hsm-admin rotation-status
 ```
 
 ### Настройка уведомлений
