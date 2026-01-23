@@ -1054,7 +1054,7 @@ Environment="AUTO_ROTATE=true"
 **Проверить статус ключей:**
 
 ```bash
-sudo /usr/local/bin/hsm-admin rotation-status
+sudo /opt/hsm-service/bin/hsm-admin rotation-status
 ```
 
 **Проверить историю ротаций:**

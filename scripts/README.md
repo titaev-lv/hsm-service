@@ -62,57 +62,7 @@ HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK
 0 9 * * * cd /home/user/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-cron.log 2>&1
 ```
 
-### 2. auto-rotate-keys.sh
-
-**Назначение:** Автоматическая ротация ключей через `hsm-admin` + KeyManager hot reload (Phase 4)
-
-**Функции:**
-- Проверяет ключи, требующие ротации (через `hsm-admin rotation-status`)
-- Выполняет ротацию каждого ключа (через `hsm-admin rotate`)
-- KeyManager автоматически обнаруживает изменения в `metadata.yaml` (в течение 30 секунд)
-- Zero downtime - сервис не перезапускается!
-- Поддержка dry-run режима
-- Логирование всех операций
-
-**Использование:**
-
-```bash
-# Проверка, какие ключи будут ротированы (dry run)
-DRY_RUN=true ./scripts/auto-rotate-keys.sh
-
-# Выполнение автоматической ротации
-./scripts/auto-rotate-keys.sh
-
-# С пользовательским путём к логу
-HSM_ROTATION_LOG=/var/log/my-rotation.log ./scripts/auto-rotate-keys.sh
-```
-
-**Пример вывода:**
-
-```
-ℹ Checking keys requiring rotation...
-ℹ Keys requiring rotation:
-  - exchange-key
-ℹ Rotating key context: exchange-key
-✓ Rotation completed: exchange-key
-ℹ KeyManager will automatically reload keys within 30 seconds
-
-==========================================
-Auto-rotation summary:
-  Successful: 1
-  Failed: 0
-==========================================
-✓ All rotations completed successfully
-```
-
-**Преимущества перед старыми скриптами:**
-- ✅ Простота: ~100 строк вместо 900
-- ✅ Использует hsm-admin (единая кодовая база)
-- ✅ Zero downtime (hot reload через KeyManager)
-- ✅ Не требует HSM_PIN (hsm-admin управляет)
-- ✅ Работает с metadata.yaml (Phase 4)
-
-### 3. cleanup-old-keys.sh
+### 2. cleanup-old-keys.sh
 
 **Назначение:** Удаление старых ключей после завершения overlap period
 
@@ -144,64 +94,9 @@ Checking key: kek-exchange-key-v1
   Context: exchange-key-old
   Created: 2025-10-09T10:30:00Z
   Age: 92 days
-Режим 1: Автоматическая ротация через cron (рекомендуется)
-
-```bash
-# /etc/cron.d/hsm-rotation
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/XXX
-
-# Автоматическая ротация каждый день в 2:00 AM
-0 2 * * * root cd /opt/hsm-service && ./scripts/auto-rotate-keys.sh >> /var/log/hsm-auto-rotation.log 2>&1
-
-# Мониторинг (проверка + оповещения) в 9:00 AM
-0 9 * * * root cd /opt/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-rotation-check.log 2>&1
-
-# Еженедельная проверка здоровья
-0 10 * * 1 root docker exec hsm-service /app/hsm-admin rotation-status >> /var/log/hsm-weekly-status.log 2>&1
 ```
 
-**Как это работает (Phase 4):**
-1. **2:00 AM**: `auto-rotate-keys.sh` проверяет ключи и ротирует при необходимости
-2. **hsm-admin rotate** создаёт новый ключ и обновляет `metadata.yaml`
-3. **KeyManager** автоматически обнаруживает изменения в течение 30 секунд
-4. **Zero downtime** - сервис перезагружает ключи без перезапуска!
-5. **9:00 AM**: `check-key-rotation.sh` отправляет статус в Slack/Email
-
-**Преимущества Phase 4:**
-- ✅ Zero downtime (hot reload, без перезапуска сервиса)
-- ✅ Простота: использует hsm-admin (одна кодовая база)
-- ✅ Не требует HSM_PIN в crontab
-- ✅ Автоматическое обнаружение изменений (30 секунд)
-- ✅ Thread-safe atomic swap всех ключей
-
-### Режим 2: Только мониторинг (без автоматической ротации)
-
-```bash
-# /etc/cron.d/hsm-rotation
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/XXX
-
-# Только проверка и оповещения в 9:00 (без ротации)
-0 9 * * * root cd /opt/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-rotation-check.log 2>&1
-```
-
-**Ручная ротация при получении оповещения:**
-```bash
-# 1. Проверить статус
-docker exec hsm-service /app/hsm-admin rotation-status
-
-# 2. Ротировать ключ
-docker exec hsm-service /app/hsm-admin rotate exchange-key
-
-# 3. KeyManager автоматически перезагрузит ключи (30 секунд)
-docker compose logs -f hsm-service | grep "reload"
-
-# 4. Через 7 дней - очистить старые версии
-docker exec hsm-service /app/hsm-admin cleanup-old-versions
-```
+**Процесс ротации (Phase 4 - Zero Downtime):**
 
 ## Установка
 
@@ -239,7 +134,7 @@ sudo crontab -e
 
 1. **Автоматическая ротация** (рекомендуется):
    ```bash
-   # Настройте cron для auto-rotate-keys.sh (см. выше)
+   # Используйте systemd timer (см. выше)
    # Ротация выполнится автоматически + zero downtime!
    ```
 

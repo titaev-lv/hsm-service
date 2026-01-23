@@ -608,7 +608,7 @@ hsm-admin cleanup-old-versions --dry-run
 - ✅ Cleanup of old versions based on age and count
 - ✅ Integration tests cover full lifecycle
 - ✅ Documentation: [KEY_ROTATION.md](KEY_ROTATION.md)
-- ✅ CLI tool: `hsm-admin rotate` + [auto-rotate-keys.sh](scripts/auto-rotate-keys.sh)
+- ✅ CLI tool: `hsm-admin rotate` + systemd timer with `check-key-rotation.sh`
 - ✅ Zero-downtime: KeyManager hot reload (Phase 4)
 
 **See:** A02:2021 section for detailed implementation

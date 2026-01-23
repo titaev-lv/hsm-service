@@ -202,9 +202,8 @@ hsm-service/
 │
 ├── scripts/
 │   ├── init-hsm.sh             # Инициализация SoftHSM token
-│   ├── auto-rotate-keys.sh     # Автоматическая ротация (через hsm-admin)
+│   ├── check-key-rotation.sh   # Проверка статуса и автоматическая ротация
 │   ├── cleanup-old-keys.sh     # Очистка старых ключей
-│   ├── check-key-rotation.sh   # Мониторинг статуса ротации
 │   └── README.md               # Описание скриптов
 │
 ├── tests/                      # Тестирование

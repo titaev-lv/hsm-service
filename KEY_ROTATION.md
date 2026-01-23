@@ -234,9 +234,9 @@ WHERE key_version = 1 AND context = 'exchange-key';
 Скрипт ротации отправляет событие после успешной ротации:
 
 ```bash
-# В auto-rotate-keys.sh после успешной ротации
+# В check-key-rotation.sh или custom скрипте ротации
 if [[ $ROTATION_SUCCESS == true ]]; then
-    # Отправить событие в Kafka/RabbitMQ
+    # Отправить событие в Kafka/RabbitMQ (опционально)
     echo '{"event":"key_rotated","context":"exchange-key","old_version":1,"new_version":2}' | \
       kafkacat -b kafka:9092 -t hsm-rotation-events
     

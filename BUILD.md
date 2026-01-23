@@ -359,7 +359,7 @@ cp softhsm2.conf "${RELEASE_DIR}/config/"
 
 # Скопировать скрипты
 cp scripts/init-hsm.sh "${RELEASE_DIR}/scripts/"
-cp scripts/auto-rotate-keys.sh "${RELEASE_DIR}/scripts/"
+cp scripts/check-key-rotation.sh "${RELEASE_DIR}/scripts/"
 cp scripts/cleanup-old-keys.sh "${RELEASE_DIR}/scripts/"
 chmod +x "${RELEASE_DIR}/scripts/"*.sh
 
@@ -399,7 +399,7 @@ release/
     │   └── softhsm2.conf
     ├── scripts/
     │   ├── init-hsm.sh
-    │   ├── auto-rotate-keys.sh
+    │   ├── check-key-rotation.sh
     │   └── cleanup-old-keys.sh
     ├── CHECKSUMS.txt
     ├── README.md
