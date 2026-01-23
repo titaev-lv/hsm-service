@@ -1166,6 +1166,21 @@ if [ ! -f "$BACKUP_FILE" ]; then
     exit 1
 fi
 
+# Load environment variables (HSM_PIN and others)
+if [ -f "/etc/hsm-service/environment" ]; then
+    source /etc/hsm-service/environment
+else
+    echo "Warning: /etc/hsm-service/environment not found"
+    echo "You may need to set HSM_PIN manually"
+fi
+
+# Verify HSM_PIN is set
+if [ -z "$HSM_PIN" ]; then
+    echo "Error: HSM_PIN is not set"
+    echo "Make sure /etc/hsm-service/environment contains HSM_PIN variable"
+    exit 1
+fi
+
 echo "=========================================="
 echo "HSM Service - Restore from Backup"
 echo "=========================================="
@@ -1223,23 +1238,25 @@ echo "Step 6: Verifying restored keys..."
 # Wait for service to be ready
 sleep 2
 
-# Check if keys are available
+# Check if keys are available (export HSM_PIN for hsm-admin)
+export HSM_PIN
 if /opt/hsm-service/bin/hsm-admin list-kek >/dev/null 2>&1; then
     echo "✓ Keys verified"
     /opt/hsm-service/bin/hsm-admin list-kek
 else
     echo "✗ ERROR: Could not verify keys"
-    echo "Try running: sudo /opt/hsm-service/bin/hsm-admin list-kek"
+    echo "Try running: sudo HSM_PIN=$HSM_PIN /opt/hsm-service/bin/hsm-admin list-kek"
     exit 1
 fi
 
 echo ""
 echo "Step 7: Updating checksums..."
+export HSM_PIN
 if /opt/hsm-service/bin/hsm-admin update-checksums; then
     echo "✓ Checksums updated successfully"
 else
     echo "⚠️  Warning: Could not update checksums (non-critical)"
-    echo "You may need to run: sudo /opt/hsm-service/bin/hsm-admin update-checksums"
+    echo "You may need to run: sudo HSM_PIN=$HSM_PIN /opt/hsm-service/bin/hsm-admin update-checksums"
 fi
 
 echo ""
