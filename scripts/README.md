@@ -62,42 +62,6 @@ HSM_SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK
 0 9 * * * cd /home/user/hsm-service && ./scripts/check-key-rotation.sh >> /var/log/hsm-cron.log 2>&1
 ```
 
-### 2. cleanup-old-keys.sh
-
-**Назначение:** Удаление старых ключей после завершения overlap period
-
-**Функции:**
-- Находит старые ключи в конфигурации
-- Проверяет возраст ключа (минимум 7 дней)
-- Удаляет ключ из HSM
-- Удаляет из config.yaml
-- Перезапускает сервис
-
-**Использование:**
-
-```bash
-# Запуск очистки
-sudo ./scripts/cleanup-old-keys.sh
-```
-
-**Пример сессии:**
-
-```
-==========================================
-   HSM Old Key Cleanup
-==========================================
-
-Found old key contexts:
-exchange-key-old
-
-Checking key: kek-exchange-key-v1
-  Context: exchange-key-old
-  Created: 2025-10-09T10:30:00Z
-  Age: 92 days
-```
-
-**Процесс ротации (Phase 4 - Zero Downtime):**
-
 ## Установка
 
 ### 1. Сделать скрипты исполняемыми
@@ -304,9 +268,7 @@ sudo systemctl start hsm-rotation-check.service
 - ✅ Dependency management (запуск после Docker)
 - ✅ Централизованное логирование через journalctl
 - ✅ RandomizedDelaySec предотвращает одновременный запуск на нескольких серверах
-- ✅ Persistent=true запускает пропущенные задачи после перезагрузки# После проверки, что все данные перешифрованы
-   sudo ./scripts/cleanup-old-keys.sh
-   ```
+- ✅ Persistent=true запускает пропущенные задачи после перезагрузки
 
 ## Мониторинг и логи
 

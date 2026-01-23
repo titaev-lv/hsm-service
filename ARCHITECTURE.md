@@ -203,7 +203,6 @@ hsm-service/
 ├── scripts/
 │   ├── init-hsm.sh             # Инициализация SoftHSM token
 │   ├── check-key-rotation.sh   # Проверка статуса и автоматическая ротация
-│   ├── cleanup-old-keys.sh     # Очистка старых ключей
 │   └── README.md               # Описание скриптов
 │
 ├── tests/                      # Тестирование

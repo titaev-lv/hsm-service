@@ -445,13 +445,6 @@ hsm:
   cleanup_after_days: 30     # Удалить версии старше 30 дней
 ```
 
-Скрипт `/scripts/cleanup-old-keys.sh` запускается по расписанию (cron):
-
-```bash
-# /etc/cron.daily/hsm-cleanup
-0 3 * * * /opt/hsm-service/scripts/cleanup-old-keys.sh
-```
-
 ## Автоматическая ротация
 
 ### Настройка автоматической ротации (Production)
