@@ -323,9 +323,38 @@ See logs: $LOG_FILE" "warning"
         
         if [ $ROTATION_FAILED -eq 0 ]; then
             log "✓ All rotations completed successfully"
+            
+            # Step 2: Run cleanup to delete old key versions (PCI DSS compliance)
+            log "Starting cleanup of old key versions..."
+            CLEANUP_CMD="$HSM_ADMIN_CMD cleanup-old-versions --force"
+            
+            if [ "$ENVIRONMENT" = "production" ] && [ ! -w "/var/lib/hsm-service" ] 2>/dev/null; then
+                CLEANUP_CMD="sudo $CLEANUP_CMD"
+            fi
+            
+            log "Executing: $CLEANUP_CMD"
+            export HSM_PIN
+            CLEANUP_OUTPUT=$(bash -c "export HSM_PIN='$HSM_PIN'; $CLEANUP_CMD" 2>&1)
+            CLEANUP_EXIT_CODE=$?
+            
+            if [ $CLEANUP_EXIT_CODE -eq 0 ]; then
+                log "✓ Old key versions cleaned up successfully"
+                if [ -n "$CLEANUP_OUTPUT" ]; then
+                    log "Cleanup output:"
+                    echo "$CLEANUP_OUTPUT" | while IFS= read -r line; do
+                        log "  | $line"
+                    done
+                fi
+            else
+                log "⚠️ Warning: Cleanup command returned exit code $CLEANUP_EXIT_CODE"
+                log "Cleanup output: $CLEANUP_OUTPUT"
+                # Don't fail the whole process, cleanup is secondary to rotation
+            fi
+            
             send_alert "✅ AUTOMATIC ROTATION COMPLETED
 
 Keys rotated: $KEYS_OVERDUE
+Old versions cleaned up
 
 Next check: $(date -d '+1 day' '+%Y-%m-%d %H:%M')" "warning"
             exit 0
