@@ -116,8 +116,30 @@ func rotateKeyCommand(args []string) error {
 		return fmt.Errorf("HSM_PIN environment variable not set")
 	}
 
-	// 8. Create new KEK using create-kek utility (ID is now auto-generated)
-	cmd := fmt.Sprintf("/app/create-kek %s %s %d", newLabel, hsmPIN, newVersion)
+	// 8. Create new KEK using create-kek utility
+	// Determine the path to create-kek based on the environment
+	createKekPath := os.Getenv("CREATE_KEK_PATH")
+	if createKekPath == "" {
+		// Try common paths
+		possiblePaths := []string{
+			"/opt/hsm-service/bin/create-kek", // Production (Debian)
+			"/app/create-kek",                 // Docker
+			"./create-kek",                    // Current directory
+		}
+
+		for _, path := range possiblePaths {
+			if _, err := os.Stat(path); err == nil {
+				createKekPath = path
+				break
+			}
+		}
+
+		if createKekPath == "" {
+			return fmt.Errorf("create-kek binary not found. Set CREATE_KEK_PATH environment variable or ensure it's in one of: /opt/hsm-service/bin/create-kek, /app/create-kek, ./create-kek")
+		}
+	}
+
+	cmd := fmt.Sprintf("%s %s %s %d", createKekPath, newLabel, hsmPIN, newVersion)
 
 	log.Printf("Creating new KEK: %s", newLabel)
 	if err := runCommand(cmd); err != nil {
@@ -190,10 +212,26 @@ func runCommand(cmd string) error {
 		return fmt.Errorf("empty command")
 	}
 
-	log.Printf("Executing: %s", cmd)
+	// Log command with PIN masked for security
+	logCmd := cmd
+	// Mask HSM_PIN in logs (replace PIN with ***)
+	for i, part := range parts {
+		// Skip first part (binary path) and check if next part looks like a PIN
+		if i > 0 && len(part) > 4 && !strings.Contains(part, "/") && !strings.HasPrefix(part, "-") {
+			// This might be a PIN, mask it
+			if len(parts) > i+1 {
+				// Check if this is the PIN parameter (usually between label and version)
+				parts[i] = strings.Repeat("*", len(part))
+				logCmd = strings.Join(parts, " ")
+			}
+		}
+	}
 
-	// Execute the command using exec.Command
-	command := exec.Command(parts[0], parts[1:]...)
+	log.Printf("Executing: %s", logCmd)
+
+	// Execute the command using exec.Command (use original cmd for execution)
+	origParts := strings.Fields(cmd)
+	command := exec.Command(origParts[0], origParts[1:]...)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 

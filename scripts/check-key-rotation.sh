@@ -44,25 +44,6 @@ detect_environment() {
 # Вызвать обнаружение окружения
 detect_environment
 
-# ============================================================================
-# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (для Production)
-# ============================================================================
-# systemd EnvironmentFile может не передавать переменные в скрипт
-# Загружаем явно как fallback
-if [ "$ENVIRONMENT" = "production" ]; then
-    if [ -z "${HSM_PIN:-}" ] && [ -f /etc/hsm-service/environment ]; then
-        log "Loading environment variables from /etc/hsm-service/environment"
-        # shellcheck source=/etc/hsm-service/environment
-        source /etc/hsm-service/environment
-    fi
-    
-    # Validate HSM_PIN is set
-    if [ -z "${HSM_PIN:-}" ]; then
-        log "ERROR: HSM_PIN not found. Set it in /etc/hsm-service/environment or as environment variable"
-        exit 1
-    fi
-fi
-
 # Конфигурация алертов (загружается из /etc/hsm-service/environment для Production)
 if [ "$ENVIRONMENT" = "production" ] && [ -f /etc/hsm-service/environment ]; then
     # shellcheck source=/etc/hsm-service/environment
@@ -93,6 +74,36 @@ log() {
 
 # Создать директорию для логов если её нет
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+
+# ============================================================================
+# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (для Production)
+# ============================================================================
+# systemd EnvironmentFile может не передавать переменные в скрипт
+# Загружаем явно как fallback
+if [ "$ENVIRONMENT" = "production" ]; then
+    if [ -z "${HSM_PIN:-}" ] && [ -f /etc/hsm-service/environment ]; then
+        log "DEBUG: Loading environment variables from /etc/hsm-service/environment"
+        # shellcheck source=/etc/hsm-service/environment
+        source /etc/hsm-service/environment
+        log "DEBUG: HSM_PIN is now: ${HSM_PIN:+SET (${#HSM_PIN} chars)}"
+    else
+        if [ -n "${HSM_PIN:-}" ]; then
+            log "DEBUG: HSM_PIN already set from systemd: ${HSM_PIN:+SET (${#HSM_PIN} chars)}"
+        else
+            log "DEBUG: /etc/hsm-service/environment not found or cannot read"
+        fi
+    fi
+    
+    # Validate HSM_PIN is set
+    if [ -z "${HSM_PIN:-}" ]; then
+        log "ERROR: HSM_PIN not found. Set it in /etc/hsm-service/environment or as environment variable"
+        exit 1
+    fi
+    
+    # Export HSM_PIN so it's available to child processes
+    export HSM_PIN
+    log "DEBUG: HSM_PIN exported for child processes"
+fi
 
 # Функция отправки email
 send_email() {
@@ -247,15 +258,43 @@ See logs: $LOG_FILE" "warning"
         for key_context in $(echo "$KEYS_OVERDUE" | tr ',' ' '); do
             key_context=$(echo "$key_context" | xargs)  # trim whitespace
             log "Starting rotation for context: $key_context (timeout: ${ROTATION_TIMEOUT}s)"
-            log "Executing command: timeout $ROTATION_TIMEOUT $ROTATION_CMD rotate \"$key_context\""
+            
+            # Export HSM_PIN so it's available to hsm-admin subprocess
+            export HSM_PIN
+            
+            log "Executing command: $ROTATION_CMD rotate \"$key_context\""
+            log "DEBUG: HSM_PIN is set: ${HSM_PIN:+YES (${#HSM_PIN} chars)}"
             START_TIME=$(date +%s)
             
-            # Выполнить с timeout (используем eval для правильной передачи параметров)
-            ROTATE_OUTPUT=$(eval timeout $ROTATION_TIMEOUT $ROTATION_CMD rotate "$key_context" 2>&1)
-            ROTATE_EXIT_CODE=$?
+            # Выполнить с timeout - используем прямой вызов вместо eval
+            # Так гарантируем что переменные передаются правильно
+            log "DEBUG: About to execute command..."
+            
+            if [ "$ENVIRONMENT" = "production" ]; then
+                # Production: запустить напрямую с экспортированной переменной
+                # Используем стандартный вывод для debug
+                log "DEBUG: Environment is production, executing command..."
+                ROTATE_OUTPUT=$(timeout $ROTATION_TIMEOUT bash -c "export HSM_PIN='$HSM_PIN'; $ROTATION_CMD rotate '$key_context'" 2>&1)
+                ROTATE_EXIT_CODE=$?
+            else
+                # Docker: также использовать bash
+                log "DEBUG: Environment is docker, executing command..."
+                ROTATE_OUTPUT=$(timeout $ROTATION_TIMEOUT bash -c "export HSM_PIN='$HSM_PIN'; $ROTATION_CMD rotate '$key_context'" 2>&1)
+                ROTATE_EXIT_CODE=$?
+            fi
+            
+            log "DEBUG: Command completed"
             
             END_TIME=$(date +%s)
             DURATION=$((END_TIME - START_TIME))
+            
+            log "DEBUG: Command exited with code $ROTATE_EXIT_CODE after ${DURATION}s"
+            if [ -n "$ROTATE_OUTPUT" ]; then
+                log "DEBUG: Command output:"
+                echo "$ROTATE_OUTPUT" | while IFS= read -r line; do
+                    log "  | $line"
+                done
+            fi
             
             if [ $ROTATE_EXIT_CODE -eq 0 ]; then
                 log "✓ Rotation completed for: $key_context (${DURATION}s)"
@@ -273,7 +312,7 @@ See logs: $LOG_FILE" "warning"
                 # Диагностика permission denied
                 if echo "$ROTATE_OUTPUT" | grep -q "permission denied"; then
                     log "HINT: Permission denied error detected. Fix with:"
-                    log "  sudo chown -R hsm-service:hsm-service /var/lib/hsm-service"
+                    log "  sudo chown -R hsm:hsm /var/lib/hsm-service"
                     log "  sudo chmod 700 /var/lib/hsm-service"
                     log "Or configure sudoers for passwordless: /opt/hsm-service/bin/hsm-admin"
                 fi

@@ -931,39 +931,13 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-**3. Скрипт уже обновлен:**
-
-Скрипт `scripts/check-key-rotation.sh` был обновлен для поддержки **обоих окружений** (Docker и Production):
-
-✅ **Автоматическое обнаружение окружения**:
-- Проверяет Docker или systemd
-- Выбирает правильные пути (`docker exec` vs `/opt/hsm-service/bin/hsm-admin`)
-- Загружает переменные из `/etc/hsm-service/environment` на Production
-
-✅ **Автоматическая ротация** (если включена `AUTO_ROTATE=true`):
-- Ротирует все просроченные ключи
-- Отправляет алерты при ошибках
-- Поддерживает Slack/Email/Telegram уведомления
-
-✅ **Синтаксис правильный**:
-- Использует `/opt/hsm-service/bin/hsm-admin` с флагом `-config`
-- Работает на Production без Docker
-- Логи в `/var/log/hsm-service/rotation.log`
-
-✅ **Исправлены проблемы с извлечением контекстов**:
-- Корректно обнаруживает контексты с `NEEDS ROTATION` статусом
-- Использует awk для правильного маппирования контекстов к статусам
-- Маппирует custom приоритеты на syslog приоритеты
-
-> **Если у вас старая версия скрипта и возникла ошибка**: см. [QUICK_FIX_ROTATION.md](QUICK_FIX_ROTATION.md)
-
-**4. Установить права:**
+**3. Установить права:**
 
 ```bash
 sudo chmod +x /opt/hsm-service/scripts/check-key-rotation.sh
 ```
 
-**5. Активировать timer:**
+**4. Активировать timer:**
 
 ```bash
 # Перезагрузить systemd
