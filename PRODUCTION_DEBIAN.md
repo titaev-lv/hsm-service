@@ -448,30 +448,50 @@ echo "Checking rotation status:"
 - **`SO_PIN`** (флаг `--so-pin` при инициализации токена) - PIN администратора, нужен только для управления самим токеном
 
 **Доступные hsm-admin команды:**
+
+> ⚠️ ВАЖНО о sudo и HSM_PIN: `sudo` по умолчанию очищает окружение и теряет `HSM_PIN`!
+
 ```bash
 # hsm-admin автоматически ищет config.yaml в этом порядке:
 # 1. Переменная окружения CONFIG_PATH
 # 2. Текущая директория (./config.yaml)
 # 3. /etc/hsm-service/config.yaml
 
-# Способ 1: Явно указать флагом (перед командой)
-hsm-admin -config /etc/hsm-service/config.yaml list-kek
-hsm-admin -config /etc/hsm-service/config.yaml update-checksums
-hsm-admin -config /etc/hsm-service/config.yaml rotation-status
+# ✓ СПОСОБ 1: Запуск от пользователя hsm БЕЗ sudo (рекомендуется)
+# HSM_PIN загружается автоматически из окружения
+sudo -u hsm bash -c 'source /etc/hsm-service/environment && /opt/hsm-service/bin/hsm-admin list-kek'
+sudo -u hsm bash -c 'source /etc/hsm-service/environment && /opt/hsm-service/bin/hsm-admin update-checksums'
+sudo -u hsm bash -c 'source /etc/hsm-service/environment && /opt/hsm-service/bin/hsm-admin rotation-status'
 
-# Способ 2: Короткая форма флага -c
-hsm-admin -c /etc/hsm-service/config.yaml list-kek
+# ✓ СПОСОБ 2: Передать PIN явно через sudo env
+sudo env HSM_PIN=$HSM_PIN /opt/hsm-service/bin/hsm-admin list-kek
+sudo env HSM_PIN=$HSM_PIN /opt/hsm-service/bin/hsm-admin update-checksums
 
-# Способ 3: Через переменную окружения (рекомендуется)
+# ✓ СПОСОБ 3: Использовать sudo -E (сохранить окружение, небезопасно!)
+# ⚠️ Используйте только если HSM_PIN уже в окружении и вы уверены
+sudo -E /opt/hsm-service/bin/hsm-admin list-kek
+
+# ✓ СПОСОБ 4: Через переменную окружения (если запуск от root)
 export CONFIG_PATH=/etc/hsm-service/config.yaml
-hsm-admin list-kek
-hsm-admin update-checksums
-hsm-admin rotation-status
+export HSM_PIN=$(grep HSM_PIN /etc/hsm-service/environment | cut -d= -f2)
+/opt/hsm-service/bin/hsm-admin list-kek
 
-# Способ 4: По умолчанию (если файл в /etc/hsm-service/)
+# ✓ СПОСОБ 5: По умолчанию (если запуск прямо от пользователя hsm)
 # При запуске от пользователя hsm, конфиг найдется автоматически
+# но HSM_PIN должен быть в окружении
+source /etc/hsm-service/environment
 hsm-admin list-kek
 hsm-admin update-checksums
+```
+
+**Рекомендуемый вариант для production:**
+```bash
+# Прочитать PIN из защищённого файла и передать явно
+HSM_PIN=$(grep '^HSM_PIN=' /etc/hsm-service/environment | cut -d= -f2-)
+sudo -u hsm bash -c "HSM_PIN='$HSM_PIN' /opt/hsm-service/bin/hsm-admin list-kek"
+
+# Или одной командой (если вы уже в консоли hsm пользователя):
+sudo -u hsm bash -c "HSM_PIN=\$(grep '^HSM_PIN=' /etc/hsm-service/environment | cut -d= -f2-) && /opt/hsm-service/bin/hsm-admin list-kek"
 ```
 
 ---
@@ -886,9 +906,6 @@ WorkingDirectory=/opt/hsm-service
 # Load environment variables (EnvironmentFile с минусом игнорирует ошибку если файла нет)
 EnvironmentFile=-/etc/hsm-service/environment
 
-# Явно передавать переменные в скрипт
-PassEnvironment=HSM_PIN AUTO_ROTATE ALERT_EMAIL SEND_EMAIL SLACK_WEBHOOK TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
-
 # Ensure variables are exported to child processes
 Environment="AUTO_ROTATE=true"
 
@@ -905,7 +922,8 @@ WantedBy=multi-user.target
 
 **Примечание:**
 - `EnvironmentFile=-/etc/hsm-service/environment` загружает переменные из файла (минус = игнорировать ошибки)
-- `PassEnvironment=` явно передает переменные из systemd в скрипт
+- Переменные из файла автоматически доступны скрипту
+- `Environment="AUTO_ROTATE=true"` включает автоматическую ротацию и cleanup
 - `ExecStart=/bin/bash` гарантирует что переменные правильно передаются shell скрипту
 
 **2. Создать systemd timer:**
@@ -1166,21 +1184,6 @@ if [ ! -f "$BACKUP_FILE" ]; then
     exit 1
 fi
 
-# Load environment variables (HSM_PIN and others)
-if [ -f "/etc/hsm-service/environment" ]; then
-    source /etc/hsm-service/environment
-else
-    echo "Warning: /etc/hsm-service/environment not found"
-    echo "You may need to set HSM_PIN manually"
-fi
-
-# Verify HSM_PIN is set
-if [ -z "$HSM_PIN" ]; then
-    echo "Error: HSM_PIN is not set"
-    echo "Make sure /etc/hsm-service/environment contains HSM_PIN variable"
-    exit 1
-fi
-
 echo "=========================================="
 echo "HSM Service - Restore from Backup"
 echo "=========================================="
@@ -1238,25 +1241,34 @@ echo "Step 6: Verifying restored keys..."
 # Wait for service to be ready
 sleep 2
 
-# Check if keys are available (export HSM_PIN for hsm-admin)
-export HSM_PIN
-if /opt/hsm-service/bin/hsm-admin list-kek >/dev/null 2>&1; then
+# Read HSM_PIN from environment file
+HSM_PIN_VALUE=$(grep '^HSM_PIN=' /etc/hsm-service/environment | cut -d= -f2-)
+if [ -z "$HSM_PIN_VALUE" ]; then
+    echo "✗ ERROR: Could not read HSM_PIN from /etc/hsm-service/environment"
+    exit 1
+fi
+
+# Check if keys are available
+# Run as hsm user with HSM_PIN passed explicitly
+if sudo -u hsm bash -c "HSM_PIN='$HSM_PIN_VALUE' /opt/hsm-service/bin/hsm-admin list-kek" >/dev/null 2>&1; then
     echo "✓ Keys verified"
-    /opt/hsm-service/bin/hsm-admin list-kek
+    sudo -u hsm bash -c "HSM_PIN='$HSM_PIN_VALUE' /opt/hsm-service/bin/hsm-admin list-kek"
 else
     echo "✗ ERROR: Could not verify keys"
-    echo "Try running: sudo HSM_PIN=$HSM_PIN /opt/hsm-service/bin/hsm-admin list-kek"
+    echo "Try running manually:"
+    echo "  HSM_PIN='your-pin' sudo -u hsm /opt/hsm-service/bin/hsm-admin list-kek"
     exit 1
 fi
 
 echo ""
 echo "Step 7: Updating checksums..."
-export HSM_PIN
-if /opt/hsm-service/bin/hsm-admin update-checksums; then
+# This is CRITICAL - update checksums after restore
+if sudo -u hsm bash -c "HSM_PIN='$HSM_PIN_VALUE' /opt/hsm-service/bin/hsm-admin update-checksums"; then
     echo "✓ Checksums updated successfully"
 else
     echo "⚠️  Warning: Could not update checksums (non-critical)"
-    echo "You may need to run: sudo HSM_PIN=$HSM_PIN /opt/hsm-service/bin/hsm-admin update-checksums"
+    echo "You may need to run manually:"
+    echo "  HSM_PIN='your-pin' sudo -u hsm /opt/hsm-service/bin/hsm-admin update-checksums"
 fi
 
 echo ""
