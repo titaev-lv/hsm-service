@@ -1118,6 +1118,11 @@ find "$BACKUP_DIR" -type f -mtime +30 -delete
 echo "Backup completed: $DATE"
 ```
 
+```bash
+sudo chown hsm:hsm /opt/hsm-service/scripts/backup.sh
+sudo chmod u+x /opt/hsm-service/scripts/backup.sh
+```
+
 ### 2. Cron job для автоматических бэкапов
 
 ```bash
@@ -1127,27 +1132,240 @@ sudo crontab -e -u hsm
 **Добавить**:
 ```cron
 # Daily backup at 2 AM
-0 2 * * * /opt/hsm-service/scripts/backup.sh >> /var/log/hsm-service/backup.log 2>&1
+0 2 * * * sudo /opt/hsm-service/scripts/backup.sh >> /var/log/hsm-service/backup.log 2>&1
 ```
 
 ### 3. Restore из backup
 
+**Создать restore скрипт:**
+
+```bash
+sudo nano /opt/hsm-service/scripts/restore.sh
+```
+
+**Содержимое** (полный restore процесс):
 ```bash
 #!/bin/bash
-BACKUP_FILE=$1
+set -e
 
-# Stop service
+BACKUP_DIR="/var/backups/hsm-service"
+BACKUP_FILE="${1:-}"
+
+if [ -z "$BACKUP_FILE" ]; then
+    echo "Usage: $0 <backup-file> [metadata-file]"
+    echo ""
+    echo "Available backups:"
+    ls -lh "$BACKUP_DIR"/tokens-*.tar.gz 2>/dev/null || echo "No backups found"
+    exit 1
+fi
+
+METADATA_FILE="${2:-}"
+
+if [ ! -f "$BACKUP_FILE" ]; then
+    echo "Error: Backup file not found: $BACKUP_FILE"
+    exit 1
+fi
+
+echo "=========================================="
+echo "HSM Service - Restore from Backup"
+echo "=========================================="
+echo ""
+echo "⚠️  WARNING: This will stop HSM service and restore from backup"
+echo "Backup file: $BACKUP_FILE"
+echo ""
+read -p "Continue? (yes/no): " confirm
+if [ "$confirm" != "yes" ]; then
+    echo "Restore cancelled"
+    exit 0
+fi
+
+echo ""
+echo "Step 1: Stopping HSM service..."
+sudo systemctl stop hsm-service
+echo "✓ HSM service stopped"
+
+echo ""
+echo "Step 2: Restoring SoftHSM tokens..."
+sudo tar -xzf "$BACKUP_FILE" -C / 2>&1 | grep -E "^var/lib/softhsm" || true
+echo "✓ Tokens restored"
+
+echo ""
+echo "Step 3: Fixing permissions on tokens..."
+sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
+sudo chmod 700 /var/lib/softhsm/tokens/
+sudo find /var/lib/softhsm/tokens/ -type f -exec chmod 600 {} \;
+echo "✓ Permissions fixed"
+
+# Restore metadata if provided
+if [ -n "$METADATA_FILE" ] && [ -f "$METADATA_FILE" ]; then
+    echo ""
+    echo "Step 4: Restoring metadata.yaml..."
+    sudo cp "$METADATA_FILE" /var/lib/hsm-service/metadata.yaml
+    sudo chown hsm:hsm /var/lib/hsm-service/metadata.yaml
+    echo "✓ Metadata restored"
+fi
+
+echo ""
+echo "Step 5: Starting HSM service..."
+sudo systemctl start hsm-service
+sleep 2
+
+if sudo systemctl is-active --quiet hsm-service; then
+    echo "✓ HSM service started successfully"
+else
+    echo "✗ ERROR: HSM service failed to start"
+    echo "Check logs: sudo journalctl -u hsm-service -n 50"
+    exit 1
+fi
+
+echo ""
+echo "Step 6: Verifying restored keys..."
+# Wait for service to be ready
+sleep 2
+
+# Check if keys are available
+if /opt/hsm-service/bin/hsm-admin list-kek >/dev/null 2>&1; then
+    echo "✓ Keys verified"
+    /opt/hsm-service/bin/hsm-admin list-kek
+else
+    echo "✗ ERROR: Could not verify keys"
+    echo "Try running: sudo /opt/hsm-service/bin/hsm-admin list-kek"
+    exit 1
+fi
+
+echo ""
+echo "Step 7: Updating checksums..."
+if /opt/hsm-service/bin/hsm-admin update-checksums; then
+    echo "✓ Checksums updated successfully"
+else
+    echo "⚠️  Warning: Could not update checksums (non-critical)"
+    echo "You may need to run: sudo /opt/hsm-service/bin/hsm-admin update-checksums"
+fi
+
+echo ""
+echo "=========================================="
+echo "✓ Restore completed successfully!"
+echo "=========================================="
+echo ""
+echo "Next steps:"
+echo "  1. Verify rotation status: /opt/hsm-service/bin/hsm-admin rotation-status"
+echo "  2. Test encryption: curl -k https://localhost:8443/health ..."
+echo "  3. Check logs: sudo journalctl -u hsm-service -n 50"
+```
+
+**Установить права:**
+
+```bash
+sudo chown hsm:hsm /opt/hsm-service/scripts/restore.sh
+sudo chmod u+x /opt/hsm-service/scripts/restore.sh
+```
+
+**Использование:**
+
+```bash
+# Список доступных бэкапов
+ls -lh /var/backups/hsm-service/tokens-*.tar.gz
+
+# Restore с указанием файлов
+sudo /opt/hsm-service/scripts/restore.sh \
+  /var/backups/hsm-service/tokens-20260124-020000.tar.gz \
+  /var/backups/hsm-service/metadata-20260124-020000.yaml
+
+# Или интерактивно (скрипт спросит подтверждение)
+sudo /opt/hsm-service/scripts/restore.sh /path/to/tokens-YYYYMMDD-HHMMSS.tar.gz
+```
+
+**Что делает restore скрипт:**
+
+1. ✓ Останавливает HSM service
+2. ✓ Распаковывает tokens из tar.gz backup
+3. ✓ Исправляет права доступа на tokens (критично!)
+4. ✓ Восстанавливает metadata.yaml (если указан)
+5. ✓ Запускает HSM service
+6. ✓ Проверяет что сервис запустился
+7. ✓ Проверяет что ключи загружены (list-kek)
+8. ✓ **Запускает update-checksums** (важно!)
+9. ✓ Выводит статус
+
+### Важные замечания про restore
+
+**⚠️ КРИТИЧНО: update-checksums**
+
+После restore ОБЯЗАТЕЛЬНО нужно запустить:
+```bash
+/opt/hsm-service/bin/hsm-admin update-checksums
+```
+
+Это пересчитывает контрольные суммы ключей. Если этого не сделать, `hsm-admin` может выдать ошибку при ротации.
+
+**⚠️ Проверка целостности**
+
+```bash
+# После restore проверить целостность
+/opt/hsm-service/bin/hsm-admin list-kek
+# Expected:
+# Key: kek-exchange-key-v1 (Handle: 3, ID: 02, version: 1)
+# Key: kek-2fa-v1 (Handle: 4, ID: 03, version: 1)
+
+# Проверить статус ротации
+/opt/hsm-service/bin/hsm-admin rotation-status
+```
+
+**⚠️ Права доступа на tokens**
+
+После распаковки tar.gz **ОБЯЗАТЕЛЬНО** исправить права, потому что:
+- tar распаковывает с правами, которые были в архиве
+- Часто это root:root с неправильными пермиссиями
+- Пользователь hsm не сможет получить доступ к ключам
+
+```bash
+# Проверить права (должны быть 600 на файлы, 700 на директории)
+ls -la /var/lib/softhsm/tokens/hsm-token/
+# -rw------- 1 hsm hsm ...
+
+# Если права неправильные (например 644), исправить
+sudo chmod 600 /var/lib/softhsm/tokens/hsm-token/*
+sudo chmod 700 /var/lib/softhsm/tokens/
+```
+
+### Disaster Recovery (сценарий полной потери данных)
+
+**Если потеряны ВСЕ ключи (полный disaster):**
+
+```bash
+# 1. Остановить сервис
 sudo systemctl stop hsm-service
 
-# Restore tokens
-sudo tar -xzf "$BACKUP_FILE" -C /
+# 2. Удалить поврежденный токен
+sudo rm -rf /var/lib/softhsm/tokens/hsm-token/
 
-# Restore metadata
-sudo cp metadata-YYYYMMDD-HHMMSS.yaml /var/lib/hsm-service/metadata.yaml
+# 3. Пересоздать новый токен
+sudo softhsm2-util --init-token \
+  --slot 0 \
+  --label hsm-token \
+  --so-pin 0000 \
+  --pin 1234
 
-# Start service
-sudo systemctl start hsm-service
+# 4. Исправить права
+sudo chown -R hsm:hsm /var/lib/softhsm/tokens/
+
+# 5. Восстановить из backup (как выше)
+sudo /opt/hsm-service/scripts/restore.sh /var/backups/hsm-service/tokens-*.tar.gz
+
+# 6. Проверить что всё восстановилось
+/opt/hsm-service/bin/hsm-admin rotation-status
 ```
+
+**Если backup тоже потерян (полная потеря):**
+
+⚠️ **КЛЮЧИ НЕ ВОССТАНОВИТЬ, ДАННЫЕ ПОТЕРЯНЫ!**
+
+Это критическая ситуация. Нужно:
+1. Задекларировать incident
+2. Перегенерировать ВСЕ ключи
+3. Re-encrypt ВСЕ данные новыми ключами
+4. Обновить все зависимые системы
+5. Провести security audit
 
 ---
 
