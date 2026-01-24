@@ -1356,12 +1356,12 @@ sudo -u hsm bash -c "HSM_PIN='$HSM_PIN' /opt/hsm-service/bin/hsm-admin update-ch
 
 ```bash
 # Проверить права (должны быть 600 на файлы, 700 на директории)
-ls -la /var/lib/softhsm/tokens/hsm-token/
+ls -la /var/lib/softhsm/tokens/
 # -rw------- 1 hsm hsm ...
 
 # Если права неправильные (например 644), исправить
-sudo chmod 600 /var/lib/softhsm/tokens/hsm-token/*
-sudo chmod 700 /var/lib/softhsm/tokens/
+sudo chmod 600 /var/lib/softhsm/tokens/*
+sudo chmod 700 /var/lib/softhsm/tokens
 ```
 
 ### Disaster Recovery (сценарий полной потери данных)
