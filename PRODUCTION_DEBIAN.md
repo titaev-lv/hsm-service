@@ -535,7 +535,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/hsm-service /var/log/hsm-service /var/lib/softhsm/tokens
+ReadWritePaths=/var/lib/hsm-service /var/log/hsm-service /var/lib/softhsm
 
 # Limits (Performance optimized for high load)
 LimitNOFILE=65536
