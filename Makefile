@@ -1,6 +1,6 @@
 # Makefile for HSM Service
 
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS := -s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)
 
@@ -13,7 +13,9 @@ BINARY_SERVICE := $(BUILD_DIR)/hsm-service
 BINARY_ADMIN := $(BUILD_DIR)/hsm-admin
 BINARY_KEK := $(BUILD_DIR)/create-kek
 
-.PHONY: all build clean test release install help
+.PHONY: all build clean test release install help check-clean
+
+ALLOW_DIRTY ?= 0
 
 # Default target
 all: build
@@ -27,8 +29,12 @@ help:
 	@echo "  make test-race      - Run tests with race detector"
 	@echo "  make test-cover     - Run tests with coverage"
 	@echo "  make release        - Create release package"
+	@echo "  make check-clean    - Fail if git working tree is dirty"
 	@echo "  make install        - Install binaries to /usr/local/bin"
 	@echo "  make docker-build   - Build Docker image"
+	@echo ""
+	@echo "Release options:"
+	@echo "  make ALLOW_DIRTY=1 release  - Allow release from a dirty git tree"
 	@echo ""
 
 # Build all binaries
@@ -88,10 +94,26 @@ test-cover:
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Coverage report: coverage.html"
 
+# Ensure release is built from a clean git tree
+check-clean:
+	@if [ "$(ALLOW_DIRTY)" = "1" ]; then \
+		echo "! ALLOW_DIRTY=1 set; skipping git clean check"; \
+	elif command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		if [ -n "$$(git status --porcelain 2>/dev/null)" ]; then \
+			echo "✗ Working tree is dirty. Commit/stash changes before release."; \
+			echo "  (Override with: make ALLOW_DIRTY=1 release)"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "! git repo not detected; skipping clean check"; \
+	fi
+
 # Create release package
-release: build
+release: check-clean build
 	@echo "Creating release package..."
-	@mkdir -p $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/{bin,config,scripts}
+	@mkdir -p $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/bin
+	@mkdir -p $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/config
+	@mkdir -p $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/scripts
 	@cp $(BUILD_DIR)/* $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/bin/
 	@cp config.yaml $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/config/config.yaml.example
 	@cp metadata.yaml.example $(RELEASE_DIR)/hsm-service-$(VERSION)-linux-amd64/config/

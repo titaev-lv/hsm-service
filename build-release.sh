@@ -10,7 +10,7 @@ echo "========================================"
 echo ""
 
 # Detect version
-VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 echo "Version: $VERSION"
 
 # Build using Makefile
