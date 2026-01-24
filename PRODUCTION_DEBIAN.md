@@ -1459,6 +1459,35 @@ bantime = 3600
 action = nftables-multiport[name=hsm, port="8443", protocol=tcp]
 ```
 
+### 2.1 Перезапуск Fail2ban
+
+После создания конфигов нужно перезагрузить Fail2ban:
+
+```bash
+# Перезагрузить Fail2ban
+sudo systemctl restart fail2ban
+
+# Проверить статус
+sudo systemctl status fail2ban
+
+# Проверить что фильтр и jail загружены
+sudo fail2ban-client status hsm-service
+
+# Ожидаемый вывод:
+# Status for the jail: hsm-service
+# |- Filter
+# |  |- Currently failed: 0
+# |  |- Total failed: 0
+# |  `- Journal matches: 0
+# `- Actions
+#    |- Currently banned: 0
+#    |- Total banned: 0
+#    `- Banned IP list:
+
+# Если появляется ошибка "Jail does not exist", проверить конфиг
+sudo fail2ban-client get-errors
+```
+
 ### 3. SELinux/AppArmor (опционально)
 
 Debian по умолчанию не использует SELinux, но можно настроить AppArmor:
