@@ -16,6 +16,7 @@
 - [Мониторинг и логирование](#мониторинг-и-логирование)
 - [Бэкапы](#бэкапы)
 - [Безопасность](#безопасность)
+- [Нагрузочное тестирование перед внедрением](#нагрузочное-тестирование-перед-внедрением)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -1551,6 +1552,239 @@ sudo aa-status | grep hsm-service
 # Проверить логи AppArmor в journal
 sudo journalctl -u apparmor -f
 ```
+
+---
+
+## 🔥 Нагрузочное тестирование перед внедрением
+
+Перед использованием в production требуется провести stress тестирование. Это требует **временного отключения** некоторых систем безопасности и ограничений.
+
+### Подготовка к stress тесту
+
+**1. Остановить firewall (nftables)**
+
+```bash
+sudo systemctl stop nftables
+sudo systemctl mask nftables  # Чтобы не запустился при reboot
+
+# Проверка
+sudo nft list ruleset
+# (должно быть пусто или "No such file or directory")
+```
+
+**2. Остановить fail2ban**
+
+```bash
+sudo systemctl stop fail2ban
+sudo systemctl mask fail2ban
+```
+
+**3. Отключить rate limiting в config.yaml**
+
+```bash
+sudo nano /etc/hsm-service/config.yaml
+```
+
+Изменить секцию `rate_limit`:
+```yaml
+rate_limit:
+  requests_per_second: 999999  # Очень высокий лимит для тестирования
+  burst: 999999
+```
+
+Перезагрузить сервис:
+```bash
+sudo systemctl restart hsm-service
+```
+
+**4. Увеличить kernel limits временно**
+
+```bash
+sudo sysctl -w net.core.somaxconn=32768
+sudo sysctl -w net.ipv4.tcp_max_syn_backlog=32768
+sudo sysctl -w net.netfilter.nf_conntrack_max=2097152
+```
+
+**5. Отключить logrotate (опционально)**
+
+```bash
+sudo systemctl stop logrotate
+sudo systemctl mask logrotate
+```
+
+**6. Отключить systemd-journald rate limit (опционально)**
+
+```bash
+sudo systemctl stop systemd-journal-flush
+
+# Или уменьшить уровень логирования в config.yaml:
+# logging:
+#   level: warn  # Вместо info
+```
+
+### Запуск stress тестов
+
+**Убедиться что всё отключено:**
+
+```bash
+sudo systemctl status nftables    # должно быть masked/inactive
+sudo systemctl status fail2ban    # должно быть masked/inactive
+grep "requests_per_second" /etc/hsm-service/config.yaml  # должно быть 999999
+```
+
+**Запустить тесты (выбрать один вариант):**
+
+```bash
+# Переменные окружения для клиентского сертификата
+export HSM_URL=https://localhost:8443
+export CLIENT_CERT=/etc/hsm-service/pki/client/client1.crt
+export CLIENT_KEY=/etc/hsm-service/pki/client/client1.key
+```
+
+**Вариант 1: Smoke Test (безопасный, ~1 минута)**
+
+```bash
+cd /opt/hsm-service
+./tests/performance/smoke-test.sh
+
+# Expected output:
+# ✓ Health check passed
+# ✓ Encryption test passed
+# ✓ Decryption test passed
+```
+
+**Вариант 2: Quick Load Test (умеренная нагрузка, ~2 минуты)**
+
+```bash
+cd /opt/hsm-service
+k6 run tests/performance/load-test-quick.js
+
+# Expected: ~3500 запросов за 2 минуты
+# P95 latency < 100ms
+```
+
+**Вариант 3: Full Stress Test (интенсивная нагрузка, ~22 минуты)**
+
+```bash
+cd /opt/hsm-service
+./tests/performance/stress-test.sh incremental
+
+# ⚠️ Внимание: долгий тест, создает значительную нагрузку
+```
+
+### Мониторинг во время теста
+
+Запустить в отдельных окнах для наблюдения:
+
+**Логи сервиса:**
+```bash
+sudo journalctl -u hsm-service -f
+```
+
+**Метрики системы:**
+```bash
+watch -n 1 'free -h && echo "---" && top -b -n1 | head -20'
+```
+
+**Активные соединения:**
+```bash
+watch -n 1 'netstat -tan | grep :8443 | wc -l'  # Количество соединений к HSM
+```
+
+**Prometheus метрики (если доступны):**
+```bash
+curl -k https://localhost:8443/metrics \
+  --cert /etc/hsm-service/pki/client/client1.crt \
+  --key /etc/hsm-service/pki/client/client1.key \
+  --cacert /etc/hsm-service/pki/ca/ca.crt
+```
+
+### Восстановление после stress теста
+
+**Восстановить firewall:**
+
+```bash
+sudo systemctl unmask nftables
+sudo systemctl start nftables
+```
+
+**Восстановить fail2ban:**
+
+```bash
+sudo systemctl unmask fail2ban
+sudo systemctl start fail2ban
+```
+
+**Восстановить rate limiting:**
+
+```bash
+sudo nano /etc/hsm-service/config.yaml
+```
+
+Вернуть production значения:
+```yaml
+rate_limit:
+  requests_per_second: 50000  # Исходное значение
+  burst: 5000
+```
+
+Перезагрузить сервис:
+```bash
+sudo systemctl restart hsm-service
+```
+
+**Восстановить kernel limits:**
+
+```bash
+sudo sysctl -p /etc/sysctl.d/99-hsm-service.conf
+```
+
+**Восстановить logrotate:**
+
+```bash
+sudo systemctl unmask logrotate
+sudo systemctl start logrotate
+```
+
+**Проверить что всё восстановилось:**
+
+```bash
+sudo systemctl status hsm-service
+sudo systemctl status nftables
+sudo systemctl status fail2ban
+
+# Verify rate limit в config
+grep "requests_per_second" /etc/hsm-service/config.yaml
+```
+
+### Критические моменты при stress тестировании
+
+⚠️ **Обязательно отключить эти 3 вещи:**
+
+1. **Firewall (nftables)** — иначе будет dropping пакеты при высокой нагрузке
+   ```bash
+   sudo systemctl stop nftables
+   ```
+
+2. **Rate limiting в config.yaml** — иначе тест будет throttled
+   ```yaml
+   requests_per_second: 999999
+   ```
+
+3. **fail2ban** — иначе может забанить сам тестовый клиент
+   ```bash
+   sudo systemctl stop fail2ban
+   ```
+
+### Рекомендуемый процесс тестирования
+
+1. **Перед каждым тестом:** Уведомите команду
+2. **Первый раз:** smoke → quick (в нерабочее время)
+3. **Регулярно:** smoke test (еженедельно для контроля деградации)
+4. **Периодически:** full load (ежеквартально, в maintenance window)
+5. **Редко:** stress test (для capacity planning, в maintenance window)
+
+**Документация:** Полная информация о performance тестировании см. в [tests/performance/README.md](tests/performance/README.md)
 
 ---
 
