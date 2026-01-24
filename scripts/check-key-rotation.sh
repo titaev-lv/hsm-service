@@ -326,15 +326,19 @@ See logs: $LOG_FILE" "warning"
             
             # Step 2: Run cleanup to delete old key versions (PCI DSS compliance)
             log "Starting cleanup of old key versions..."
-            CLEANUP_CMD="$HSM_ADMIN_CMD cleanup-old-versions --force"
             
+            # Определить нужно ли запускать с sudo для production
+            CLEANUP_SUDO=""
             if [ "$ENVIRONMENT" = "production" ] && [ ! -w "/var/lib/hsm-service" ] 2>/dev/null; then
-                CLEANUP_CMD="sudo $CLEANUP_CMD"
+                log "WARNING: No write permission to /var/lib/hsm-service, using sudo for cleanup"
+                CLEANUP_SUDO="sudo"
             fi
             
-            log "Executing: $CLEANUP_CMD"
+            log "Executing: $CLEANUP_SUDO $HSM_ADMIN_CMD cleanup-old-versions --force"
             export HSM_PIN
-            CLEANUP_OUTPUT=$(bash -c "export HSM_PIN='$HSM_PIN'; $CLEANUP_CMD" 2>&1)
+            
+            # Run cleanup with explicit HSM_PIN export
+            CLEANUP_OUTPUT=$($CLEANUP_SUDO bash -c "export HSM_PIN='$HSM_PIN'; $HSM_ADMIN_CMD cleanup-old-versions --force" 2>&1)
             CLEANUP_EXIT_CODE=$?
             
             if [ $CLEANUP_EXIT_CODE -eq 0 ]; then
