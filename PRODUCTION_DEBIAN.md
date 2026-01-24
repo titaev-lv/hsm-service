@@ -1490,17 +1490,66 @@ sudo fail2ban-client get-errors
 
 ### 3. SELinux/AppArmor (опционально)
 
-Debian по умолчанию не использует SELinux, но можно настроить AppArmor:
+Debian по умолчанию не использует SELinux, но можно настроить AppArmor.
+
+**⚠️ Важно для Debian 13**: Debian 13 использует `systemd journal` вместо классического `syslog`, поэтому `aa-genprof` может выдать ошибку:
+```
+ERROR: Can't find system log "/var/log/syslog". Please check permissions.
+```
+
+**Решение - вариант 1 (быстро, рекомендуется):**
+
+Включить логирование в syslog через rsyslog:
 
 ```bash
-# Install AppArmor
-apt install -y apparmor apparmor-utils
+# Установить rsyslog
+sudo apt install -y rsyslog
 
-# Create profile
+# Включить и запустить
+sudo systemctl enable rsyslog
+sudo systemctl start rsyslog
+
+# После этого aa-genprof будет работать
 sudo aa-genprof /opt/hsm-service/hsm-service
-
-# Enable profile
 sudo aa-enforce /opt/hsm-service/hsm-service
+```
+
+**Решение - вариант 2 (минимально):**
+
+Если не хотите устанавливать rsyslog, можно создать пустой файл syslog:
+
+```bash
+# Создать файл syslog (для совместимости с aa-genprof)
+sudo touch /var/log/syslog
+sudo chmod 640 /var/log/syslog
+
+# Теперь aa-genprof должен работать
+sudo aa-genprof /opt/hsm-service/hsm-service
+sudo aa-enforce /opt/hsm-service/hsm-service
+```
+
+**Решение - вариант 3 (без AppArmor):**
+
+AppArmor опционален для production. Если не планируете его использовать, просто пропустите этот шаг. systemd уже предоставляет Security hardening через ProtectSystem, ProtectHome и другие параметры в unit файле.
+
+```bash
+# Проверить текущие Security параметры systemd
+systemctl show -p ProtectSystem hsm-service
+systemctl show -p ProtectHome hsm-service
+# systemd Security достаточно для большинства сценариев
+```
+
+**Проверка что AppArmor работает (если установлен):**
+
+```bash
+# Проверить статус AppArmor
+sudo systemctl status apparmor
+
+# Проверить профиль HSM service
+sudo aa-status | grep hsm-service
+
+# Проверить логи AppArmor в journal
+sudo journalctl -u apparmor -f
 ```
 
 ---
