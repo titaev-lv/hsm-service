@@ -1328,7 +1328,8 @@ sudo /opt/hsm-service/scripts/restore.sh /path/to/tokens-YYYYMMDD-HHMMSS.tar.gz
 
 После restore ОБЯЗАТЕЛЬНО нужно запустить:
 ```bash
-/opt/hsm-service/bin/hsm-admin update-checksums
+HSM_PIN=$(grep '^HSM_PIN=' /etc/hsm-service/environment | cut -d= -f2-)
+sudo -u hsm bash -c "HSM_PIN='$HSM_PIN' /opt/hsm-service/bin/hsm-admin update-checksums"
 ```
 
 Это пересчитывает контрольные суммы ключей. Если этого не сделать, `hsm-admin` может выдать ошибку при ротации.
