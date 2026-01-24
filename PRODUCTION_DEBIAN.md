@@ -1510,8 +1510,8 @@ sudo systemctl enable rsyslog
 sudo systemctl start rsyslog
 
 # После этого aa-genprof будет работать
-sudo aa-genprof /opt/hsm-service/hsm-service
-sudo aa-enforce /opt/hsm-service/hsm-service
+sudo aa-genprof /opt/hsm-service
+sudo aa-enforce /opt/hsm-service
 ```
 
 **Решение - вариант 2 (минимально):**
@@ -1524,8 +1524,8 @@ sudo touch /var/log/syslog
 sudo chmod 640 /var/log/syslog
 
 # Теперь aa-genprof должен работать
-sudo aa-genprof /opt/hsm-service/hsm-service
-sudo aa-enforce /opt/hsm-service/hsm-service
+sudo aa-genprof /opt/hsm-service
+sudo aa-enforce /opt/hsm-service
 ```
 
 **Решение - вариант 3 (без AppArmor):**
