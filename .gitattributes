@@ -1,0 +1,6 @@
+# Ignore
+*.js linguist-detectable=false
+*.sh linguist-detectable=false
+
+# It is Go
+*.go linguist-language=Go
