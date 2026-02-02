@@ -2,8 +2,8 @@ server:
   port: "8443"
   tls:
     ca_path: /app/pki/ca/ca.crt
-    cert_path: /app/pki/server/hsm-service.local.crt
-    key_path: /app/pki/server/hsm-service.local.key
+    cert_path: /app/pki/server/hsm-service.crt
+    key_path: /app/pki/server/hsm-service.key
   # HTTP/2 configuration for maximum throughput on dedicated HSM machines
   # Rationale: Default HTTP/2 settings bottleneck at ~250 concurrent streams
   # Analysis showed CPU idle at 10% while rejecting 95% of spike requests
