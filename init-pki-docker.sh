@@ -280,9 +280,11 @@ if [ $SKIP_DOCKER -eq 0 ]; then
     print_step "Building Docker image..."
     cd "$PROJECT_ROOT"
 
-    if docker compose build --no-cache 2>&1 | tail -5; then
+    if docker compose build --no-cache; then
+        echo ""
         print_success "Docker image built successfully"
     else
+        echo ""
         print_error "Failed to build Docker image"
         exit 1
     fi
