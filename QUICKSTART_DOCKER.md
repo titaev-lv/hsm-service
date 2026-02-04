@@ -1,83 +1,125 @@
 # HSM Service - Quick Start (Docker)
 
-> **Цель**: Запустить HSM Service в Docker и выполнить первый тестовый запрос за 5 минут
+> **Цель**: Запустить HSM Service в Docker за 2 минуты с одной командой
 
-## 📋 Предварительные требования
-
-- ✅ Docker + Docker Compose установлены
-- ✅ **PKI инфраструктура настроена** (CA, сертификаты)
-
-**📖 Если PKI не настроена**, сначала выполните:
-👉 **[PKI_SETUP.md](PKI_SETUP.md)** - создание CA и генерация всех сертификатов
-
----
-
-## Шаг 1: Подготовка проекта
+## ⚡ Быстрый старт (рекомендуется)
 
 ```bash
 # Клонировать репозиторий
 git clone <repository-url>
 cd hsm-service
 
-# Проверить что PKI готова
-ls -la pki/ca/ca.crt
-ls -la pki/server/hsm-service.local.*
-ls -la pki/client/trading-service-1.*
+# Запустить скрипт инициализации (делает всё автоматически!)
+./init-pki-docker.sh
 ```
 
-**Ожидаемый вывод**:
+**Что произойдет автоматически:**
+- ✅ Генерирует Root CA (центр сертификации)
+- ✅ Генерирует серверный сертификат для HSM Service
+- ✅ Генерирует клиентские сертификаты (Trading, 2FA)
+- ✅ Копирует metadata.yaml из примера
+- ✅ Собирает Docker образ
+- ✅ Запускает контейнер
+- ✅ Проверяет здоровье сервиса
+
+**После выполнения:**
 ```
-pki/ca/ca.crt                      ✓
-pki/server/hsm-service.local.crt   ✓
-pki/server/hsm-service.local.key   ✓
-pki/client/trading-service-1.crt   ✓
-pki/client/trading-service-1.key   ✓
+🎉 Initialization Complete!
+✓ HSM Service is ready for development!
 ```
 
-**❌ Если файлы отсутствуют** → см. [PKI_SETUP.md](PKI_SETUP.md)
+Дальше переходите к [Проверке API](#проверка-api)
 
 ---
 
-## Шаг 2: Создание metadata.yaml
+## Расширенные опции
 
-**Важно:** Перед запуском контейнера нужно создать файл `metadata.yaml` с базовой структурой, иначе:
-- Если файл отсутствует → Docker создаст **директорию** вместо файла
-- Если файл пустой → приложение упадет с ошибкой "metadata not found for context"
+Если нужно переустановить с нуля:
+```bash
+./init-pki-docker.sh --force    # Переустановить всё (CA, сертификаты, Docker)
+```
+
+Если нужна только PKI без Docker:
+```bash
+./init-pki-docker.sh --skip-docker    # Только генерирует сертификаты
+```
+
+---
+
+## 📖 Пошаговый старт (если что-то не сработало)
+
+Если `init-pki-docker.sh` не сработал, выполняйте шаги вручную:
+
+### Шаг 1: Подготовка проекта
+
+```bash
+# Клонировать репозиторий
+git clone <repository-url>
+cd hsm-service
+
+# Проверить что все файлы на месте
+ls -la config.yaml
+ls -la metadata.yaml.example
+ls -la docker-compose.yml
+ls -la Dockerfile
+```
+
+### Шаг 2: Генерирование PKI инфраструктуры
+
+```bash
+# Создать директории для сертификатов
+mkdir -p pki/ca pki/server pki/client
+
+# Генерировать Root CA (самоподписанный)
+openssl req -x509 -newkey rsa:4096 -keyout pki/ca/ca.key \
+  -out pki/ca/ca.crt -days 3650 -nodes \
+  -subj "/C=RU/ST=Moscow/L=Moscow/O=HSM-Dev/CN=hsm-ca"
+
+# Генерировать серверный сертификат для HSM Service
+openssl genrsa -out pki/server/hsm-service.local.key 4096
+openssl req -new -key pki/server/hsm-service.local.key \
+  -out pki/server/hsm-service.local.csr \
+  -subj "/C=RU/ST=Moscow/L=Moscow/O=HSM-Dev/CN=hsm-service.local"
+openssl x509 -req -in pki/server/hsm-service.local.csr \
+  -CA pki/ca/ca.crt -CAkey pki/ca/ca.key -CAcreateserial \
+  -out pki/server/hsm-service.local.crt -days 825 \
+  -extfile <(echo "subjectAltName=DNS:localhost,DNS:hsm-service,DNS:hsm-service.local")
+
+# Генерировать клиентские сертификаты
+for CLIENT in trading-service-1 2fa-service-1; do
+  openssl genrsa -out pki/client/$CLIENT.key 4096
+  openssl req -new -key pki/client/$CLIENT.key \
+    -out pki/client/$CLIENT.csr \
+    -subj "/C=RU/ST=Moscow/L=Moscow/O=HSM-Dev/CN=$CLIENT"
+  openssl x509 -req -in pki/client/$CLIENT.csr \
+    -CA pki/ca/ca.crt -CAkey pki/ca/ca.key -CAcreateserial \
+    -out pki/client/$CLIENT.crt -days 825
+done
+
+# Cleanup CSR файлы
+rm -f pki/server/*.csr pki/client/*.csr pki/ca/*.srl
+```
+
+**Проверить что всё создалось:**
+```bash
+ls -la pki/ca/
+ls -la pki/server/
+ls -la pki/client/
+```
+
+### Шаг 3: Создание metadata.yaml
+
+**Важно:** Перед запуском контейнера нужно создать файл `metadata.yaml` с базовой структурой, иначе Docker создаст **директорию** вместо файла.
 
 ```bash
 # Создать metadata.yaml из примера
 cp metadata.yaml.example metadata.yaml
 ```
 
-**Что содержит metadata.yaml.example:**
-```yaml
-rotation:
-  exchange-key:
-    current: kek-exchange-key-v1
-    versions:
-      - label: kek-exchange-key-v1
-        version: 1
-        created_at: '2026-01-09T00:00:00Z'
-  2fa:
-    current: kek-2fa-v1
-    versions:
-      - label: kek-2fa-v1
-        version: 1
-        created_at: '2026-01-09T00:00:00Z'
-```
-
-**Что произойдет при первом запуске:**
-1. Скрипт `init-hsm.sh` проверит, существуют ли KEK в HSM
-2. Если KEK нет → создаст их (`kek-exchange-key-v1`, `kek-2fa-v1`)
-3. Обновит timestamps в `metadata.yaml` на актуальные
-4. Вычислит и добавит checksums для всех KEK
-
----
-
-## Шаг 3: Запуск HSM Service
+### Шаг 4: Запуск Docker контейнера
 
 ```bash
-# Собрать Docker образ и запустить 
+# Собрать Docker образ и запустить
 docker compose up -d --build
 
 # Проверить что контейнер запустился
@@ -95,90 +137,11 @@ hsm-service    hsm-service    Up 5 seconds   0.0.0.0:8443->8443/tcp
 docker compose logs hsm-service
 ```
 
-**Ожидаемые логи**:
-```
-=========================================
-HSM Service Initialization
-=========================================
-⏳ Initializing SoftHSM token: hsm-token
-✓ Token initialized successfully
-
-Token slots:
-Available slots:
-Slot 0
-    Slot info:
-        Description:      SoftHSM slot ID 0x0                                          
-        Manufacturer ID:  SoftHSM project                 
-        Hardware version: 2.6
-        Firmware version: 2.6
-        Token present:    yes
-    Token info:
-        Manufacturer ID:  SoftHSM project                 
-        Model:            SoftHSM v2      
-        Hardware version: 2.6
-        Firmware version: 2.6
-        Serial number:    xxxxxxxxxxxx
-        Initialized:      yes
-        User PIN init.:   yes
-        Label:            hsm-token
-
-=========================================
-KEK Setup
-=========================================
-✓ Found 2 KEK(s) in HSM token
-✓ kek-exchange-key-v1 already exists
-✓ kek-2fa-v1 already exists
-
-=========================================
-Starting HSM Service...
-=========================================
-
-Loaded KEK: kek-exchange-key-v1 (version 1)
-Loaded KEK: kek-2fa-v1 (version 1)
-Starting HSM service on port 8443
-```
-
 ---
 
-## Шаг 4: Проверка автоматической инициализации
+## Проверка API
 
-**Контейнер автоматически инициализирует KEK при первом запуске** через скрипт `init-hsm.sh`.
-
-**Проверьте что KEK созданы**:
-```bash
-docker exec hsm-service /app/hsm-admin list-kek
-```
-
-**Ожидаемый вывод**:
-```
-KEKs configured in config.yaml:
-
-1. Config Key: exchange-key
-   Current: kek-exchange-key-v1
-   Versions: 1
-     * kek-exchange-key-v1 (v1)
-   Type: aes
-
-2. Config Key: 2fa
-   Current: kek-2fa-v1
-   Versions: 1
-     * kek-2fa-v1 (v1)
-   Type: aes
-
-Total: 2 KEK(s)
-```
-
-**Что произошло при запуске**:
-- Скрипт `init-hsm.sh` инициализировал SoftHSM токен
-- Создал KEK ключи: `kek-exchange-key-v1` и `kek-2fa-v1`
-- Обновил `metadata.yaml` с метаданными ключей
-- Запустил HSM Service
-
----
-
-## Шаг 5: Первый тестовый запрос
-
-### 6.1. Health Check
+### Health Check
 
 ```bash
 curl -k https://localhost:8443/health \
@@ -199,12 +162,7 @@ curl -k https://localhost:8443/health \
 }
 ```
 
-**❌ Если ошибка**:
-- `curl: (60) SSL certificate problem` → проверьте что CA сертификат правильный
-- `curl: (35) error:14094410:SSL` → проверьте mTLS сертификаты
-- `Connection refused` → проверьте `docker compose ps`
-
-### 6.2. Шифрование (Encrypt)
+### Шифрование (Encrypt)
 
 ```bash
 # Подготовить plaintext (Hello World! в base64)
@@ -223,10 +181,6 @@ curl -k -X POST https://localhost:8443/encrypt \
   }'
 ```
 
-**Параметры**:
-- `context: "exchange-key"` - какой KEK использовать (из config.yaml)
-- `plaintext` - данные в base64
-
 **Ожидаемый ответ**:
 ```json
 {
@@ -235,9 +189,7 @@ curl -k -X POST https://localhost:8443/encrypt \
 }
 ```
 
-**💾 Сохраните ciphertext** - он нужен для расшифрования!
-
-### 6.3. Расшифрование (Decrypt)
+### Расшифрование (Decrypt)
 
 ```bash
 curl -k -X POST https://localhost:8443/decrypt \
@@ -247,7 +199,7 @@ curl -k -X POST https://localhost:8443/decrypt \
   -H "Content-Type: application/json" \
   -d '{
     "context": "exchange-key",
-    "ciphertext": "base64_encrypted_data_here...",
+    "ciphertext": "плпммI0StauF6ZWGfEnrlxom23Zt8wS1yPkqTCxgQykMRAkYhgZfLKprYzM=",
     "key_id": "kek-exchange-key-v1"
   }'
 ```
@@ -269,112 +221,6 @@ echo "SGVsbG8gV29ybGQh" | base64 -d
 
 ---
 
-## 🎉 Поздравляем!
-
-Вы успешно:
-- ✅ Настроили PKI с собственным CA
-- ✅ Запустили HSM Service в Docker
-- ✅ Инициализировали KEK ключи в SoftHSM
-- ✅ Зашифровали и расшифровали данные через mTLS API
-
----
-
-## Что дальше?
-
-### 📖 Изучить API
-Читайте [API.md](API.md) - полная документация всех эндпоинтов:
-- `/encrypt`, `/decrypt` - базовые операции шифрования/расшифрования
-- `/health` - проверка состояния сервиса и KEK
-- `/metrics` - Prometheus метрики для мониторинга
-
-### 🔧 Настроить мониторинг
-Читайте [MONITORING.md](MONITORING.md):
-- Prometheus + Grafana интеграция
-- 8 групп метрик (операции, ротации, ошибки, latency)
-- Готовые dashboards и алерты
-
-### 🏭 Развернуть на production
-Читайте [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md):
-- Установка на Debian 13
-- nftables firewall конфигурация
-- systemd service
-- Hardware HSM интеграция (опционально)
-
-### 🧪 Запустить тесты
-```bash
-# Unit тесты
-go test ./...
-
-# Integration тесты
-./tests/integration/full-integration-test.sh
-
-# Подробнее в tests/README.md
-```
-
----
-
-## ❓ Troubleshooting
-
-### ❌ Ошибка: "OU not authorized"
-
-**Проблема**: Клиентский сертификат с OU=Trading пытается получить доступ к context=2fa
-
-**Решение**: Проверьте ACL в `config.yaml`:
-```yaml
-acl:
-  mappings:
-    Trading:           # OU в сертификате
-      - exchange-key   # Разрешенные contexts
-    2FA:
-      - 2fa            # 2FA OU может только 2fa context
-```
-
-**Проверка OU в сертификате**:
-```bash
-openssl x509 -in pki/client/trading-service-1.crt -noout -subject
-```
-
-### ❌ Ошибка: "Certificate revoked"
-
-**Проблема**: Сертификат был отозван и находится в `pki/revoked.yaml`
-
-**Решение**: Проверьте revoked.yaml:
-```bash
-cat pki/revoked.yaml | grep trading-service-1
-```
-
-Если сертификат отозван по ошибке - удалите запись из revoked.yaml (сервис перезагрузит файл автоматически через 30 секунд).
-
-### ❌ Ошибка: "KEK not found for context"
-
-**Проблема**: Запрашиваемый context не существует
-
-**Решение**: Проверьте доступные contexts:
-```bash
-curl -k https://localhost:8443/health \
-  --cert pki/client/trading-service-1.crt \
-  --key pki/client/trading-service-1.key \
-  --cacert pki/ca/ca.crt | jq .
-```
-
-Список contexts определяется в `config.yaml` → `key_types`.
-
-### ❌ Docker контейнер не запускается
-
-```bash
-# Проверить логи
-docker compose logs hsm-service
-
-# Пересобрать образ
-docker compose up -d --build
-
-# Проверить права на директории
-ls -la data/tokens/
-chmod 755 data/tokens/
-```
-
----
-
 ## 💡 Полезные команды
 
 ```bash
@@ -388,136 +234,16 @@ docker compose restart            # Перезапустить
 docker exec hsm-service /app/hsm-admin list-kek              # Список KEK
 docker exec hsm-service /app/hsm-admin rotate exchange-key   # Ротация ключа
 docker exec hsm-service /app/hsm-admin rotation-status       # Статус ротации
-docker exec hsm-service /app/hsm-admin cleanup-old-versions exchange-key  # Очистка старых версий
 
 # === Просмотр PKI ===
 openssl x509 -in pki/ca/ca.crt -noout -text           # CA сертификат
-openssl x509 -in pki/client/hsm-trading-client-1.crt -noout -subject -dates  # Клиентский сертификат
+openssl x509 -in pki/client/trading-service-1.crt -noout -subject -dates  # Клиентский сертификат
 openssl x509 -in pki/server/hsm-service.local.crt -noout -subject -dates      # Серверный сертификат
-
-# === Метрики ===
-curl -k https://localhost:8443/metrics \
-  --cert pki/client/hsm-trading-client-1.crt \
-  --key pki/client/hsm-trading-client-1.key \
-  --cacert pki/ca/ca.crt | grep hsm_
 ```
-
----
-
-## 📚 Дополнительная документация
-
-| Документ | Описание |
-|----------|----------|
-| [README.md](README.md) | Обзор проекта, use cases, PCI DSS compliance |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Архитектура, компоненты, data flow |
-| [API.md](API.md) | Полная API reference |
-| [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) | Production deployment |
-| [MONITORING.md](MONITORING.md) | Prometheus + Grafana setup |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Решение проблем |
-| [CLI_TOOLS.md](CLI_TOOLS.md) | hsm-admin command reference |
-| [tests/README.md](tests/README.md) | Руководство по тестированию |
-
-**Готово!** Ваш HSM Service запущен и готов к работе 🚀
-  -d '{
-    "context": "exchange-key",
-    "plaintext": "SGVsbG8gV29ybGQh"
-  }'
-```
-
-**Объяснение**:
-- `context: "exchange-key"` - какой KEK использовать
-- `plaintext: "SGVsbG8gV29ybGQh"` - это "Hello World!" в base64
-
-**Ожидаемый ответ**:
-```json
-{
-  "ciphertext": "AQIDBHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8...",
-  "key_id": "kek-exchange-key-v1"
-}
-```
-
-**Сохраните ciphertext** - он нужен для расшифрования!
-
-### 3. Расшифрование (Decrypt)
-
-```bash
-curl -k -X POST https://localhost:8443/decrypt \
-  --cert pki/client/trading-service-1.crt \
-  --key pki/client/trading-service-1.key \
-  --cacert pki/ca/ca.crt \
-  -H "Content-Type: application/json" \
-  -d '{
-    "context": "exchange-key",
-    "ciphertext": "AQIDBHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8...",
-    "key_id": "kek-exchange-key-v1"
-  }'
-```
-
-**Ожидаемый ответ**:
-```json
-{
-  "plaintext": "SGVsbG8gV29ybGQh"
-}
-```
-
-**Проверка**: `plaintext` должен совпадать с оригиналом!
-
-```bash
-echo "SGVsbG8gV29ybGQh" | base64 -d
-# Output: Hello World!
-```
-
-✅ **Отлично!** Вы успешно зашифровали и расшифровали данные через HSM Service.
-
----
 
 ---
 
 ## ❓ Troubleshooting
-
-### ❌ Ошибка: "OU not authorized"
-
-**Проблема**: Клиентский сертификат с OU=Trading пытается получить доступ к context=2fa
-
-**Решение**: Проверьте ACL в `config.yaml`:
-```yaml
-acl:
-  mappings:
-    Trading:           # OU в сертификате
-      - exchange-key   # Разрешенные contexts
-    2FA:
-      - 2fa            # 2FA OU может только 2fa context
-```
-
-**Проверка OU в сертификате**:
-```bash
-openssl x509 -in pki/client/trading-service-1.crt -noout -subject
-```
-
-### ❌ Ошибка: "Certificate revoked"
-
-**Проблема**: Сертификат был отозван и находится в `pki/revoked.yaml`
-
-**Решение**: Проверьте revoked.yaml:
-```bash
-cat pki/revoked.yaml | grep trading-service-1
-```
-
-Если сертификат отозван по ошибке - удалите запись из revoked.yaml (сервис перезагрузит файл автоматически через 30 секунд).
-
-### ❌ Ошибка: "KEK not found for context"
-
-**Проблема**: Запрашиваемый context не существует
-
-**Решение**: Проверьте доступные contexts:
-```bash
-curl -k https://localhost:8443/health \
-  --cert pki/client/trading-service-1.crt \
-  --key pki/client/trading-service-1.key \
-  --cacert pki/ca/ca.crt | jq .
-```
-
-Список contexts определяется в `config.yaml` → `hsm.keys`.
 
 ### ❌ Docker контейнер не запускается
 
@@ -533,43 +259,35 @@ ls -la data/tokens/
 chmod 755 data/tokens/
 ```
 
-### ❌ Permission denied на data/tokens
+### ❌ Ошибка: "OU not authorized"
+
+**Проблема**: Клиентский сертификат с неверным OU пытается получить доступ
+
+**Решение**: Проверьте ACL в `config.yaml` и убедитесь, что сертификаты имеют правильные OU
+
+### ❌ Ошибка: "Certificate verification failed"
 
 ```bash
-# Исправить права
-chmod 755 data/tokens
-```
+# Проверить что CA cert существует
+ls -la pki/ca/ca.crt
 
-### ❌ HSM_PIN неверный
-
-```bash
-# Проверить .env файл
-cat .env | grep HSM_PIN
-
-# Перезапустить
-docker compose down
-docker compose up -d
+# Проверить что клиентский сертификат подписан CA
+openssl verify -CAfile pki/ca/ca.crt pki/client/trading-service-1.crt
 ```
 
 ---
 
-## 📚 Что дальше?
+## 📚 Дополнительная документация
 
-После успешного запуска Docker версии:
-
-### Для backend разработчиков:
-- 📖 **API Reference**: [API.md](API.md) - полная документация API
-- 🔧 **CLI утилиты**: [CLI_TOOLS.md](CLI_TOOLS.md) - hsm-admin команды
-
-### Для DevOps инженеров:
-- 🏭 **Production**: [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) - развертывание на Debian
-- 📊 **Мониторинг**: [MONITORING.md](MONITORING.md) - Prometheus + Grafana
-- 🔄 **Ротация ключей**: [KEY_ROTATION.md](KEY_ROTATION.md)
-
-### Для security инженеров:
-- 🔒 **PKI управление**: [PKI_SETUP.md](PKI_SETUP.md) - полное руководство по сертификатам
-- 🛡️ **Безопасность**: [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - аудит безопасности
+| Документ | Описание |
+|----------|----------|
+| [README.md](README.md) | Обзор проекта, use cases, compliance |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Архитектура и компоненты |
+| [API.md](API.md) | Полная API reference |
+| [MONITORING.md](MONITORING.md) | Prometheus + Grafana setup |
+| [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) | Production deployment |
+| [CLI_TOOLS.md](CLI_TOOLS.md) | hsm-admin command reference |
 
 ---
 
-**Готово!** Ваш HSM Service запущен в Docker и готов к работе 🚀
+**Готово!** Ваш HSM Service запущен и готов к работе 🚀
