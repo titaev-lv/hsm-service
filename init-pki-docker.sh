@@ -226,8 +226,8 @@ generate_cert "Root CA" "$CA_DIR/ca.crt" "$CA_DIR/ca.key" "$CA_SUBJECT" "true" "
 # 2.2: Generate Server Certificate
 SERVER_SUBJECT="/C=$COUNTRY/ST=$STATE/L=$CITY/O=$ORGANIZATION/CN=hsm-service.local"
 generate_cert "Server Certificate (hsm-service.local)" \
-    "$SERVER_DIR/hsm-service.local.crt" \
-    "$SERVER_DIR/hsm-service.local.key" \
+    "$SERVER_DIR/hsm-service.crt" \
+    "$SERVER_DIR/hsm-service.key" \
     "$SERVER_SUBJECT" "false" \
     "$CA_DIR/ca.crt" "$CA_DIR/ca.key"
 
