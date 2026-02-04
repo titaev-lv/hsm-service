@@ -50,6 +50,7 @@ COPY --from=builder /app/create-kek .
 
 # Copy configuration files
 COPY config.yaml .
+COPY metadata.yaml.example .
 COPY softhsm2.conf /etc/softhsm/softhsm2.conf
 
 # Copy init script
