@@ -1,5 +1,35 @@
 # Changelog 
 
+## v1.1.0
+
+### New Features
+- **Automated PKI & Docker Setup**: Added `init-pki-docker.sh` script for one-command initialization
+  - Generates Root CA and all certificates (server + client) automatically
+  - Creates metadata.yaml configuration
+  - Builds and starts Docker container
+  - Validates service health
+  - Supports `--force` and `--skip-docker` options
+
+### Documentation
+- Improved QUICKSTART_DOCKER.md with:
+  - ⚡ One-command quick start section
+  - 📖 Step-by-step manual setup fallback
+  - 💡 Useful commands reference
+  - ❓ Troubleshooting guide
+- Added VERSIONING.md with detailed versioning strategy
+
+### Infrastructure
+- Fixed metadata.yaml mounting (reverted to mount strategy from Dockerfile copy)
+- Certificate path improvements
+- Added VERSION file support for Docker builds
+
+### Bug Fixes
+- Fix metadata.yaml handling in docker-compose.yml
+- Fix metadata.yaml Dockerfile logic
+- Correct certificate paths in configuration
+
+---
+
 ## v1.0.1
 
 ### Core 
@@ -26,3 +56,4 @@
 ### Documentation
 - Quickstart/production/security audit docs.
 - Recovery, monitoring, firewall/SELinux/AppArmor guides.
+

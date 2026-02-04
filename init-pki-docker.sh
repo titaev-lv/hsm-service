@@ -197,10 +197,21 @@ generate_cert() {
             -subj "$subject" >/dev/null 2>&1
 
         # Step 3: Sign CSR with CA
+        # Create temporary config file for extensions
+        local ext_file=$(mktemp)
+        echo "subjectAltName=DNS:localhost,DNS:hsm-service,DNS:hsm-service.local,IP:127.0.0.1" > "$ext_file"
+        
         openssl x509 -req -in "$csr_path" -CA "$ca_cert" -CAkey "$ca_key" \
             -CAcreateserial -out "$cert_path" -days $CERT_VALIDITY_DAYS \
-            -extensions v3_req -extfile <(echo "subjectAltName=DNS:localhost,DNS:hsm-service,DNS:hsm-service.local,IP:127.0.0.1") \
-            >/dev/null 2>&1
+            -extfile "$ext_file" >/dev/null 2>&1
+        
+        local sign_exit=$?
+        rm -f "$ext_file"
+        
+        if [ $sign_exit -ne 0 ]; then
+            print_error "$name: Failed to sign certificate"
+            return 1
+        fi
 
         # Cleanup CSR
         rm -f "$csr_path"
