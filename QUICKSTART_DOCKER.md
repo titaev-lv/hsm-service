@@ -10,6 +10,7 @@ git clone <repository-url>
 cd hsm-service
 
 # Запустить скрипт инициализации (делает всё автоматически!)
+chmod +x init-pki-docker.sh
 ./init-pki-docker.sh
 ```
 
