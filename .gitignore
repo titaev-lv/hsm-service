@@ -23,6 +23,7 @@ go.work
 !*.example.key
 inventory.yaml
 revoked.yaml
+!revoked.yaml  # Keep default empty revocation list
 
 # SoftHSM tokens
 data/tokens/*

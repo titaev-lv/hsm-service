@@ -92,6 +92,13 @@ if [ "$CREATED_ANY" = true ]; then
     echo "✓ Checksums computed and saved to metadata.yaml"
 fi
 
+# Ensure revoked.yaml exists to avoid spurious reload logs
+if [ ! -f /app/revoked.yaml ]; then
+    echo "# ACL revocation list"
+    echo "revoked_certificates: []"
+fi > /app/revoked.yaml
+echo "✓ Revocation list initialized"
+
 echo ""
 echo "========================================="
 echo "Starting HSM Service..."

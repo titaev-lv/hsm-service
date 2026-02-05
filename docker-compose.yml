@@ -29,6 +29,9 @@ services:
       # Metadata file (writable, managed by automation)
       - ./metadata.yaml:/app/metadata.yaml:rw
       
+      # Revocation list (writable, managed by automation)
+      - ./revoked.yaml:/app/revoked.yaml:rw
+      
       # SoftHSM configuration (read-only)
       - ./softhsm2.conf:/etc/softhsm2.conf:ro
     
