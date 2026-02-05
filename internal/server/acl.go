@@ -67,7 +67,7 @@ func (a *ACLChecker) StartAutoReload() {
 		ticker := time.NewTicker(a.reloadInterval)
 		defer ticker.Stop()
 
-		slog.Info("started revoked.yaml auto-reload",
+		slog.Debug("started revoked.yaml auto-reload",
 			"interval", a.reloadInterval.String(),
 			"file", a.config.RevokedFile)
 
@@ -75,11 +75,12 @@ func (a *ACLChecker) StartAutoReload() {
 			select {
 			case <-ticker.C:
 				if err := a.TryReload(); err != nil {
-					slog.Warn("auto-reload failed", "path", a.config.RevokedFile)
-					// Don't expose error details in logs
+					slog.Warn("failed to reload revoked.yaml",
+						"path", a.config.RevokedFile,
+						"error", err.Error())
 				}
 			case <-a.stopReload:
-				slog.Info("stopped revoked.yaml auto-reload")
+				slog.Debug("stopped revoked.yaml auto-reload")
 				return
 			}
 		}
@@ -139,8 +140,9 @@ func (a *ACLChecker) TryReload() error {
 	// File changed - try to reload with validation
 	if err := a.LoadRevokedSafe(); err != nil {
 		// Keep old data on error
-		slog.Warn("revoked.yaml reload skipped due to validation error",
-			"path", a.config.RevokedFile)
+		slog.Error("revoked.yaml reload failed validation",
+			"path", a.config.RevokedFile,
+			"error", err.Error())
 		return err
 	}
 
@@ -150,7 +152,7 @@ func (a *ACLChecker) TryReload() error {
 	revokedCount := len(a.revoked)
 	a.revokedMutex.Unlock()
 
-	slog.Info("revoked.yaml reloaded successfully",
+	slog.Debug("revoked.yaml reloaded successfully",
 		"path", a.config.RevokedFile,
 		"count", revokedCount)
 
