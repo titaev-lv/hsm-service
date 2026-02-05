@@ -32,7 +32,7 @@ hsm:
       mode: private      # Private mode (default): AAD=context+clientCN (isolated per client)
 
 acl:
-  revoked_file: /app/pki/revoked.yaml
+  revoked_file: /app/revoked.yaml
   mappings:
     Trading:
       - exchange-key

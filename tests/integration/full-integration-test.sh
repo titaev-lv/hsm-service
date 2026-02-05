@@ -1098,14 +1098,27 @@ revoked_certificates:
     date: "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 EOF
 
+# Verify file was written correctly
+if [ ! -f "$REVOKED_FILE" ]; then
+    print_error "Failed to create revoked.yaml"
+fi
+
+# Sync to container (ensure volume mount sees it)
+sleep 1
+touch "$REVOKED_FILE"  # Update modification time to trigger reload
+
 print_success "Certificate added to revoked.yaml"
-print_info "New revoked.yaml content:"
+print_info "New revoked.yaml content (host):"
 cat "$REVOKED_FILE" | sed 's/^/  /'
 
+# Verify file in container
+print_info "Checking revoked.yaml in container:"
+docker exec hsm-service-test cat /app/revoked.yaml 2>/dev/null | head -3 | sed 's/^/  /'
+
 # Step 3: Wait for auto-reload (default reload interval is 30 seconds)
-print_info "Step 3: Waiting for ACL auto-reload (up to 35 seconds)..."
+print_info "Step 3: Waiting for ACL auto-reload (up to 65 seconds)..."
 RELOAD_DETECTED=0
-for i in {1..70}; do
+for i in {1..130}; do
     sleep 0.5
     # Try request to see if revocation took effect
     AFTER_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
@@ -1133,10 +1146,20 @@ done
 
 if [ $RELOAD_DETECTED -eq 0 ]; then
     print_info "Auto-reload not detected within timeout, but continuing test..."
+    print_info "Note: ACL reload interval is 30s, may need more time in slow systems"
 fi
 
 # Step 4: Verify certificate is now blocked
 print_info "Step 4: Verifying revoked certificate is blocked..."
+
+# Check container logs for reload
+RECENT_LOGS=$(docker logs hsm-service-test 2>&1 | tail -20)
+if echo "$RECENT_LOGS" | grep -qi "revoked.yaml reload"; then
+    print_info "ACL reload detected in logs"
+else
+    print_info "No ACL reload in recent logs - may still be waiting"
+fi
+
 REVOKED_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
     --cacert "$CA_CERT" \
     --cert "$TRADING_CERT" \
@@ -1153,7 +1176,12 @@ if [ "$HTTP_CODE_REVOKED" = "403" ] || echo "$BODY_REVOKED" | grep -qi "revoked\
 else
     echo "Certificate CN: $CERT_CN"
     echo "HTTP Code: $HTTP_CODE_REVOKED"
-    echo "Response: $BODY_REVOKED"
+    echo "Response body: $BODY_REVOKED"
+    echo ""
+    echo "Debug info:"
+    echo "  revoked.yaml (host): $(cat $REVOKED_FILE)"
+    echo "  revoked.yaml (container): $(docker exec hsm-service-test cat /app/revoked.yaml 2>/dev/null || echo 'NOT FOUND')"
+    echo ""
     print_error "Server accepted revoked certificate!"
 fi
 
