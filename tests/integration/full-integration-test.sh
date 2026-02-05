@@ -661,7 +661,7 @@ if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key > /tmp/rota
     print_error "Key rotation failed (see /tmp/rotation.log)"
 fi
 # Force sync: copy metadata from container to host
-docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+docker cp hsm-service-test:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
 print_success "Key rotation completed"
 
 print_test "Test 8.3: Verify metadata.yaml updated"
@@ -677,9 +677,9 @@ fi
 print_success "metadata.yaml contains both v1 and v2"
 
 print_test "Test 8.4: Restart service to load new key"
-docker stop hsm-service > /dev/null 2>&1
+docker stop hsm-service-test > /dev/null 2>&1
 sleep 2
-docker start hsm-service > /dev/null 2>&1
+docker start hsm-service-test > /dev/null 2>&1
 sleep 7
 if ! docker ps | grep -q hsm-service; then
     docker logs hsm-service-test
@@ -754,9 +754,9 @@ print_info "Service monitors metadata.yaml every 30 seconds"
 sleep 35
 
 # Check logs for reload event
-if docker compose logs --since 40s hsm-service 2>&1 | grep -q "KEK hot reload successful\|metadata file changed"; then
+if docker compose -f "$TEST_COMPOSE_FILE" logs --since 40s 2>&1 | grep -q "KEK hot reload successful\|metadata file changed"; then
     print_success "Hot reload detected in logs"
-    docker compose logs --since 40s hsm-service 2>&1 | grep -E "KEK hot reload|metadata file changed" | tail -3
+    docker compose -f "$TEST_COMPOSE_FILE" logs --since 40s 2>&1 | grep -E "KEK hot reload|metadata file changed" | tail -3
 else
     print_info "No hot reload event (file change may not have triggered reload)"
 fi
@@ -798,7 +798,7 @@ if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key; then
     print_error "Failed to rotate to v3"
 fi
 # Force sync: copy metadata from container to host
-docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+docker cp hsm-service-test:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
 # Wait for automatic hot reload (service monitors every 30s)
 echo "Waiting for hot reload (35 seconds)..."
 sleep 35
@@ -809,7 +809,7 @@ if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key; then
     print_error "Failed to rotate to v4"
 fi
 # Force sync: copy metadata from container to host
-docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+docker cp hsm-service-test:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
 echo "Waiting for hot reload (35 seconds)..."
 sleep 35
 print_success "Rotated to v3 and v4"
@@ -833,7 +833,7 @@ print_success "Auto-cleanup check executed"
 print_test "Test 10.4: Dry-run cleanup (should show what would be deleted)"
 echo ""
 echo "=== Running cleanup in dry-run mode ==="
-CLEANUP_DRYRUN=$(docker exec -e HSM_PIN=1234 hsm-service /app/hsm-admin cleanup-old-versions --dry-run 2>&1)
+CLEANUP_DRYRUN=$(docker exec -e HSM_PIN=1234 hsm-service-test /app/hsm-admin cleanup-old-versions --dry-run 2>&1)
 echo "$CLEANUP_DRYRUN"
 echo ""
 if ! echo "$CLEANUP_DRYRUN" | grep -q "DRY RUN"; then
@@ -879,7 +879,7 @@ sed -E "s/(label: kek-exchange-key-v3.*)/\1/; /label: kek-exchange-key-v3/,/crea
 
 # Stop container before modifying mounted file
 echo "Stopping container to modify metadata.yaml on host..."
-docker stop hsm-service > /dev/null 2>&1
+docker stop hsm-service-test > /dev/null 2>&1
 sleep 3
 
 # Replace metadata.yaml on host (which is mounted to container)
@@ -891,7 +891,7 @@ echo ""
 
 # Restart container with backdated metadata
 echo "Restarting container with backdated metadata..."
-docker start hsm-service > /dev/null 2>&1
+docker start hsm-service-test > /dev/null 2>&1
 sleep 7
 
 print_success "Versions backdated for cleanup testing"
@@ -899,7 +899,7 @@ print_success "Versions backdated for cleanup testing"
 print_test "Test 10.5: Execute cleanup (delete excess versions)"
 echo ""
 echo "=== Executing cleanup with --force ==="
-docker exec -e HSM_PIN=1234 hsm-service /app/hsm-admin cleanup-old-versions --force > /tmp/cleanup.log 2>&1
+docker exec -e HSM_PIN=1234 hsm-service-test /app/hsm-admin cleanup-old-versions --force > /tmp/cleanup.log 2>&1
 CLEANUP_EXIT_CODE=$?
 
 echo "Cleanup output:"
@@ -924,13 +924,13 @@ fi
 print_success "Cleanup executed"
 
 print_test "Test 10.6: Verify cleanup behavior"
-docker stop hsm-service > /dev/null 2>&1
+docker stop hsm-service-test > /dev/null 2>&1
 sleep 2
-docker start hsm-service > /dev/null 2>&1
+docker start hsm-service-test > /dev/null 2>&1
 sleep 7
 
 # Copy updated metadata from container to host
-docker cp hsm-service:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
+docker cp hsm-service-test:/app/metadata.yaml "$PROJECT_ROOT/metadata.yaml"
 
 echo "Updated metadata.yaml content:"
 cat "$PROJECT_ROOT/metadata.yaml"
@@ -985,11 +985,11 @@ rotation:
 EOF
 
 # Restart container to load clean metadata
-docker restart hsm-service > /dev/null 2>&1
+docker restart hsm-service-test > /dev/null 2>&1
 sleep 10
 
 # Verify service is healthy
-if docker ps | grep -q "hsm-service"; then
+if docker ps | grep -q "hsm-service-test"; then
     print_success "System reset to clean state for remaining tests"
 else
     docker logs hsm-service-test --tail 20
@@ -1248,7 +1248,7 @@ echo "  KEKs loaded: $BEFORE_KEY_COUNT"
 print_success "Current state captured"
 
 print_test "Test 12.2: Restart container with docker restart"
-docker restart hsm-service > /dev/null 2>&1
+docker restart hsm-service-test > /dev/null 2>&1
 sleep 15  # Wait for service to fully restart
 
 # Check if container is running
