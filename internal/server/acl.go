@@ -67,7 +67,7 @@ func (a *ACLChecker) StartAutoReload() {
 		ticker := time.NewTicker(a.reloadInterval)
 		defer ticker.Stop()
 
-		slog.Debug("started revoked.yaml auto-reload",
+		slog.Info("started revoked.yaml auto-reload",
 			"interval", a.reloadInterval.String(),
 			"file", a.config.RevokedFile)
 
@@ -115,12 +115,12 @@ func (a *ACLChecker) TryReload() error {
 	info, err := os.Stat(a.config.RevokedFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// File deleted - clear revoked list
+			// File deleted or doesn't exist - clear revoked list
 			a.revokedMutex.Lock()
 			a.revoked = make(map[string]bool)
 			a.lastModTime = time.Time{}
 			a.revokedMutex.Unlock()
-			slog.Info("revoked.yaml deleted, cleared revocation list")
+			slog.Debug("revoked.yaml not found, cleared revocation list")
 			return nil
 		}
 		return fmt.Errorf("failed to stat file: %w", err)
