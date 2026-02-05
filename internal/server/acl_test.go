@@ -39,7 +39,7 @@ func TestNewACLChecker(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
-	revokedYAML := `revoked:
+	revokedYAML := `revoked_certificates:
   - cn: revoked-service
     serial: "123456"
     reason: compromised
@@ -76,7 +76,7 @@ func TestLoadRevoked_EmptyFile(t *testing.T) {
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
 	// Empty revoked list
-	revokedYAML := `revoked: []`
+	revokedYAML := `revoked_certificates: []`
 	if err := os.WriteFile(revokedFile, []byte(revokedYAML), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestLoadRevoked_FileNotExist(t *testing.T) {
 func TestCheckAccess_ValidAccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
-	os.WriteFile(revokedFile, []byte("revoked: []"), 0644)
+	os.WriteFile(revokedFile, []byte("revoked_certificates: []"), 0644)
 
 	cfg := &config.ACLConfig{
 		RevokedFile: revokedFile,
@@ -142,7 +142,7 @@ func TestCheckAccess_ValidAccess(t *testing.T) {
 func TestCheckAccess_ForbiddenContext(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
-	os.WriteFile(revokedFile, []byte("revoked: []"), 0644)
+	os.WriteFile(revokedFile, []byte("revoked_certificates: []"), 0644)
 
 	cfg := &config.ACLConfig{
 		RevokedFile: revokedFile,
@@ -166,7 +166,7 @@ func TestCheckAccess_RevokedCertificate(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
-	revokedYAML := `revoked:
+	revokedYAML := `revoked_certificates:
   - cn: revoked-service
     serial: "123"
     reason: compromised
@@ -194,7 +194,7 @@ func TestCheckAccess_RevokedCertificate(t *testing.T) {
 func TestCheckAccess_NoOU(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
-	os.WriteFile(revokedFile, []byte("revoked: []"), 0644)
+	os.WriteFile(revokedFile, []byte("revoked_certificates: []"), 0644)
 
 	cfg := &config.ACLConfig{
 		RevokedFile: revokedFile,
@@ -216,7 +216,7 @@ func TestCheckAccess_NoOU(t *testing.T) {
 func TestCheckAccess_UnknownOU(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
-	os.WriteFile(revokedFile, []byte("revoked: []"), 0644)
+	os.WriteFile(revokedFile, []byte("revoked_certificates: []"), 0644)
 
 	cfg := &config.ACLConfig{
 		RevokedFile: revokedFile,

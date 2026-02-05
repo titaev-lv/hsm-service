@@ -16,7 +16,7 @@ func TestACLAutoReload(t *testing.T) {
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
 	// Initial content
-	initialYAML := `revoked:
+	initialYAML := `revoked_certificates:
   - cn: "test1.example.com"
     serial: "1234"
     reason: "compromised"
@@ -67,7 +67,7 @@ func TestACLAutoReload(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Update file with new content
-	updatedYAML := `revoked:
+	updatedYAML := `revoked_certificates:
   - cn: "test1.example.com"
     serial: "1234"
     reason: "compromised"
@@ -99,7 +99,7 @@ func TestACLReloadInvalidYAML(t *testing.T) {
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
 	// Valid initial content
-	validYAML := `revoked:
+	validYAML := `revoked_certificates:
   - cn: "test1.example.com"
     serial: "1234"
     reason: "compromised"
@@ -132,7 +132,7 @@ func TestACLReloadInvalidYAML(t *testing.T) {
 	}
 
 	// Write invalid YAML
-	invalidYAML := `revoked:
+	invalidYAML := `revoked_certificates:
   - cn: "test2.example.com"
     serial: "5678"
     reason: "test
@@ -161,7 +161,7 @@ func TestACLReloadEmptyCN(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
-	validYAML := `revoked:
+	validYAML := `revoked_certificates:
   - cn: "test1.example.com"
     serial: "1234"
     reason: "compromised"
@@ -187,7 +187,7 @@ func TestACLReloadEmptyCN(t *testing.T) {
 	}()
 
 	// Write YAML with empty CN
-	invalidYAML := `revoked:
+	invalidYAML := `revoked_certificates:
   - cn: ""
     serial: "5678"
     reason: "test"
@@ -213,7 +213,7 @@ func TestACLReloadDuplicateCN(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
-	validYAML := `revoked:
+	validYAML := `revoked_certificates:
   - cn: "test1.example.com"
     serial: "1234"
     reason: "compromised"
@@ -239,7 +239,7 @@ func TestACLReloadDuplicateCN(t *testing.T) {
 	}()
 
 	// Write YAML with duplicate CNs
-	duplicateYAML := `revoked:
+	duplicateYAML := `revoked_certificates:
   - cn: "test2.example.com"
     serial: "5678"
     reason: "compromised"
@@ -272,7 +272,7 @@ func TestACLReloadFileDeleted(t *testing.T) {
 	tmpDir := t.TempDir()
 	revokedFile := filepath.Join(tmpDir, "revoked.yaml")
 
-	validYAML := `revoked:
+	validYAML := `revoked_certificates:
   - cn: "test1.example.com"
     serial: "1234"
     reason: "compromised"

@@ -30,12 +30,12 @@ type ACLChecker struct {
 
 // RevokedList represents the structure of revoked.yaml
 type RevokedList struct {
-	Revoked []struct {
+	RevokedCertificates []struct {
 		CN     string `yaml:"cn"`
 		Serial string `yaml:"serial"`
 		Reason string `yaml:"reason"`
 		Date   string `yaml:"date"`
-	} `yaml:"revoked"`
+	} `yaml:"revoked_certificates"`
 }
 
 // NewACLChecker creates a new ACL checker with auto-reload support
@@ -180,7 +180,7 @@ func (a *ACLChecker) LoadRevokedSafe() error {
 
 	// Build new map
 	newRevoked := make(map[string]bool)
-	for _, cert := range revokedList.Revoked {
+	for _, cert := range revokedList.RevokedCertificates {
 		if cert.CN == "" {
 			return fmt.Errorf("empty CN in revoked list")
 		}
@@ -203,7 +203,7 @@ func (a *ACLChecker) validateRevokedList(list *RevokedList) error {
 
 	// Check for duplicate CNs
 	seen := make(map[string]bool)
-	for i, cert := range list.Revoked {
+	for i, cert := range list.RevokedCertificates {
 		if cert.CN == "" {
 			return fmt.Errorf("entry %d has empty CN", i)
 		}
@@ -244,7 +244,7 @@ func (a *ACLChecker) LoadRevoked() error {
 	// Build revoked map
 	a.revokedMutex.Lock()
 	a.revoked = make(map[string]bool)
-	for _, cert := range revokedList.Revoked {
+	for _, cert := range revokedList.RevokedCertificates {
 		a.revoked[cert.CN] = true
 	}
 
