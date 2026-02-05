@@ -27,6 +27,7 @@ revoked.yaml
 
 # SoftHSM tokens
 data/tokens/*
+!data/tokens/.gitkeep
 
 # Dynamic metadata (managed by automation, not by Git)
 metadata.yaml

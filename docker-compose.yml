@@ -32,6 +32,9 @@ services:
       # Revocation list (writable, managed by automation)
       - ./revoked.yaml:/app/revoked.yaml:rw
       
+      # SoftHSM tokens (writable, must persist between restarts)
+      - ./data/tokens:/var/lib/softhsm/tokens:rw
+      
       # SoftHSM configuration (read-only)
       - ./softhsm2.conf:/etc/softhsm2.conf:ro
     
