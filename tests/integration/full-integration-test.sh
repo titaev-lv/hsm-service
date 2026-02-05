@@ -218,10 +218,15 @@ print_info "Using: $COMPOSE_FILE"
 # ==========================================
 print_header "PHASE 1: Docker Cleanup"
 
-print_test "Stop and remove existing containers and volumes"
+print_test "Stop production container (if running)"
+docker stop hsm-service 2>/dev/null || true
+docker rm hsm-service 2>/dev/null || true
+print_success "Production container stopped"
+
+print_test "Stop and remove existing test containers and volumes"
 cd "$PROJECT_ROOT"
 docker compose -f "$TEST_COMPOSE_FILE" down -v 2>/dev/null || true
-print_success "Containers stopped and volumes removed (tokens ephemeral)"
+print_success "Test containers stopped and volumes removed (tokens ephemeral)"
 
 # Commented out: Keep downloaded layers to speed up rebuilds
 # Uncomment these lines for full cleanup (slower but cleaner)
@@ -1056,9 +1061,9 @@ if [ ! -f "$TRADING_CERT" ] || [ ! -f "$TRADING_KEY" ]; then
     print_error "Trading client certificate not found"
 fi
 
-# Extract CN from the certificate
-# Format: subject=C = RU, ST = Moscow, ..., CN = trading-client-1
-CERT_CN=$(openssl x509 -in "$TRADING_CERT" -noout -subject 2>/dev/null | sed 's/.*CN = \([^,]*\).*/\1/')
+# Extract CN from the certificate using openssl name output (most reliable)
+# openssl x509 -in cert -noout -subject -nameopt rfc2253 gives: CN=trading-client-1,...
+CERT_CN=$(openssl x509 -in "$TRADING_CERT" -noout -subject -nameopt rfc2253 2>/dev/null | grep -oP 'CN=\K[^,]+' || openssl x509 -in "$TRADING_CERT" -noout -subject 2>/dev/null | sed 's/.*CN = \([^,]*\).*/\1/')
 if [ -z "$CERT_CN" ]; then
     print_error "Failed to extract CN from certificate"
 fi
@@ -1117,9 +1122,10 @@ print_info "Checking revoked.yaml in container:"
 docker exec hsm-service-test cat /app/revoked.yaml 2>/dev/null | head -3 | sed 's/^/  /'
 
 # Step 3: Wait for auto-reload (default reload interval is 30 seconds)
-print_info "Step 3: Waiting for ACL auto-reload (up to 65 seconds)..."
+# On slow systems, may need to wait for full cycle to complete
+print_info "Step 3: Waiting for ACL auto-reload (up to 75 seconds on slow systems)..."
 RELOAD_DETECTED=0
-for i in {1..130}; do
+for i in {1..150}; do
     sleep 0.5
     # Try request to see if revocation took effect
     AFTER_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
@@ -1146,8 +1152,9 @@ for i in {1..130}; do
 done
 
 if [ $RELOAD_DETECTED -eq 0 ]; then
-    print_info "Auto-reload not detected within timeout, but continuing test..."
-    print_info "Note: ACL reload interval is 30s, may need more time in slow systems"
+    print_info "Auto-reload not detected within timeout"
+    print_info "This can happen on very slow systems or if reload thread is stuck"
+    print_info "Check container logs: docker logs hsm-service-test | grep -i reload"
 fi
 
 # Step 4: Verify certificate is now blocked
