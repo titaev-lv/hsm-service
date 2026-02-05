@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=58
+TOTAL_TESTS=59
 
 # Helper functions
 print_header() {
@@ -43,10 +43,140 @@ print_info() {
 }
 
 # ==========================================
+# PKI GENERATION FUNCTIONS
+# ==========================================
+generate_test_pki() {
+    local pki_dir="$1"
+    local ca_dir="$pki_dir/test/ca"
+    local server_dir="$pki_dir/test/server"
+    local client_dir="$pki_dir/test/client"
+    
+    print_test "Generate test PKI infrastructure"
+    
+    # Create directories
+    mkdir -p "$ca_dir" "$server_dir" "$client_dir"
+    
+    # Certificate configuration
+    local country="RU"
+    local state="Moscow"
+    local city="Moscow"
+    local org="HSM-Test"
+    local validity_days=365
+    
+    # 1. Generate Root CA (self-signed, no password)
+    print_info "Generating test Root CA..."
+    openssl req -x509 -newkey rsa:4096 -keyout "$ca_dir/ca.key" \
+        -out "$ca_dir/ca.crt" -days $validity_days -nodes \
+        -subj "/C=$country/ST=$state/L=$city/O=$org/CN=hsm-test-ca" >/dev/null 2>&1
+    print_success "Test CA generated"
+    
+    # 2. Generate Server Certificate
+    print_info "Generating test server certificate..."
+    openssl genrsa -out "$server_dir/hsm-service.key" 4096 >/dev/null 2>&1
+    local server_csr=$(mktemp)
+    openssl req -new -key "$server_dir/hsm-service.key" -out "$server_csr" \
+        -subj "/C=$country/ST=$state/L=$city/O=$org/CN=hsm-service.local" >/dev/null 2>&1
+    
+    # Sign with CA, adding SANs
+    local ext_file=$(mktemp)
+    echo "subjectAltName=DNS:localhost,DNS:hsm-service,DNS:hsm-service.local,IP:127.0.0.1" > "$ext_file"
+    openssl x509 -req -in "$server_csr" -CA "$ca_dir/ca.crt" -CAkey "$ca_dir/ca.key" \
+        -CAcreateserial -out "$server_dir/hsm-service.crt" -days $validity_days \
+        -extfile "$ext_file" >/dev/null 2>&1
+    rm -f "$server_csr" "$ext_file"
+    print_success "Test server certificate generated"
+    
+    # 3. Generate Trading Client Certificate (OU=Trading)
+    print_info "Generating test client certificate (Trading)..."
+    openssl genrsa -out "$client_dir/trading-client-1.key" 4096 >/dev/null 2>&1
+    local client_csr=$(mktemp)
+    openssl req -new -key "$client_dir/trading-client-1.key" -out "$client_csr" \
+        -subj "/C=$country/ST=$state/L=$city/O=$org/OU=Trading/CN=trading-client-1" >/dev/null 2>&1
+    
+    openssl x509 -req -in "$client_csr" -CA "$ca_dir/ca.crt" -CAkey "$ca_dir/ca.key" \
+        -CAcreateserial -out "$client_dir/trading-client-1.crt" -days $validity_days >/dev/null 2>&1
+    rm -f "$client_csr"
+    print_success "Test trading client certificate generated"
+    
+    # 4. Generate 2FA Client Certificate (OU=2FA)
+    print_info "Generating test client certificate (2FA)..."
+    openssl genrsa -out "$client_dir/2fa-client-1.key" 4096 >/dev/null 2>&1
+    local client_csr=$(mktemp)
+    openssl req -new -key "$client_dir/2fa-client-1.key" -out "$client_csr" \
+        -subj "/C=$country/ST=$state/L=$city/O=$org/OU=2FA/CN=2fa-client-1" >/dev/null 2>&1
+    
+    openssl x509 -req -in "$client_csr" -CA "$ca_dir/ca.crt" -CAkey "$ca_dir/ca.key" \
+        -CAcreateserial -out "$client_dir/2fa-client-1.crt" -days $validity_days >/dev/null 2>&1
+    rm -f "$client_csr"
+    print_success "Test 2FA client certificate generated"
+    
+    # Set permissions
+    chmod 600 "$ca_dir/ca.key" "$server_dir/hsm-service.key" "$client_dir"/*.key
+    chmod 644 "$ca_dir/ca.crt" "$server_dir/hsm-service.crt" "$client_dir"/*.crt
+}
+
+backup_config() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        cp "$config_file" "$config_file.test-backup"
+        print_success "Config backed up: $config_file.test-backup"
+    fi
+}
+
+restore_config() {
+    local config_file="$1"
+    if [ -f "$config_file.test-backup" ]; then
+        mv "$config_file.test-backup" "$config_file"
+        print_success "Config restored from backup"
+    fi
+}
+
+update_config_for_test_pki() {
+    local config_file="$1"
+    local pki_test_dir="pki/test"
+    
+    print_test "Update config.yaml to use test PKI"
+    
+    # Escape / in paths for sed
+    local pki_escaped="${pki_test_dir//\//\\\/}"
+    
+    sed -i "s|/app/pki/ca/ca.crt|/app/$pki_escaped/ca/ca.crt|g" "$config_file"
+    sed -i "s|/app/pki/server/hsm-service.crt|/app/$pki_escaped/server/hsm-service.crt|g" "$config_file"
+    sed -i "s|/app/pki/server/hsm-service.key|/app/$pki_escaped/server/hsm-service.key|g" "$config_file"
+    
+    print_success "Config updated for test PKI"
+}
+
+cleanup_test_pki() {
+    local pki_dir="$1"
+    print_test "Cleanup test PKI"
+    if [ -d "$pki_dir/test" ]; then
+        rm -rf "$pki_dir/test"
+        print_success "Test PKI directory removed"
+    fi
+}
+
+# ==========================================
 # SETUP: Determine project root
 # ==========================================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Cleanup function to restore config and PKI on exit
+cleanup_on_exit() {
+    echo ""
+    print_header "CLEANUP: Restoring original state"
+    if [ -n "${CONFIG_FILE:-}" ]; then
+        restore_config "$PROJECT_ROOT/$CONFIG_FILE"
+    fi
+    if [ -n "${PROJECT_ROOT:-}" ]; then
+        cleanup_test_pki "$PROJECT_ROOT/pki"
+    fi
+    print_success "Test cleanup complete"
+}
+
+# Set trap to run cleanup on exit
+trap cleanup_on_exit EXIT
 
 # Always work from project root
 cd "$PROJECT_ROOT"
@@ -116,183 +246,42 @@ print_success "Image verified"
 # ==========================================
 # PHASE 3: PKI SETUP
 # ==========================================
-print_header "PHASE 3: PKI Verification"
+print_header "PHASE 3: Generate Test PKI"
 
-print_test "Check CA certificate exists"
-if [ ! -f "$PROJECT_ROOT/pki/ca/ca.crt" ]; then
-    echo ""
-    echo -e "${RED}CA certificate not found!${NC}"
-    echo ""
-    echo "HSM Service requires a Certificate Authority (CA) for mTLS."
-    echo ""
-    echo -e "${YELLOW}Would you like to create a CA now?${NC}"
-    echo "This will:"
-    echo "  1. Generate CA private key (4096-bit RSA, password protected)"
-    echo "  2. Create self-signed CA certificate (valid 10 years)"
-    echo "  3. Save to pki/ca/ca.crt and pki/ca/ca.key"
-    echo ""
-    read -p "Create CA? (y/n): " CREATE_CA
-    
-    if [ "$CREATE_CA" = "y" ] || [ "$CREATE_CA" = "Y" ]; then
-        echo ""
-        echo "=== Creating CA ==="
-        mkdir -p "$PROJECT_ROOT/pki/ca"
-        
-        # Generate CA key
-        echo "Generating CA private key (you will be asked for a password)..."
-        if ! openssl genrsa -aes256 -out "$PROJECT_ROOT/pki/ca/ca.key" 4096; then
-            print_error "Failed to generate CA key"
-        fi
-        
-        # Generate CA certificate
-        echo ""
-        echo "Creating CA certificate..."
-        if ! openssl req -new -x509 -days 3650 -key "$PROJECT_ROOT/pki/ca/ca.key" \
-            -out "$PROJECT_ROOT/pki/ca/ca.crt" \
-            -subj "/C=RU/ST=Moscow/L=Moscow/O=TestOrg/OU=Security/CN=HSM-CA"; then
-            print_error "Failed to generate CA certificate"
-        fi
-        
-        # Set permissions
-        chmod 600 "$PROJECT_ROOT/pki/ca/ca.key"
-        chmod 644 "$PROJECT_ROOT/pki/ca/ca.crt"
-        
-        echo ""
-        print_success "CA created successfully!"
-        echo ""
-        echo -e "${BLUE}IMPORTANT:${NC} Keep ca.key password secure! You'll need it to sign certificates."
-        echo ""
-    else
-        print_error "CA certificate required. Please create it manually or re-run test and choose 'y'"
-    fi
+# Backup original config
+CONFIG_FILE="config.yaml"
+backup_config "$PROJECT_ROOT/$CONFIG_FILE"
+
+# Generate test PKI infrastructure
+generate_test_pki "$PROJECT_ROOT/pki"
+
+# Update config to use test PKI
+update_config_for_test_pki "$PROJECT_ROOT/$CONFIG_FILE"
+
+print_test "Verify test CA certificate exists"
+if [ ! -f "$PROJECT_ROOT/pki/test/ca/ca.crt" ]; then
+    print_error "Test CA certificate not generated"
 fi
-print_success "CA certificate exists"
+print_success "Test CA certificate exists"
 
-print_test "Check server certificate exists"
-if [ ! -f "$PROJECT_ROOT/pki/server/hsm-service.local.crt" ]; then
-    echo ""
-    echo -e "${RED}Server certificate not found!${NC}"
-    echo ""
-    echo "HSM Service requires a server certificate for TLS."
-    echo ""
-    echo -e "${YELLOW}Would you like to create server certificate now?${NC}"
-    echo "This will create: pki/server/hsm-service.local.crt and .key"
-    echo ""
-    read -p "Create server certificate? (y/n): " CREATE_SERVER
-    
-    if [ "$CREATE_SERVER" = "y" ] || [ "$CREATE_SERVER" = "Y" ]; then
-        echo ""
-        if [ -x "$PROJECT_ROOT/pki/scripts/issue-server-cert.sh" ]; then
-            echo "=== Creating server certificate ==="
-            if ! "$PROJECT_ROOT/pki/scripts/issue-server-cert.sh" hsm-service.local; then
-                print_error "Failed to create server certificate"
-            fi
-            print_success "Server certificate created!"
-        else
-            print_error "Script pki/scripts/issue-server-cert.sh not found or not executable"
-        fi
-    else
-        print_error "Server certificate required. Run: ./pki/scripts/issue-server-cert.sh hsm-service.local"
-    fi
+print_test "Verify test server certificate exists"
+if [ ! -f "$PROJECT_ROOT/pki/test/server/hsm-service.crt" ]; then
+    print_error "Test server certificate not generated"
 fi
-print_success "Server certificate exists"
+print_success "Test server certificate exists"
 
-print_test "Check client certificate exists"
-echo ""
-
-# Try default certificate first
-DEFAULT_CLIENT_CERT_NAME="hsm-trading-client-1"
-DEFAULT_CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${DEFAULT_CLIENT_CERT_NAME}.crt"
-DEFAULT_CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${DEFAULT_CLIENT_CERT_NAME}.key"
-
-# Check if default certificate exists
-if [ -f "$DEFAULT_CLIENT_CERT_PATH" ] && [ -f "$DEFAULT_CLIENT_KEY_PATH" ]; then
-    CLIENT_CERT_NAME="$DEFAULT_CLIENT_CERT_NAME"
-    CLIENT_CERT_PATH="$DEFAULT_CLIENT_CERT_PATH"
-    CLIENT_KEY_PATH="$DEFAULT_CLIENT_KEY_PATH"
-    echo "Using default certificate: $CLIENT_CERT_NAME"
-else
-    echo -e "${RED}Client certificate not found: $DEFAULT_CLIENT_CERT_NAME${NC}"
-    echo ""
-    echo "Tests require a client certificate with OU=Trading for testing."
-    echo ""
-    echo -e "${YELLOW}Would you like to:${NC}"
-    echo "  1) Create default certificate: hsm-trading-client-1 (OU=Trading)"
-    echo "  2) Use existing certificate (specify name)"
-    echo "  3) Specify custom certificate paths"
-    echo ""
-    read -p "Choose option (1/2/3): " CERT_OPTION
-    
-    if [ "$CERT_OPTION" = "1" ]; then
-        # Create default certificate
-        echo ""
-        if [ -x "$PROJECT_ROOT/pki/scripts/issue-client-cert.sh" ]; then
-            echo "=== Creating client certificate: hsm-trading-client-1 ==="
-            if ! "$PROJECT_ROOT/pki/scripts/issue-client-cert.sh" hsm-trading-client-1 Trading; then
-                print_error "Failed to create client certificate"
-            fi
-            
-            CLIENT_CERT_NAME="hsm-trading-client-1"
-            CLIENT_CERT_PATH="$DEFAULT_CLIENT_CERT_PATH"
-            CLIENT_KEY_PATH="$DEFAULT_CLIENT_KEY_PATH"
-            
-            echo ""
-            print_success "Client certificate created: $CLIENT_CERT_NAME"
-        else
-            print_error "Script pki/scripts/issue-client-cert.sh not found or not executable"
-        fi
-        
-    elif [ "$CERT_OPTION" = "2" ]; then
-        # Use existing certificate
-        echo ""
-        echo "Available client certificates:"
-        ls -1 "$PROJECT_ROOT/pki/client/"*.crt 2>/dev/null | xargs -n1 basename | sed 's/.crt$//' || echo "  (none found)"
-        echo ""
-        
-        while true; do
-            read -p "Client certificate name (without .crt): " CLIENT_CERT_NAME
-            # Trim whitespace
-            CLIENT_CERT_NAME=$(echo "$CLIENT_CERT_NAME" | xargs)
-            # Validate not empty
-            if [ -n "$CLIENT_CERT_NAME" ]; then
-                break
-            fi
-            echo -e "${RED}Certificate name cannot be empty${NC}"
-        done
-        
-        CLIENT_CERT_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.crt"
-        CLIENT_KEY_PATH="$PROJECT_ROOT/pki/client/${CLIENT_CERT_NAME}.key"
-        
-        if [ ! -f "$CLIENT_CERT_PATH" ] || [ ! -f "$CLIENT_KEY_PATH" ]; then
-            print_error "Certificate not found: $CLIENT_CERT_PATH"
-        fi
-        
-    else
-        # Custom paths
-        echo ""
-        read -p "Enter full path to client certificate (.crt): " CLIENT_CERT_PATH
-        read -p "Enter full path to client key (.key): " CLIENT_KEY_PATH
-        
-        if [ ! -f "$CLIENT_CERT_PATH" ]; then
-            print_error "Client certificate not found: $CLIENT_CERT_PATH"
-        fi
-        if [ ! -f "$CLIENT_KEY_PATH" ]; then
-            print_error "Client key not found: $CLIENT_KEY_PATH"
-        fi
-        
-        CLIENT_CERT_NAME=$(basename "$CLIENT_CERT_PATH" .crt)
-    fi
+print_test "Verify test client certificates exist"
+if [ ! -f "$PROJECT_ROOT/pki/test/client/trading-client-1.crt" ] || [ ! -f "$PROJECT_ROOT/pki/test/client/2fa-client-1.crt" ]; then
+    print_error "Test client certificates not generated"
 fi
+print_success "Test client certificates exist"
 
-echo ""
-print_success "Client certificate verified: $CLIENT_CERT_NAME"
+# Set test certificate variables
+CLIENT_CERT_NAME="trading-client-1"
+CLIENT_CERT_PATH="$PROJECT_ROOT/pki/test/client/trading-client-1.crt"
+CLIENT_KEY_PATH="$PROJECT_ROOT/pki/test/client/trading-client-1.key"
 
-# Verify OU in certificate for better test coverage
-CLIENT_OU=$(openssl x509 -in "$CLIENT_CERT_PATH" -noout -subject 2>/dev/null | grep -o "OU=[^,]*" | cut -d= -f2)
-if [ -n "$CLIENT_OU" ]; then
-    echo ""
-    print_info "Certificate OU: $CLIENT_OU (will be used for AAD in shared mode)"
-fi
+print_success "Test PKI setup complete"
 
 # ==========================================
 # PHASE 4: METADATA INITIALIZATION
@@ -392,7 +381,7 @@ print_header "PHASE 7: Basic Functionality Tests"
 
 # Test variables
 BASE_URL="https://localhost:8443"
-CA_CERT="$PROJECT_ROOT/pki/ca/ca.crt"
+CA_CERT="$PROJECT_ROOT/pki/test/ca/ca.crt"
 CLIENT_CERT="$CLIENT_CERT_PATH"
 CLIENT_KEY="$CLIENT_KEY_PATH"
 
@@ -572,8 +561,8 @@ fi
 
 print_test "Test 7.5.2: Private mode - different clients cannot decrypt (2fa)"
 # Use 2fa client cert if it exists
-TFA_CLIENT_CERT="$PROJECT_ROOT/pki/client/hsm-2fa-client-1.crt"
-TFA_CLIENT_KEY="$PROJECT_ROOT/pki/client/hsm-2fa-client-1.key"
+TFA_CLIENT_CERT="$PROJECT_ROOT/pki/test/client/2fa-client-1.crt"
+TFA_CLIENT_KEY="$PROJECT_ROOT/pki/test/client/2fa-client-1.key"
 
 if [ -f "$TFA_CLIENT_CERT" ] && [ -f "$TFA_CLIENT_KEY" ]; then
     echo ""
@@ -1086,12 +1075,12 @@ fi
 
 print_test "Test 11.5: Valid certificate with wrong OU should be rejected by ACL"
 # Try with valid cert but OU not in ACL for exchange-key
-if [ -f "$PROJECT_ROOT/pki/client/hsm-2fa-client-1.crt" ]; then
+if [ -f "$PROJECT_ROOT/pki/test/client/2fa-client-1.crt" ]; then
     # 2fa client has OU=2fa, which is not authorized for exchange-key
     WRONG_OU_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
         --cacert "$CA_CERT" \
-        --cert "$PROJECT_ROOT/pki/client/hsm-2fa-client-1.crt" \
-        --key "$PROJECT_ROOT/pki/client/hsm-2fa-client-1.key" \
+        --cert "$PROJECT_ROOT/pki/test/client/2fa-client-1.crt" \
+        --key "$PROJECT_ROOT/pki/test/client/2fa-client-1.key" \
         -H "Content-Type: application/json" \
         -d "{\"context\":\"exchange-key\",\"plaintext\":\"dGVzdA==\"}" \
         "$BASE_URL/encrypt" 2>&1 || echo "000")
