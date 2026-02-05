@@ -166,12 +166,28 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cleanup_on_exit() {
     echo ""
     print_header "CLEANUP: Restoring original state"
+    
+    # Stop and remove test containers (keep production containers)
+    if [ -n "${TEST_COMPOSE_FILE:-}" ] && [ -f "$TEST_COMPOSE_FILE" ]; then
+        print_test "Stop test containers"
+        cd "$PROJECT_ROOT"
+        docker compose -f "$TEST_COMPOSE_FILE" down > /dev/null 2>&1
+        print_success "Test containers stopped"
+        
+        # Remove test compose file
+        rm -f "$TEST_COMPOSE_FILE"
+    fi
+    
+    # Restore original config
     if [ -n "${CONFIG_FILE:-}" ]; then
         restore_config "$PROJECT_ROOT/$CONFIG_FILE"
     fi
+    
+    # Cleanup test PKI
     if [ -n "${PROJECT_ROOT:-}" ]; then
         cleanup_test_pki "$PROJECT_ROOT/pki"
     fi
+    
     print_success "Test cleanup complete"
 }
 
@@ -204,7 +220,7 @@ print_header "PHASE 1: Docker Cleanup"
 
 print_test "Stop and remove existing containers and volumes"
 cd "$PROJECT_ROOT"
-docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+docker compose -f "$TEST_COMPOSE_FILE" down -v 2>/dev/null || true
 print_success "Containers stopped and volumes removed (tokens ephemeral)"
 
 # Commented out: Keep downloaded layers to speed up rebuilds
@@ -313,29 +329,41 @@ print_success "metadata.yaml created with initial structure"
 # ==========================================
 print_header "PHASE 5: Start Service"
 
-print_test "Start services with docker-compose"
+print_test "Create test docker-compose file with -test suffix"
+# Copy original compose file but modify container name to include -test
+TEST_COMPOSE_FILE="$PROJECT_ROOT/docker-compose-test.yml"
+sed "s/container_name: hsm-service/container_name: hsm-service-test/" "$PROJECT_ROOT/$COMPOSE_FILE" > "$TEST_COMPOSE_FILE"
+
+# Update image tag if needed for tests
+if grep -q "image: hsm-service:latest" "$TEST_COMPOSE_FILE"; then
+    sed -i "s/image: hsm-service:latest/image: hsm-service:latest/" "$TEST_COMPOSE_FILE"
+fi
+
+print_success "Test docker-compose created: $TEST_COMPOSE_FILE"
+
+print_test "Start services with docker-compose (test mode)"
 cd "$PROJECT_ROOT"
-# Force recreate container to use new image (if build was done)
-if ! docker compose -f "$COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
+# Use test compose file - force recreate test container
+if ! docker compose -f "$TEST_COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
     cat /tmp/docker-compose-up.log
     print_error "docker-compose up failed (see /tmp/docker-compose-up.log)"
 fi
 sleep 3
-print_success "Services started"
+print_success "Test services started"
 
-print_test "Verify container is running"
-if ! docker ps | grep -q hsm-service; then
+print_test "Verify test container is running"
+if ! docker ps | grep -q hsm-service-test; then
     cd "$PROJECT_ROOT"
-    docker compose -f "$COMPOSE_FILE" logs
+    docker compose -f "$TEST_COMPOSE_FILE" logs
     print_error "Container not running"
 fi
-print_success "Container is running"
+print_success "Test container is running (hsm-service-test)"
 
 print_test "Check container logs for errors"
 sleep 2
 cd "$PROJECT_ROOT"
-if docker compose -f "$COMPOSE_FILE" logs | grep -i "fatal\|panic"; then
-    docker compose -f "$COMPOSE_FILE" logs
+if docker compose -f "$TEST_COMPOSE_FILE" logs | grep -i "fatal\|panic"; then
+    docker compose -f "$TEST_COMPOSE_FILE" logs
     print_error "Fatal errors found in logs"
 fi
 print_success "No fatal errors in logs"
@@ -347,29 +375,29 @@ print_header "PHASE 6: HSM Key Initialization"
 
 print_test "Verify HSM initialized automatically (init-hsm.sh runs on container start)"
 sleep 3  # Give time for init to complete
-if ! docker logs hsm-service 2>&1 | grep -q "HSM Service Initialization"; then
-    docker logs hsm-service
+if ! docker logs hsm-service-test 2>&1 | grep -q "HSM Service Initialization"; then
+    docker logs hsm-service-test
     print_error "HSM initialization did not run"
 fi
 print_success "HSM initialization completed automatically"
 
 print_test "Verify keys created automatically"
-if ! docker logs hsm-service 2>&1 | grep -q "Default KEKs created"; then
+if ! docker logs hsm-service-test 2>&1 | grep -q "Default KEKs created"; then
     # Keys might already exist from previous run
-    if ! docker logs hsm-service 2>&1 | grep -q "Found .* KEK"; then
-        docker logs hsm-service
+    if ! docker logs hsm-service-test 2>&1 | grep -q "Found .* KEK"; then
+        docker logs hsm-service-test
         print_error "No KEKs found in HSM"
     fi
 fi
 print_success "HSM keys initialized"
 
 print_test "Verify keys loaded (check logs)"
-if ! docker logs hsm-service 2>&1 | grep -q "Loaded KEK: kek-exchange-key-v1"; then
-    docker logs hsm-service
+if ! docker logs hsm-service-test 2>&1 | grep -q "Loaded KEK: kek-exchange-key-v1"; then
+    docker logs hsm-service-test
     print_error "KEK kek-exchange-key-v1 not loaded"
 fi
-if ! docker logs hsm-service 2>&1 | grep -q "Loaded KEK: kek-2fa-v1"; then
-    docker logs hsm-service
+if ! docker logs hsm-service-test 2>&1 | grep -q "Loaded KEK: kek-2fa-v1"; then
+    docker logs hsm-service-test
     print_error "KEK kek-2fa-v1 not loaded"
 fi
 print_success "All KEKs loaded successfully"
@@ -620,7 +648,7 @@ fi
 print_header "PHASE 8: Key Rotation Tests"
 
 print_test "Test 8.1: Check rotation status before rotation"
-ROTATION_STATUS=$(docker exec hsm-service /app/hsm-admin rotation-status 2>&1)
+ROTATION_STATUS=$(docker exec hsm-service-test /app/hsm-admin rotation-status 2>&1)
 echo "$ROTATION_STATUS"
 if ! echo "$ROTATION_STATUS" | grep -q "exchange-key"; then
     print_error "rotation-status command failed"
@@ -628,7 +656,7 @@ fi
 print_success "Rotation status command works"
 
 print_test "Test 8.2: Perform key rotation (exchange-key)"
-if ! docker exec hsm-service /app/hsm-admin rotate exchange-key > /tmp/rotation.log 2>&1; then
+if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key > /tmp/rotation.log 2>&1; then
     cat /tmp/rotation.log
     print_error "Key rotation failed (see /tmp/rotation.log)"
 fi
@@ -654,13 +682,13 @@ sleep 2
 docker start hsm-service > /dev/null 2>&1
 sleep 7
 if ! docker ps | grep -q hsm-service; then
-    docker logs hsm-service
+    docker logs hsm-service-test
     print_error "Container failed to start after rotation"
 fi
 print_success "Service restarted"
 
 print_test "Test 8.5: Verify both versions loaded (overlap period)"
-LOGS=$(docker logs hsm-service 2>&1)
+LOGS=$(docker logs hsm-service-test 2>&1)
 if ! echo "$LOGS" | grep -q "Loaded KEK: kek-exchange-key-v1"; then
     echo "$LOGS"
     print_error "Old key (v1) not loaded after rotation"
@@ -766,7 +794,7 @@ print_header "PHASE 10: Key Lifecycle Management (PCI DSS)"
 print_test "Test 10.1: Simulate multiple rotations (create v3, v4)"
 # Rotate to v3
 echo "=== Rotating to v3 ==="
-if ! docker exec hsm-service /app/hsm-admin rotate exchange-key; then
+if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key; then
     print_error "Failed to rotate to v3"
 fi
 # Force sync: copy metadata from container to host
@@ -777,7 +805,7 @@ sleep 35
 
 # Rotate to v4
 echo "=== Rotating to v4 ==="
-if ! docker exec hsm-service /app/hsm-admin rotate exchange-key; then
+if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key; then
     print_error "Failed to rotate to v4"
 fi
 # Force sync: copy metadata from container to host
@@ -788,16 +816,16 @@ print_success "Rotated to v3 and v4"
 
 print_test "Test 10.2: Verify 4 versions exist"
 # Read metadata from container (source of truth)
-VERSION_COUNT=$(docker exec hsm-service grep -c "label: kek-exchange-key-v" /app/metadata.yaml)
+VERSION_COUNT=$(docker exec hsm-service-test grep -c "label: kek-exchange-key-v" /app/metadata.yaml)
 if [ "$VERSION_COUNT" -ne 4 ]; then
     echo "Metadata in container:"
-    docker exec hsm-service cat /app/metadata.yaml
+    docker exec hsm-service-test cat /app/metadata.yaml
     print_error "Expected 4 versions, got $VERSION_COUNT"
 fi
 print_success "4 versions exist (v1, v2, v3, v4)"
 
 print_test "Test 10.3: Check auto-cleanup warning at startup"
-if ! docker logs hsm-service 2>&1 | grep -q "excess versions detected"; then
+if ! docker logs hsm-service-test 2>&1 | grep -q "excess versions detected"; then
     print_info "No warning logged (expected when versions > max_versions)"
 fi
 print_success "Auto-cleanup check executed"
@@ -964,7 +992,7 @@ sleep 10
 if docker ps | grep -q "hsm-service"; then
     print_success "System reset to clean state for remaining tests"
 else
-    docker logs hsm-service --tail 20
+    docker logs hsm-service-test --tail 20
     print_error "Failed to restart after reset"
 fi
 
@@ -1181,9 +1209,9 @@ print_header "PHASE 12: Volume Persistence"
 
 print_test "Test 12.1: Capture current state before restart"
 # Get current metadata and HSM token state
-BEFORE_METADATA=$(docker exec hsm-service cat /app/metadata.yaml)
-BEFORE_TOKEN_COUNT=$(docker exec hsm-service sh -c 'ls -1 /var/lib/softhsm/tokens/ 2>/dev/null | wc -l' | tr -d '\n')
-BEFORE_KEY_COUNT=$(docker exec hsm-service /app/hsm-admin list-kek 2>/dev/null | grep -c "Config Key:" | tr -d '\n' || echo "0")
+BEFORE_METADATA=$(docker exec hsm-service-test cat /app/metadata.yaml)
+BEFORE_TOKEN_COUNT=$(docker exec hsm-service-test sh -c 'ls -1 /var/lib/softhsm/tokens/ 2>/dev/null | wc -l' | tr -d '\n')
+BEFORE_KEY_COUNT=$(docker exec hsm-service-test /app/hsm-admin list-kek 2>/dev/null | grep -c "Config Key:" | tr -d '\n' || echo "0")
 
 echo "State before restart:"
 echo "  Metadata contexts: $(echo "$BEFORE_METADATA" | grep -c "current:" | tr -d '\n' || echo "0")"
@@ -1203,7 +1231,7 @@ else
 fi
 
 print_test "Test 12.3: Verify metadata persisted after restart"
-AFTER_METADATA=$(docker exec hsm-service cat /app/metadata.yaml 2>/dev/null)
+AFTER_METADATA=$(docker exec hsm-service-test cat /app/metadata.yaml 2>/dev/null)
 AFTER_CONTEXTS=$(echo "$AFTER_METADATA" | grep -c "current:" | tr -d '\n' || echo "0")
 BEFORE_CONTEXTS=$(echo "$BEFORE_METADATA" | grep -c "current:" | tr -d '\n' || echo "0")
 
@@ -1215,7 +1243,7 @@ else
 fi
 
 print_test "Test 12.4: Verify SoftHSM tokens persisted"
-AFTER_TOKEN_COUNT=$(docker exec hsm-service sh -c 'ls -1 /var/lib/softhsm/tokens/ 2>/dev/null | wc -l' | tr -d '\n')
+AFTER_TOKEN_COUNT=$(docker exec hsm-service-test sh -c 'ls -1 /var/lib/softhsm/tokens/ 2>/dev/null | wc -l' | tr -d '\n')
 
 if [ "$AFTER_TOKEN_COUNT" = "$BEFORE_TOKEN_COUNT" ] && [ "$AFTER_TOKEN_COUNT" -gt "0" ]; then
     print_success "SoftHSM tokens persisted ($AFTER_TOKEN_COUNT tokens)"
@@ -1227,7 +1255,7 @@ fi
 print_test "Test 12.5: Verify KEKs reloaded after restart"
 # Wait for KEKs to load
 sleep 5
-AFTER_KEY_COUNT=$(docker exec hsm-service /app/hsm-admin list-kek 2>/dev/null | grep -c "Config Key:" | tr -d '\n' || echo "0")
+AFTER_KEY_COUNT=$(docker exec hsm-service-test /app/hsm-admin list-kek 2>/dev/null | grep -c "Config Key:" | tr -d '\n' || echo "0")
 
 if [ "$AFTER_KEY_COUNT" = "$BEFORE_KEY_COUNT" ] && [ "$AFTER_KEY_COUNT" -ge "2" ]; then
     print_success "KEKs reloaded ($AFTER_KEY_COUNT contexts)"
@@ -1255,29 +1283,29 @@ fi
 
 print_test "Test 12.7: Full compose down/up cycle"
 echo "Stopping all services (docker compose down)..."
-docker compose down > /dev/null 2>&1
+docker compose -f "$TEST_COMPOSE_FILE" down > /dev/null 2>&1
 sleep 3
 
 # Verify containers stopped
-if ! docker ps | grep -q hsm-service; then
+if ! docker ps | grep -q hsm-service-test; then
     print_success "Services stopped"
 else
     print_error "Failed to stop services"
 fi
 
 echo "Starting services (docker compose up -d)..."
-docker compose up -d > /dev/null 2>&1
+docker compose -f "$TEST_COMPOSE_FILE" up -d > /dev/null 2>&1
 sleep 15
 
 # Check if service is running
-if docker ps | grep -q hsm-service; then
+if docker ps | grep -q hsm-service-test; then
     print_success "Services started"
 else
     print_error "Failed to start services"
 fi
 
 print_test "Test 12.8: Verify data survived compose down/up"
-FINAL_METADATA=$(docker exec hsm-service cat /app/metadata.yaml 2>/dev/null)
+FINAL_METADATA=$(docker exec hsm-service-test cat /app/metadata.yaml 2>/dev/null)
 FINAL_CONTEXTS=$(echo "$FINAL_METADATA" | grep -c "current:" || echo "0")
 
 if [ "$FINAL_CONTEXTS" = "$BEFORE_CONTEXTS" ]; then
@@ -1311,7 +1339,7 @@ fi
 print_header "PHASE 13: Environment Variables Override"
 
 print_test "Test 13.1: Stop container to test env override"
-docker compose down > /dev/null 2>&1
+docker compose -f "$TEST_COMPOSE_FILE" down > /dev/null 2>&1
 sleep 2
 print_success "Container stopped"
 
@@ -1349,12 +1377,12 @@ sleep 15
 if docker ps | grep -q hsm-service; then
     print_success "Container started with custom env vars"
 else
-    docker logs hsm-service --tail 20
+    docker logs hsm-service-test --tail 20
     print_error "Failed to start with custom env"
 fi
 
 print_test "Test 13.3: Verify PINs are NOT exposed in logs"
-LOGS=$(docker logs hsm-service 2>&1)
+LOGS=$(docker logs hsm-service-test 2>&1)
 if echo "$LOGS" | grep -q "1234\|5678"; then
     print_error "SECURITY RISK: PIN exposed in logs!"
 else
@@ -1362,7 +1390,7 @@ else
 fi
 
 print_test "Test 13.4: Verify CONFIG_PATH override works"
-CONFIG_CHECK=$(docker exec hsm-service sh -c 'echo $CONFIG_PATH' 2>/dev/null)
+CONFIG_CHECK=$(docker exec hsm-service-test sh -c 'echo $CONFIG_PATH' 2>/dev/null)
 if [ "$CONFIG_CHECK" = "/app/config.yaml" ]; then
     print_success "CONFIG_PATH override working"
 else
@@ -1390,10 +1418,10 @@ fi
 print_test "Test 13.6: Restore original compose configuration"
 docker compose -f docker-compose-test.yml down > /dev/null 2>&1
 rm -f docker-compose-test.yml
-docker compose up -d > /dev/null 2>&1
+docker compose -f "$TEST_COMPOSE_FILE" up -d > /dev/null 2>&1
 sleep 15
 
-if docker ps | grep -q hsm-service; then
+if docker ps | grep -q hsm-service-test; then
     print_success "Restored to original configuration"
 else
     print_error "Failed to restore original config"
