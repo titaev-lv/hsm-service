@@ -1057,7 +1057,8 @@ if [ ! -f "$TRADING_CERT" ] || [ ! -f "$TRADING_KEY" ]; then
 fi
 
 # Extract CN from the certificate
-CERT_CN=$(openssl x509 -in "$TRADING_CERT" -noout -subject 2>/dev/null | sed 's/subject=.*CN=\([^,]*\).*/\1/')
+# Format: subject=C = RU, ST = Moscow, ..., CN = trading-client-1
+CERT_CN=$(openssl x509 -in "$TRADING_CERT" -noout -subject 2>/dev/null | sed 's/.*CN = \([^,]*\).*/\1/')
 if [ -z "$CERT_CN" ]; then
     print_error "Failed to extract CN from certificate"
 fi
