@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=60
+TOTAL_TESTS=62
 
 # Helper functions
 print_header() {
