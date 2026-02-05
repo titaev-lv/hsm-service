@@ -188,6 +188,15 @@ cleanup_on_exit() {
         cleanup_test_pki "$PROJECT_ROOT/pki"
     fi
     
+    # Restart production container if it was stopped
+    print_test "Restart production container (if it exists)"
+    if docker ps -a 2>/dev/null | grep -q "hsm-service[^-]"; then
+        docker start hsm-service > /dev/null 2>&1
+        print_success "Production container restarted"
+    else
+        print_info "Production container not found (will be created on next run)"
+    fi
+    
     print_success "Test cleanup complete"
 }
 
@@ -219,9 +228,9 @@ print_info "Using: $COMPOSE_FILE"
 print_header "PHASE 1: Docker Cleanup"
 
 print_test "Stop production container (if running)"
+# Only stop, don't remove - preserve volumes and HSM keys
 docker stop hsm-service 2>/dev/null || true
-docker rm hsm-service 2>/dev/null || true
-print_success "Production container stopped"
+print_success "Production container stopped (preserved for restart)"
 
 print_test "Stop and remove existing test containers and volumes"
 cd "$PROJECT_ROOT"
