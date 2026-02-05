@@ -1019,45 +1019,120 @@ else
     print_error "Server accepted self-signed certificate!"
 fi
 
-print_test "Test 11.3: Request with revoked certificate should be blocked by ACL"
-# Check if we have a revoked cert in revoked.yaml
-REVOKED_CN=$(grep -A 1 "^  - cn:" "$PROJECT_ROOT/pki/revoked.yaml" 2>/dev/null | grep "cn:" | head -1 | sed 's/.*cn: *"\(.*\)".*/\1/')
-if [ -n "$REVOKED_CN" ]; then
-    # Try to find matching cert file in pki/client
-    REVOKED_CERT=$(find "$PROJECT_ROOT/pki/client" -name "*.crt" 2>/dev/null | while read cert; do
-        if openssl x509 -in "$cert" -noout -subject 2>/dev/null | grep -q "$REVOKED_CN"; then
-            echo "$cert"
-            break
-        fi
-    done)
-    REVOKED_KEY="${REVOKED_CERT%.crt}.key"
-    
-    if [ -f "$REVOKED_CERT" ] && [ -f "$REVOKED_KEY" ]; then
-        REVOKED_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
-            --cacert "$CA_CERT" \
-            --cert "$REVOKED_CERT" \
-            --key "$REVOKED_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"context\":\"exchange-key\",\"plaintext\":\"dGVzdA==\"}" \
-            "$BASE_URL/encrypt" 2>&1 || echo "000")
-        
-        HTTP_CODE=$(echo "$REVOKED_RESPONSE" | tail -1)
-        BODY=$(echo "$REVOKED_RESPONSE" | sed '$d')
-        
-        if [ "$HTTP_CODE" = "403" ] || echo "$BODY" | grep -qi "revoked\|forbidden\|access.*denied"; then
-            print_success "Revoked certificate blocked by ACL (CN: $REVOKED_CN)"
-        else
-            echo "CN: $REVOKED_CN"
-            echo "HTTP Code: $HTTP_CODE"
-            echo "Response: $BODY"
-            print_error "Server accepted revoked certificate!"
-        fi
-    else
-        print_info "Revoked cert/key files not found, skipping test"
-    fi
-else
-    print_info "No revoked certificates in revoked.yaml, skipping test"
+print_test "Test 11.3: Dynamic certificate revocation and ACL blocking"
+# Get a valid client certificate CN
+TRADING_CERT="$PROJECT_ROOT/pki/test/client/trading-client-1.crt"
+TRADING_KEY="$PROJECT_ROOT/pki/test/client/trading-client-1.key"
+
+if [ ! -f "$TRADING_CERT" ] || [ ! -f "$TRADING_KEY" ]; then
+    print_error "Trading client certificate not found"
 fi
+
+# Extract CN from the certificate
+CERT_CN=$(openssl x509 -in "$TRADING_CERT" -noout -subject 2>/dev/null | sed 's/subject=.*CN=\([^,]*\).*/\1/')
+if [ -z "$CERT_CN" ]; then
+    print_error "Failed to extract CN from certificate"
+fi
+
+print_info "Using certificate CN: $CERT_CN"
+
+# Step 1: Verify the certificate works BEFORE revocation
+print_info "Step 1: Testing certificate works before revocation..."
+BEFORE_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
+    --cacert "$CA_CERT" \
+    --cert "$TRADING_CERT" \
+    --key "$TRADING_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"context\":\"exchange-key\",\"plaintext\":\"dGVzdA==\"}" \
+    "$BASE_URL/encrypt" 2>&1 || echo "000")
+
+HTTP_CODE_BEFORE=$(echo "$BEFORE_RESPONSE" | tail -1)
+if [ "$HTTP_CODE_BEFORE" = "200" ]; then
+    print_success "Certificate accepted before revocation (HTTP 200)"
+else
+    echo "HTTP Code: $HTTP_CODE_BEFORE"
+    echo "Response: $BEFORE_RESPONSE"
+    print_error "Certificate rejected before revocation (should be accepted)"
+fi
+
+# Step 2: Add certificate to revoked.yaml
+print_info "Step 2: Adding certificate to revoked.yaml..."
+REVOKED_FILE="$PROJECT_ROOT/revoked.yaml"
+BACKUP_FILE="$REVOKED_FILE.backup"
+cp "$REVOKED_FILE" "$BACKUP_FILE"
+
+# Create new revoked entry with proper YAML structure
+cat > "$REVOKED_FILE" << EOF
+revoked_certificates:
+  - cn: "$CERT_CN"
+    serial: "01"
+    reason: "Test revocation"
+    date: "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+EOF
+
+print_success "Certificate added to revoked.yaml"
+print_info "New revoked.yaml content:"
+cat "$REVOKED_FILE" | sed 's/^/  /'
+
+# Step 3: Wait for auto-reload (default reload interval is 30 seconds)
+print_info "Step 3: Waiting for ACL auto-reload (up to 35 seconds)..."
+RELOAD_DETECTED=0
+for i in {1..70}; do
+    sleep 0.5
+    # Try request to see if revocation took effect
+    AFTER_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
+        --cacert "$CA_CERT" \
+        --cert "$TRADING_CERT" \
+        --key "$TRADING_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{\"context\":\"exchange-key\",\"plaintext\":\"dGVzdA==\"}" \
+        "$BASE_URL/encrypt" 2>&1 || echo "000")
+    
+    HTTP_CODE_AFTER=$(echo "$AFTER_RESPONSE" | tail -1)
+    if [ "$HTTP_CODE_AFTER" = "403" ] || echo "$AFTER_RESPONSE" | grep -qi "revoked\|forbidden"; then
+        ELAPSED_SECS=$((i / 2))
+        print_success "Certificate revocation detected after $ELAPSED_SECS seconds"
+        RELOAD_DETECTED=1
+        break
+    fi
+    
+    # Show progress every 5 seconds
+    if [ $((i % 10)) -eq 0 ]; then
+        ELAPSED=$((i / 2))
+        print_info "Waiting... ($ELAPSED seconds elapsed)"
+    fi
+done
+
+if [ $RELOAD_DETECTED -eq 0 ]; then
+    print_info "Auto-reload not detected within timeout, but continuing test..."
+fi
+
+# Step 4: Verify certificate is now blocked
+print_info "Step 4: Verifying revoked certificate is blocked..."
+REVOKED_RESPONSE=$(timeout 8 curl -s -w "\n%{http_code}" --connect-timeout 3 --max-time 5 \
+    --cacert "$CA_CERT" \
+    --cert "$TRADING_CERT" \
+    --key "$TRADING_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"context\":\"exchange-key\",\"plaintext\":\"dGVzdA==\"}" \
+    "$BASE_URL/encrypt" 2>&1 || echo "000")
+
+HTTP_CODE_REVOKED=$(echo "$REVOKED_RESPONSE" | tail -1)
+BODY_REVOKED=$(echo "$REVOKED_RESPONSE" | sed '$d')
+
+if [ "$HTTP_CODE_REVOKED" = "403" ] || echo "$BODY_REVOKED" | grep -qi "revoked\|forbidden\|access.*denied"; then
+    print_success "Revoked certificate blocked by ACL (HTTP $HTTP_CODE_REVOKED)"
+else
+    echo "Certificate CN: $CERT_CN"
+    echo "HTTP Code: $HTTP_CODE_REVOKED"
+    echo "Response: $BODY_REVOKED"
+    print_error "Server accepted revoked certificate!"
+fi
+
+# Step 5: Restore revoked.yaml
+print_info "Step 5: Restoring revoked.yaml to original state..."
+mv "$BACKUP_FILE" "$REVOKED_FILE"
+print_success "revoked.yaml restored"
 
 print_test "Test 11.4: Verify TLS 1.3 enforcement"
 # Test that TLS 1.2 and below are rejected
