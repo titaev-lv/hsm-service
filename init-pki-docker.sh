@@ -290,6 +290,29 @@ if [ $SKIP_DOCKER -eq 0 ]; then
     fi
 
     echo ""
+    print_step "Ensuring revoked.yaml file exists..."
+    
+    # Ensure revoked.yaml file exists BEFORE docker-compose up (to prevent Docker creating it as directory)
+    if [ -d "$PROJECT_ROOT/revoked.yaml" ]; then
+        print_warning "revoked.yaml is a directory, removing and recreating as file..."
+        rm -rf "$PROJECT_ROOT/revoked.yaml"
+    fi
+    if [ ! -f "$PROJECT_ROOT/revoked.yaml" ]; then
+        cat > "$PROJECT_ROOT/revoked.yaml" << 'EOF'
+# ACL Revocation List
+# List of certificate CNs that have been revoked and should be denied access
+# 
+# Format:
+# revoked_certificates:
+#   - cn: certificate.example.com
+#   - cn: another-cert.example.com
+
+revoked_certificates: []
+EOF
+        print_success "Created revoked.yaml"
+    fi
+
+    echo ""
     print_step "Starting HSM Service container..."
 
     if docker compose up -d; then
