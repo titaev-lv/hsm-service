@@ -42,12 +42,35 @@ type KeyConfig struct {
 	Mode string `yaml:"mode"` // "shared" (AAD=context+OU) or "private" (AAD=context+clientCN), default: "private"
 }
 
+// RFC3339Micro is a custom time type that always marshals with microsecond precision
+type RFC3339Micro time.Time
+
+// MarshalYAML implements yaml.Marshaler to ensure consistent timestamp format
+func (t RFC3339Micro) MarshalYAML() (interface{}, error) {
+	// Format with microseconds: 2026-02-07T12:34:56.123456Z
+	return time.Time(t).UTC().Format("2006-01-02T15:04:05.000000Z07:00"), nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler
+func (t *RFC3339Micro) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return err
+	}
+	*t = RFC3339Micro(parsed)
+	return nil
+}
+
 // KeyVersion represents a single version of a key
 type KeyVersion struct {
-	Label     string     `yaml:"label"`
-	Version   int        `yaml:"version"`
-	CreatedAt *time.Time `yaml:"created_at"`
-	Checksum  string     `yaml:"checksum,omitempty"` // SHA-256 of key attributes (label+id) for integrity
+	Label     string        `yaml:"label"`
+	Version   int           `yaml:"version"`
+	CreatedAt *RFC3339Micro `yaml:"created_at"`
+	Checksum  string        `yaml:"checksum,omitempty"` // SHA-256 of key attributes (label+id) for integrity
 }
 
 // KeyMetadata defines dynamic key rotation metadata

@@ -101,19 +101,21 @@ func cleanupOldVersionsCommand(args []string) error {
 
 			// Check age
 			shouldDelete := false
-			if version.CreatedAt != nil && version.CreatedAt.Before(cutoffDate) {
-				shouldDelete = true
-				fmt.Printf("  ⚠ %s (v%d) - created %v - TOO OLD\n",
-					version.Label, version.Version, version.CreatedAt.Format("2006-01-02"))
-			}
+			if version.CreatedAt != nil {
+				createdAt := time.Time(*version.CreatedAt)
+				age := now.Sub(createdAt)
+				ageDays := int(age.Hours() / 24)
 
-			// Check version limit (keep only maxVersions-1 old versions + current)
-			if len(toKeep)+len(toDelete) >= maxVersions {
-				if !shouldDelete {
+				if createdAt.Before(cutoffDate) {
 					shouldDelete = true
-					fmt.Printf("  ⚠ %s (v%d) - EXCEEDS MAX VERSIONS\n",
-						version.Label, version.Version)
+					fmt.Printf("  ⚠ %s (v%d) - created %v (%d days old) - TOO OLD\n",
+						version.Label, version.Version, createdAt.Format("2006-01-02"), ageDays)
+				} else {
+					fmt.Printf("  ℹ %s (v%d) - created %v (%d days old) - OK\n",
+						version.Label, version.Version, createdAt.Format("2006-01-02"), ageDays)
 				}
+			} else {
+				fmt.Printf("  ℹ %s (v%d) - no creation date\n", version.Label, version.Version)
 			}
 
 			if shouldDelete {
@@ -121,6 +123,54 @@ func cleanupOldVersionsCommand(args []string) error {
 			} else {
 				toKeep = append(toKeep, version)
 			}
+		}
+
+		// Phase 2: If we're keeping too many versions, mark oldest for deletion
+		if len(toKeep) > maxVersions {
+			// We need to delete (len(toKeep) - maxVersions) more versions
+			numNeeded := len(toKeep) - maxVersions
+			count := 0
+
+			for _, version := range toKeep {
+				// Skip current version
+				if version.Label == keyMeta.Current {
+					continue
+				}
+				// Skip if already marked for deletion
+				alreadyMarked := false
+				for _, d := range toDelete {
+					if d.Label == version.Label {
+						alreadyMarked = true
+						break
+					}
+				}
+				if alreadyMarked {
+					continue
+				}
+
+				if count < numNeeded {
+					fmt.Printf("  ⚠ %s (v%d) - EXCEEDS MAX VERSIONS (keeping %d, max %d)\n",
+						version.Label, version.Version, len(toKeep), maxVersions)
+					toDelete = append(toDelete, version)
+					count++
+				}
+			}
+
+			// Update toKeep list
+			var newKeep []config.KeyVersion
+			for _, k := range toKeep {
+				keep := true
+				for _, d := range toDelete {
+					if k.Label == d.Label {
+						keep = false
+						break
+					}
+				}
+				if keep {
+					newKeep = append(newKeep, k)
+				}
+			}
+			toKeep = newKeep
 		}
 
 		if len(toDelete) == 0 {

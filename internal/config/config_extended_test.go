@@ -339,7 +339,7 @@ func TestMetadata_SaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 	metadataFile := filepath.Join(tmpDir, "metadata.yaml")
 
-	now := time.Now().UTC()
+	now := RFC3339Micro(time.Now().UTC())
 	// Создаём тестовые метаданные
 	original := &Metadata{
 		Rotation: map[string]KeyMetadata{

@@ -14,7 +14,7 @@ func TestRotateKey_CreateNewVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	metadataFile := filepath.Join(tmpDir, "metadata.yaml")
 
-	now := time.Now().UTC()
+	now := config.RFC3339Micro(time.Now().UTC())
 	// Создаём начальные метаданные с версией 1
 	initialMetadata := &config.Metadata{
 		Rotation: map[string]config.KeyMetadata{
@@ -55,7 +55,7 @@ func TestRotateKey_CreateNewVersion(t *testing.T) {
 
 	t.Logf("Creating new version %d with label %s", newVersion, newLabel)
 
-	newTime := time.Now().UTC()
+	newTime := config.RFC3339Micro(time.Now().UTC())
 	// Добавляем новую версию
 	keyMeta.Versions = append(keyMeta.Versions, config.KeyVersion{
 		Label:     newLabel,
@@ -102,7 +102,7 @@ func TestRotateKey_UpdateMetadata(t *testing.T) {
 	tmpDir := t.TempDir()
 	metadataFile := filepath.Join(tmpDir, "metadata.yaml")
 
-	oldTime := time.Now().Add(-100 * 24 * time.Hour).UTC()
+	oldTime := config.RFC3339Micro(time.Now().Add(-100 * 24 * time.Hour).UTC())
 	// Создаём начальные метаданные
 	metadata := &config.Metadata{
 		Rotation: map[string]config.KeyMetadata{
@@ -130,7 +130,7 @@ func TestRotateKey_UpdateMetadata(t *testing.T) {
 
 	// Обновляем метаданные (симулируем ротацию)
 	keyMeta := metadata.Rotation["exchange-key"]
-	newTime := time.Now().UTC()
+	newTime := config.RFC3339Micro(time.Now().UTC())
 	keyMeta.Versions = append(keyMeta.Versions, config.KeyVersion{
 		Label:     "kek-exchange-v2",
 		Version:   2,
@@ -172,8 +172,8 @@ func TestRotateKey_PreserveOldKeys(t *testing.T) {
 	metadataFile := filepath.Join(tmpDir, "metadata.yaml")
 
 	now := time.Now().UTC()
-	time1 := now.Add(-48 * time.Hour)
-	time2 := now.Add(-24 * time.Hour)
+	time1 := config.RFC3339Micro(now.Add(-48 * time.Hour))
+	time2 := config.RFC3339Micro(now.Add(-24 * time.Hour))
 
 	// Создаём метаданные с несколькими версиями
 	metadata := &config.Metadata{
@@ -194,7 +194,7 @@ func TestRotateKey_PreserveOldKeys(t *testing.T) {
 
 	// Добавляем v3
 	keyMeta := metadata.Rotation["test-key"]
-	time3 := time.Now().UTC()
+	time3 := config.RFC3339Micro(time.Now().UTC())
 	keyMeta.Versions = append(keyMeta.Versions, config.KeyVersion{
 		Label:     "kek-test-v3",
 		Version:   3,
@@ -235,9 +235,9 @@ func TestCleanupOldVersions_RespectRetention(t *testing.T) {
 	metadataFile := filepath.Join(tmpDir, "metadata.yaml")
 
 	now := time.Now().UTC()
-	time100 := now.Add(-100 * 24 * time.Hour) // 100 дней назад
-	time50 := now.Add(-50 * 24 * time.Hour)   // 50 дней назад
-	time20 := now.Add(-20 * 24 * time.Hour)   // 20 дней назад
+	time100 := config.RFC3339Micro(now.Add(-100 * 24 * time.Hour)) // 100 дней назад
+	time50 := config.RFC3339Micro(now.Add(-50 * 24 * time.Hour))   // 50 дней назад
+	time20 := config.RFC3339Micro(now.Add(-20 * 24 * time.Hour))   // 20 дней назад
 
 	// Создаём метаданные с несколькими версиями разного возраста
 	metadata := &config.Metadata{
@@ -263,7 +263,7 @@ func TestCleanupOldVersions_RespectRetention(t *testing.T) {
 	var keptVersions []config.KeyVersion
 
 	for _, version := range keyMeta.Versions {
-		age := now.Sub(*version.CreatedAt)
+		age := now.Sub(time.Time(*version.CreatedAt))
 		if age < time.Duration(retentionDays)*24*time.Hour {
 			keptVersions = append(keptVersions, version)
 		} else {
@@ -289,8 +289,8 @@ func TestCleanupOldVersions_KeepMinimum(t *testing.T) {
 	metadataFile := filepath.Join(tmpDir, "metadata.yaml")
 
 	now := time.Now().UTC()
-	time200 := now.Add(-200 * 24 * time.Hour)
-	time100 := now.Add(-100 * 24 * time.Hour)
+	time200 := config.RFC3339Micro(now.Add(-200 * 24 * time.Hour))
+	time100 := config.RFC3339Micro(now.Add(-100 * 24 * time.Hour))
 
 	// Создаём метаданные только с 2 очень старыми версиями
 	metadata := &config.Metadata{
@@ -317,7 +317,7 @@ func TestCleanupOldVersions_KeepMinimum(t *testing.T) {
 	// Даже если все версии старые, должны сохранить minVersions
 	var keptVersions []config.KeyVersion
 	for _, version := range keyMeta.Versions {
-		age := now.Sub(*version.CreatedAt)
+		age := now.Sub(time.Time(*version.CreatedAt))
 		if age < time.Duration(retentionDays)*24*time.Hour || len(keptVersions) < minVersions {
 			keptVersions = append(keptVersions, version)
 		}

@@ -30,6 +30,10 @@ type KeyManager struct {
 	hsmConfig    *config.HSMConfig
 	config       *config.Config // Full config for accessing key modes
 
+	// Version limit checking (for auto-cleanup warnings)
+	maxVersions      int
+	cleanupAfterDays int
+
 	// Auto-reload control
 	stopReload chan struct{}
 	reloadWg   sync.WaitGroup
@@ -38,12 +42,23 @@ type KeyManager struct {
 
 // NewKeyManager creates a new KeyManager with initial state
 func NewKeyManager(ctx *crypto11.Context, cfg *config.Config, metadata *config.Metadata) (*KeyManager, error) {
+	maxVersions := cfg.HSM.MaxVersions
+	if maxVersions == 0 {
+		maxVersions = 3 // Default
+	}
+	cleanupAfterDays := cfg.HSM.CleanupAfterDays
+	if cleanupAfterDays == 0 {
+		cleanupAfterDays = 30 // Default
+	}
+
 	km := &KeyManager{
-		ctx:          ctx,
-		metadataFile: cfg.HSM.MetadataFile,
-		hsmConfig:    &cfg.HSM,
-		config:       cfg, // Store full config
-		stopReload:   make(chan struct{}),
+		ctx:              ctx,
+		metadataFile:     cfg.HSM.MetadataFile,
+		hsmConfig:        &cfg.HSM,
+		config:           cfg, // Store full config
+		maxVersions:      maxVersions,
+		cleanupAfterDays: cleanupAfterDays,
+		stopReload:       make(chan struct{}),
 	}
 
 	// Load initial state
@@ -121,7 +136,7 @@ func (km *KeyManager) loadKeys(metadata *config.Metadata) error {
 			// Store metadata
 			createdAt := time.Now()
 			if version.CreatedAt != nil {
-				createdAt = *version.CreatedAt
+				createdAt = time.Time(*version.CreatedAt)
 			}
 
 			// Get rotation interval from metadata (with fallback to 90 days)
@@ -228,7 +243,78 @@ func (km *KeyManager) ReloadMetadata() error {
 		"contexts", len(km.contextToLabel),
 		"total_keys", len(km.keys))
 
+	// 3. Check version limits after hot reload (same as startup check)
+	km.checkVersionLimits(newMetadata)
+
 	return nil
+}
+
+// checkVersionLimits checks if any context exceeds version limits and logs warnings
+func (km *KeyManager) checkVersionLimits(metadata *config.Metadata) {
+	now := time.Now()
+	cutoffDate := now.AddDate(0, 0, -km.cleanupAfterDays)
+
+	totalExcessByCount := 0
+	totalExcessByAge := 0
+
+	for contextName, keyMeta := range metadata.Rotation {
+		excessByCount := 0
+		excessByAge := 0
+		oldVersions := []string{}
+
+		// Check version count limit
+		if len(keyMeta.Versions) > km.maxVersions {
+			excessByCount = len(keyMeta.Versions) - km.maxVersions
+		}
+
+		// Check age limit (exclude current version from age check)
+		for _, version := range keyMeta.Versions {
+			if version.Label == keyMeta.Current {
+				continue // Never flag current version as old
+			}
+			if version.CreatedAt != nil {
+				createdAt := time.Time(*version.CreatedAt)
+				if createdAt.Before(cutoffDate) {
+					age := now.Sub(createdAt)
+					ageDays := int(age.Hours() / 24)
+					oldVersions = append(oldVersions, fmt.Sprintf("%s (%d days old)", version.Label, ageDays))
+					excessByAge++
+				}
+			}
+		}
+
+		// Log warnings if limits exceeded
+		if excessByCount > 0 {
+			slog.Warn("excess versions detected",
+				"context", contextName,
+				"current_versions", len(keyMeta.Versions),
+				"max_versions", km.maxVersions,
+				"excess_count", excessByCount)
+			totalExcessByCount += excessByCount
+		}
+
+		if excessByAge > 0 {
+			slog.Warn("old versions detected",
+				"context", contextName,
+				"old_count", excessByAge,
+				"cleanup_after_days", km.cleanupAfterDays,
+				"old_versions", oldVersions)
+			totalExcessByAge += excessByAge
+		}
+
+		if excessByCount > 0 || excessByAge > 0 {
+			slog.Info("manual cleanup recommended",
+				"context", contextName,
+				"command", "hsm-admin cleanup-old-versions --dry-run")
+		}
+	}
+
+	if totalExcessByCount > 0 || totalExcessByAge > 0 {
+		slog.Warn("cleanup required",
+			"excess_by_count", totalExcessByCount,
+			"excess_by_age", totalExcessByAge,
+			"action", "use 'hsm-admin cleanup-old-versions'")
+	}
 }
 
 // StopAutoReload stops the auto-reload goroutine gracefully

@@ -10,33 +10,41 @@
 # 1. Copy metadata.yaml.example to metadata.yaml
 # 2. Update labels, versions, and created_at timestamps based on your HSM keys
 # 3. DO NOT commit metadata.yaml to git (it's in .gitignore)
+#
+# NOTE: All timestamps use full RFC3339 format with microseconds (as written by Go yaml.Encoder).
+# Example: 2026-01-09T12:34:56.789012Z
 
 rotation:
   # Example: Exchange key metadata
   exchange-key:
     current: kek-exchange-key-v1      # Current active key label
+    rotation_interval_days: 90        # Rotation interval (PCI DSS compliance)
     versions:
       - label: kek-exchange-key-v1    # Key label in HSM
-        version: 1                # Key version number
-        created_at: '2026-01-09T00:00:00Z'  # ISO 8601 timestamp
+        version: 1                    # Key version number
+        created_at: 2026-01-09T00:00:00.000000Z  # Full timestamp with microseconds
+        checksum: ""                  # SHA-256 checksum (computed by update-checksums)
     
   # Example: 2FA key metadata
   2fa:
     current: kek-2fa-v1
+    rotation_interval_days: 90
     versions:
       - label: kek-2fa-v1
         version: 1
-        created_at: '2026-01-09T00:00:00Z'
+        created_at: 2026-01-09T00:00:00.000000Z
+        checksum: ""
 
 # After key rotation, the versions array will contain multiple entries:
 # exchange-key:
 #   current: kek-exchange-key-v2
+#   rotation_interval_days: 90
 #   versions:
 #     - label: kek-exchange-key-v1
 #       version: 1
-#       created_at: '2026-01-09T00:00:00Z'
+#       created_at: 2026-01-09T00:00:00.000000Z
+#       checksum: abc123...
 #     - label: kek-exchange-key-v2
 #       version: 2
-#       created_at: '2026-01-16T00:00:00Z'
-
-#   created_at: '2025-10-11T12:00:00Z'
+#       created_at: 2026-04-09T14:23:45.678912Z
+#       checksum: def456...

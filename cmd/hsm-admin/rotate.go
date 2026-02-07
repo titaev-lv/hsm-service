@@ -147,7 +147,7 @@ func rotateKeyCommand(args []string) error {
 	}
 
 	// 9. Add new version to metadata
-	now := time.Now()
+	now := config.RFC3339Micro(time.Now())
 	newKeyVersion := config.KeyVersion{
 		Label:     newLabel,
 		Version:   newVersion,
@@ -295,7 +295,7 @@ func checkRotationStatusCommand() error {
 
 		createdAt := time.Now()
 		if currentVersion.CreatedAt != nil {
-			createdAt = *currentVersion.CreatedAt
+			createdAt = time.Time(*currentVersion.CreatedAt)
 		}
 
 		rotationInterval := time.Duration(rotationIntervalDays) * 24 * time.Hour

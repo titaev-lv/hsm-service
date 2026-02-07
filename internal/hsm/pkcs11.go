@@ -127,7 +127,7 @@ func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSM
 			// Store metadata
 			createdAt := time.Now()
 			if version.CreatedAt != nil {
-				createdAt = *version.CreatedAt
+				createdAt = time.Time(*version.CreatedAt)
 			}
 
 			keyMetadata[version.Label] = &KeyMetadata{
