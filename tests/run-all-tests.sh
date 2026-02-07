@@ -39,15 +39,28 @@ run_phase() {
     
     print_header "PHASE: $phase_name"
     
-    if eval "$phase_command" 2>&1 | tee "/tmp/test-phase-$(echo $phase_name | tr ' ' '-').log"; then
+    # Run command with tee but capture exit code properly
+    eval "$phase_command" 2>&1 | tee "/tmp/test-phase-$(echo $phase_name | tr ' ' '-').log"
+    local exit_code=${PIPESTATUS[0]}
+    
+    if [ $exit_code -eq 0 ]; then
         print_success "$phase_name completed successfully"
         PHASE_PASSED=$((PHASE_PASSED + 1))
         return 0
     else
         if [ "$required" = "true" ]; then
-            print_error "$phase_name FAILED (required)"
+            echo ""
+            echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${RED}✗ CRITICAL ERROR: $phase_name FAILED (exit code: $exit_code)${NC}"
+            echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo -e "${YELLOW}Log file:${NC} /tmp/test-phase-$(echo $phase_name | tr ' ' '-').log"
+            echo ""
+            echo "Last 30 lines of log:"
+            tail -30 "/tmp/test-phase-$(echo $phase_name | tr ' ' '-').log" 2>/dev/null || echo "  (log file not available)"
+            echo ""
             PHASE_FAILED=$((PHASE_FAILED + 1))
-            return 1
+            exit 1
         else
             print_warning "$phase_name FAILED (optional, continuing...)"
             PHASE_SKIPPED=$((PHASE_SKIPPED + 1))
@@ -59,17 +72,17 @@ run_phase() {
 # ==========================================
 # PHASE 1: Unit Tests
 # ==========================================
-run_phase "Unit Tests (Go)" "go test -v -race ./..." true
+run_phase "Unit Tests (Go)" "go test -v -race ./cmd/... ./internal/..." true || exit 1
 
 # ==========================================
 # PHASE 2: Integration Tests
 # ==========================================
-run_phase "Integration Tests (Docker)" "./tests/integration/full-integration-test.sh" true
+run_phase "Integration Tests (Docker)" "./tests/integration/full-integration-test.sh" true || exit 1
 
 # ==========================================
 # PHASE 3: E2E Scenario Tests
 # ==========================================
-run_phase "E2E Scenarios" "./tests/e2e/run-all.sh" true
+run_phase "E2E Scenarios" "./tests/e2e/run-all.sh" true || exit 1
 
 # ==========================================
 # PHASE 4: Security Scans
