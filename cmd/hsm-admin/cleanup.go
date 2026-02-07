@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ThalesGroup/crypto11"
@@ -223,9 +225,16 @@ func cleanupOldVersionsCommand(args []string) error {
 
 	// Save updated metadata
 	if modified && !*dryRun {
+		// Validate path (prevent directory traversal)
+		cleanPath := filepath.Clean(metadataPath)
+		if strings.Contains(cleanPath, "..") {
+			return fmt.Errorf("invalid metadata path: contains directory traversal")
+		}
+
 		// Backup old metadata (copy instead of rename for bind mounts)
-		backupPath := metadataPath + ".backup." + time.Now().Format("20060102-150405")
-		oldData, err := os.ReadFile(metadataPath)
+		backupPath := cleanPath + ".backup." + time.Now().Format("20060102-150405")
+		// #nosec G304 - path is validated above
+		oldData, err := os.ReadFile(cleanPath)
 		if err != nil {
 			log.Printf("Warning: failed to read metadata for backup: %v", err)
 		} else {

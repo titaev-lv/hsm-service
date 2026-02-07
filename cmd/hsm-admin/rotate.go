@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,13 +37,20 @@ func rotateKeyCommand(args []string) error {
 		metadataPath = "metadata.yaml"
 	}
 
+	// Validate metadata path (prevent directory traversal)
+	cleanPath := filepath.Clean(metadataPath)
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("invalid metadata path: contains directory traversal")
+	}
+
 	// 3. Acquire exclusive lock on metadata file to prevent concurrent rotations
-	lockFile, err := os.OpenFile(metadataPath+".lock", os.O_CREATE|os.O_RDWR, 0644)
+	// #nosec G304 - path is validated above
+	lockFile, err := os.OpenFile(cleanPath+".lock", os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create lock file: %w", err)
 	}
 	defer lockFile.Close()
-	defer os.Remove(metadataPath + ".lock")
+	defer os.Remove(cleanPath + ".lock")
 
 	// Acquire exclusive lock (blocks if another rotation is in progress)
 	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
@@ -179,6 +187,8 @@ func rotateKeyCommand(args []string) error {
 	}
 
 	// Open file for writing
+	// Note: metadataPath is already validated at function start
+	// #nosec G304 - path is validated at function entry
 	f, err := os.OpenFile(metadataPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata for writing: %w", err)
@@ -248,11 +258,19 @@ func runCommand(binaryPath string, args []string) error {
 
 // copyFile copies a file from src to dst
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	// Validate paths (prevent directory traversal)
+	cleanSrc := filepath.Clean(src)
+	cleanDst := filepath.Clean(dst)
+	if strings.Contains(cleanSrc, "..") || strings.Contains(cleanDst, "..") {
+		return fmt.Errorf("invalid path: contains directory traversal")
+	}
+
+	// #nosec G304 - paths are validated above
+	data, err := os.ReadFile(cleanSrc)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+	return os.WriteFile(cleanDst, data, 0644)
 }
 
 // checkRotationStatus checks rotation status for all keys

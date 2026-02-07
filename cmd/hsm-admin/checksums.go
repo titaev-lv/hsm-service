@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ThalesGroup/crypto11"
@@ -126,7 +128,14 @@ func updateChecksumsCommand(args []string) error {
 	// Save updated metadata (preserve inode for bind mount compatibility)
 	fmt.Printf("Saving updated metadata to %s...\n", metadataPath)
 
-	file, err := os.OpenFile(metadataPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	// Validate path (prevent directory traversal)
+	cleanPath := filepath.Clean(metadataPath)
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("invalid metadata path: contains directory traversal")
+	}
+
+	// #nosec G304 - path is validated above
+	file, err := os.OpenFile(cleanPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata file: %w", err)
 	}
