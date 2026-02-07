@@ -80,17 +80,17 @@ clean:
 # Run tests
 test:
 	@echo "Running tests..."
-	@go test ./...
+	@go test ./cmd/... ./internal/...
 
 # Run tests with race detector
 test-race:
 	@echo "Running tests with race detector..."
-	@go test -race ./...
+	@go test -race ./cmd/... ./internal/...
 
 # Run tests with coverage
 test-cover:
 	@echo "Running tests with coverage..."
-	@go test -cover -coverprofile=coverage.out ./...
+	@go test -cover -coverprofile=coverage.out ./cmd/... ./internal/...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Coverage report: coverage.html"
 

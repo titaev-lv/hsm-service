@@ -32,10 +32,16 @@ data/tokens/*
 # Dynamic metadata (managed by automation, not by Git)
 metadata.yaml
 metadata.yaml.backup-*
+metadata-test.yaml
+config-test.yaml
 
 # Environment files
 .env
 .env.local
+
+# Test docker-compose (generated during testing)
+docker-compose-test.yml
+revoked-test.yaml
 
 # IDE
 .vscode/
