@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/ThalesGroup/crypto11"
 	"github.com/titaev-lv/hsm-service/internal/config"
@@ -74,6 +75,15 @@ func updateChecksumsCommand(args []string) error {
 				continue
 			}
 
+			// Initialize CreatedAt if missing (for legacy keys)
+			if version.CreatedAt == nil {
+				now := config.RFC3339Micro(time.Now())
+				metadata.Rotation[context].Versions[i].CreatedAt = &now
+				fmt.Printf("  ⚠ %s (v%d): missing created_at, initialized to current time\n",
+					version.Label, version.Version)
+				updatedCount++
+			}
+
 			// Compute checksum (label-based, same as in pkcs11.go)
 			h := sha256.New()
 			h.Write([]byte(version.Label))
@@ -113,12 +123,12 @@ func updateChecksumsCommand(args []string) error {
 		return nil
 	}
 
-	// Save updated metadata
+	// Save updated metadata (preserve inode for bind mount compatibility)
 	fmt.Printf("Saving updated metadata to %s...\n", metadataPath)
 
-	file, err := os.Create(metadataPath)
+	file, err := os.OpenFile(metadataPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to create metadata file: %w", err)
+		return fmt.Errorf("failed to open metadata file: %w", err)
 	}
 	defer file.Close()
 
@@ -127,6 +137,11 @@ func updateChecksumsCommand(args []string) error {
 
 	if err := encoder.Encode(metadata); err != nil {
 		return fmt.Errorf("failed to encode metadata: %w", err)
+	}
+
+	// Force sync to disk
+	if err := file.Sync(); err != nil {
+		log.Printf("Warning: failed to sync metadata to disk: %v", err)
 	}
 
 	fmt.Printf("✓ Updated %d checksum(s) successfully\n", updatedCount)

@@ -53,8 +53,21 @@ func SaveMetadata(path string, meta *Metadata) error {
 		return fmt.Errorf("marshal metadata to YAML: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	// Open file with O_TRUNC to preserve inode (important for bind mounts)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("open metadata file: %w", err)
+	}
+	defer f.Close()
+
+	// Write data
+	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("write metadata file: %w", err)
+	}
+
+	// Force sync to disk (ensures bind mount sees changes)
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("sync metadata file: %w", err)
 	}
 
 	return nil
