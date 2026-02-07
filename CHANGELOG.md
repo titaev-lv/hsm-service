@@ -1,5 +1,36 @@
 # Changelog 
 
+## v1.1.1 - 2026-02-08
+
+### Security Fixes
+- Fix PIN exposure in rotation command logs (mask sensitive data)
+- Prevent command injection in rotate command (G204/CWE-78)
+- Add path validation to prevent directory traversal attacks (G304/CWE-22)
+- Restrict metadata file permissions to 0600 (G302/G306/CWE-276)
+- Add error handling for unhandled errors (G104/CWE-703)
+- Add explicit overflow checks with nosec annotations (G115/CWE-190)
+
+### Features
+- Add automatic checksum updates after key rotation
+- Implement RFC3339Micro timestamp format for consistent YAML serialization
+
+### Bug Fixes
+- Preserve inode when saving metadata files (bind mount compatibility)
+- Correct config.yaml PKI paths for proper certificate validation
+- Fix certificate revocation test robustness
+
+### Tests
+- Add unit tests for validateFilePath with directory traversal protection
+- Improve integration test isolation with dedicated containers
+- Add full-featured certificate revocation test
+- Auto-generate PKI for self-contained integration tests
+
+### Documentation
+- Update timestamp format to RFC3339Micro in all documentation
+- Add missing rotation_interval_days parameter examples
+
+---
+
 ## v1.1.0
 
 ### New Features
