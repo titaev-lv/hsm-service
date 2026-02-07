@@ -213,20 +213,22 @@ func runCommand(cmd string) error {
 	}
 
 	// Log command with PIN masked for security
-	logCmd := cmd
-	// Mask HSM_PIN in logs (replace PIN with ***)
-	for i, part := range parts {
-		// Skip first part (binary path) and check if next part looks like a PIN
-		if i > 0 && len(part) > 4 && !strings.Contains(part, "/") && !strings.HasPrefix(part, "-") {
-			// This might be a PIN, mask it
-			if len(parts) > i+1 {
-				// Check if this is the PIN parameter (usually between label and version)
-				parts[i] = strings.Repeat("*", len(part))
-				logCmd = strings.Join(parts, " ")
-			}
+	// create-kek format: create-kek <label> <pin> <version>
+	// We need to mask argument at index 2 (the PIN)
+	maskedParts := make([]string, len(parts))
+	copy(maskedParts, parts)
+	
+	if len(parts) >= 3 {
+		// Mask the PIN (2nd argument after binary name)
+		// Check if this looks like create-kek command
+		if strings.Contains(parts[0], "create-kek") && len(parts) >= 4 {
+			// Format: create-kek <label> <pin> <version>
+			// Mask parts[2] (PIN)
+			maskedParts[2] = strings.Repeat("*", len(parts[2]))
 		}
 	}
-
+	
+	logCmd := strings.Join(maskedParts, " ")
 	log.Printf("Executing: %s", logCmd)
 
 	// Execute the command using exec.Command (use original cmd for execution)

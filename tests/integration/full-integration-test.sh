@@ -963,6 +963,16 @@ if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key > /tmp/rota
 fi
 print_success "Key rotation completed"
 
+print_test "Test 8.2b: Verify PIN not exposed in rotation logs (security check)"
+ROTATION_LOGS=$(cat /tmp/rotation.log)
+if echo "$ROTATION_LOGS" | grep -E "1234|5678|12345678" | grep -v "\*\*\*"; then
+    echo "SECURITY VIOLATION: PIN found in rotation logs!"
+    echo "Exposed content:"
+    echo "$ROTATION_LOGS" | grep -E "1234|5678|12345678" | grep -v "\*\*\*"
+    print_error "PIN exposed in logs - security violation!"
+fi
+print_success "PIN properly masked in logs"
+
 print_test "Test 8.3: Verify metadata.yaml updated"
 METADATA_CONTENT=$(cat "$PROJECT_ROOT/metadata-test.yaml")
 if ! echo "$METADATA_CONTENT" | grep -q "kek-exchange-key-v2"; then
