@@ -20,7 +20,7 @@ func validateFilePath(path string) error {
 
 	// Additional check: clean the path and verify it doesn't escape
 	cleanPath := filepath.Clean(path)
-	
+
 	// For relative paths, ensure they don't start with ../
 	if !filepath.IsAbs(cleanPath) && strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("invalid path: attempts to escape current directory")

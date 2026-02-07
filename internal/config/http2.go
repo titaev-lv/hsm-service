@@ -102,7 +102,7 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 2147483647 {
 			return nil, fmt.Errorf("initial_window_size exceeds int32 limit: %d", size)
 		}
-		parsed.InitialWindowSize = int32(size)
+		parsed.InitialWindowSize = int32(size) // #nosec G115 -- overflow checked above
 	}
 
 	// MaxFrameSize (HTTP/2 spec: 16KB to 16MB-1, we limit to 100MB)
@@ -118,7 +118,7 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 4294967295 {
 			return nil, fmt.Errorf("max_frame_size exceeds uint32 limit: %d", size)
 		}
-		parsed.MaxFrameSize = uint32(size)
+		parsed.MaxFrameSize = uint32(size) // #nosec G115 -- overflow checked above
 	}
 
 	// MaxHeaderListSize
@@ -134,7 +134,7 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 4294967295 {
 			return nil, fmt.Errorf("max_header_list_size exceeds uint32 limit: %d", size)
 		}
-		parsed.MaxHeaderListSize = uint32(size)
+		parsed.MaxHeaderListSize = uint32(size) // #nosec G115 -- overflow checked above
 	}
 
 	// MaxUploadBufferPerConn
@@ -150,7 +150,7 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 2147483647 {
 			return nil, fmt.Errorf("max_upload_buffer_per_conn exceeds int32 limit: %d", size)
 		}
-		parsed.MaxUploadBufferPerConn = int32(size)
+		parsed.MaxUploadBufferPerConn = int32(size) // #nosec G115 -- overflow checked above
 	}
 
 	// MaxUploadBufferPerStream
@@ -166,7 +166,7 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 2147483647 {
 			return nil, fmt.Errorf("max_upload_buffer_per_stream exceeds int32 limit: %d", size)
 		}
-		parsed.MaxUploadBufferPerStream = int32(size)
+		parsed.MaxUploadBufferPerStream = int32(size) // #nosec G115 -- overflow checked above
 	}
 
 	return parsed, err
