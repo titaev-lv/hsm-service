@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=71
+TOTAL_TESTS=73
 
 # Helper functions
 print_header() {
@@ -963,6 +963,12 @@ if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key > /tmp/rota
 fi
 print_success "Key rotation completed"
 
+print_test "Test 8.2a: Update checksums after rotation"
+if ! docker exec hsm-service-test /app/hsm-admin update-checksums; then
+    print_error "Failed to update checksums after rotation"
+fi
+print_success "Checksums updated"
+
 print_test "Test 8.2b: Verify PIN not exposed in rotation logs (security check)"
 ROTATION_LOGS=$(cat /tmp/rotation.log)
 if echo "$ROTATION_LOGS" | grep -E "1234|5678|12345678" | grep -v "\*\*\*"; then
@@ -1150,6 +1156,7 @@ echo "=== Rotating to v3 ==="
 if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key; then
     print_error "Failed to rotate to v3"
 fi
+docker exec hsm-service-test /app/hsm-admin update-checksums > /dev/null 2>&1 || true
 # Wait for automatic hot reload (service monitors every 30s)
 echo "Waiting for hot reload (35 seconds)..."
 sleep 35
@@ -1159,6 +1166,7 @@ echo "=== Rotating to v4 ==="
 if ! docker exec hsm-service-test /app/hsm-admin rotate exchange-key; then
     print_error "Failed to rotate to v4"
 fi
+docker exec hsm-service-test /app/hsm-admin update-checksums > /dev/null 2>&1 || true
 echo "Waiting for hot reload (35 seconds)..."
 sleep 35
 print_success "Rotated to v3 and v4"

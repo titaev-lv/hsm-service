@@ -44,6 +44,7 @@ print_success "Encrypted with $KEY_ID_V1"
 # Step 2: Perform rotation
 print_test "Step 2: Rotate key to v2"
 docker exec hsm-service /app/hsm-admin rotate exchange-key > /dev/null 2>&1
+docker exec hsm-service /app/hsm-admin update-checksums > /dev/null 2>&1
 docker cp hsm-service:/app/metadata.yaml metadata.yaml
 print_success "Rotation completed"
 

@@ -324,7 +324,32 @@ See logs: $LOG_FILE" "warning"
         if [ $ROTATION_FAILED -eq 0 ]; then
             log "✓ All rotations completed successfully"
             
-            # Step 2: Run cleanup to delete old key versions (PCI DSS compliance)
+            # Step 2: Update checksums after rotation
+            log "Updating checksums after rotation..."
+            
+            CHECKSUM_SUDO=""
+            if [ "$ENVIRONMENT" = "production" ] && [ ! -w "/var/lib/hsm-service" ] 2>/dev/null; then
+                CHECKSUM_SUDO="sudo"
+            fi
+            
+            export HSM_PIN
+            CHECKSUM_OUTPUT=$($CHECKSUM_SUDO bash -c "export HSM_PIN='$HSM_PIN'; $HSM_ADMIN_CMD update-checksums" 2>&1)
+            CHECKSUM_EXIT_CODE=$?
+            
+            if [ $CHECKSUM_EXIT_CODE -eq 0 ]; then
+                log "✓ Checksums updated successfully"
+                if [ -n "$CHECKSUM_OUTPUT" ]; then
+                    echo "$CHECKSUM_OUTPUT" | while IFS= read -r line; do
+                        log "  | $line"
+                    done
+                fi
+            else
+                log "⚠️ Warning: update-checksums returned exit code $CHECKSUM_EXIT_CODE"
+                log "Checksum output: $CHECKSUM_OUTPUT"
+                # Don't fail, checksums are not critical
+            fi
+            
+            # Step 3: Run cleanup to delete old key versions (PCI DSS compliance)
             log "Starting cleanup of old key versions..."
             
             # Определить нужно ли запускать с sudo для production
