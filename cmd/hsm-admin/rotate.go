@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -139,11 +140,14 @@ func rotateKeyCommand(args []string) error {
 		}
 	}
 
-	cmd := fmt.Sprintf("%s %s %s %d", createKekPath, newLabel, hsmPIN, newVersion)
+	// Build command arguments safely (avoid shell injection)
+	var createErr error
+	cmdArgs := []string{newLabel, hsmPIN, strconv.Itoa(newVersion)}
 
 	log.Printf("Creating new KEK: %s", newLabel)
-	if err := runCommand(cmd); err != nil {
-		return fmt.Errorf("failed to create new KEK: %w", err)
+	createErr = runCommand(createKekPath, cmdArgs)
+	if createErr != nil {
+		return fmt.Errorf("failed to create new KEK: %w", createErr)
 	}
 
 	// 9. Add new version to metadata
@@ -207,35 +211,31 @@ func rotateKeyCommand(args []string) error {
 	return nil
 }
 
-// runCommand executes a shell command
-func runCommand(cmd string) error {
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return fmt.Errorf("empty command")
+// runCommand executes a command with the given binary path and arguments
+// This is safe from shell injection as it uses exec.Command directly with arguments
+func runCommand(binaryPath string, args []string) error {
+	if binaryPath == "" {
+		return fmt.Errorf("empty binary path")
 	}
 
 	// Log command with PIN masked for security
 	// create-kek format: create-kek <label> <pin> <version>
-	// We need to mask argument at index 2 (the PIN)
-	maskedParts := make([]string, len(parts))
-	copy(maskedParts, parts)
+	// We need to mask argument at index 1 (the PIN, 0-indexed in args slice)
+	maskedArgs := make([]string, len(args))
+	copy(maskedArgs, args)
 
-	if len(parts) >= 3 {
-		// Mask the PIN (2nd argument after binary name)
-		// Check if this looks like create-kek command
-		if strings.Contains(parts[0], "create-kek") && len(parts) >= 4 {
-			// Format: create-kek <label> <pin> <version>
-			// Mask parts[2] (PIN)
-			maskedParts[2] = strings.Repeat("*", len(parts[2]))
-		}
+	// Check if this looks like create-kek command
+	if strings.Contains(binaryPath, "create-kek") && len(args) >= 3 {
+		// Format: args[0]=<label>, args[1]=<pin>, args[2]=<version>
+		// Mask args[1] (PIN)
+		maskedArgs[1] = strings.Repeat("*", len(args[1]))
 	}
 
-	logCmd := strings.Join(maskedParts, " ")
+	logCmd := binaryPath + " " + strings.Join(maskedArgs, " ")
 	log.Printf("Executing: %s", logCmd)
 
-	// Execute the command using exec.Command (use original cmd for execution)
-	origParts := strings.Fields(cmd)
-	command := exec.Command(origParts[0], origParts[1:]...)
+	// Execute the command safely (no shell involved)
+	command := exec.Command(binaryPath, args...)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 
