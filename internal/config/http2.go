@@ -98,6 +98,10 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 100*1024*1024 {
 			return nil, fmt.Errorf("initial_window_size exceeds 100MB limit: %d", size)
 		}
+		// Check for int32 overflow before conversion (max int32 = 2147483647)
+		if size > 2147483647 {
+			return nil, fmt.Errorf("initial_window_size exceeds int32 limit: %d", size)
+		}
 		parsed.InitialWindowSize = int32(size)
 	}
 
@@ -109,6 +113,10 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		}
 		if size > 100*1024*1024 {
 			return nil, fmt.Errorf("max_frame_size exceeds 100MB limit: %d", size)
+		}
+		// Check for uint32 overflow before conversion (max uint32 = 4294967295)
+		if size > 4294967295 {
+			return nil, fmt.Errorf("max_frame_size exceeds uint32 limit: %d", size)
 		}
 		parsed.MaxFrameSize = uint32(size)
 	}
@@ -122,6 +130,10 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 100*1024*1024 {
 			return nil, fmt.Errorf("max_header_list_size exceeds 100MB limit: %d", size)
 		}
+		// Check for uint32 overflow before conversion (max uint32 = 4294967295)
+		if size > 4294967295 {
+			return nil, fmt.Errorf("max_header_list_size exceeds uint32 limit: %d", size)
+		}
 		parsed.MaxHeaderListSize = uint32(size)
 	}
 
@@ -134,6 +146,10 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		if size > 100*1024*1024 {
 			return nil, fmt.Errorf("max_upload_buffer_per_conn exceeds 100MB limit: %d", size)
 		}
+		// Check for int32 overflow before conversion (max int32 = 2147483647)
+		if size > 2147483647 {
+			return nil, fmt.Errorf("max_upload_buffer_per_conn exceeds int32 limit: %d", size)
+		}
 		parsed.MaxUploadBufferPerConn = int32(size)
 	}
 
@@ -145,6 +161,10 @@ func (h *HTTP2Config) Parse() (*ParsedHTTP2Config, error) {
 		}
 		if size > 100*1024*1024 {
 			return nil, fmt.Errorf("max_upload_buffer_per_stream exceeds 100MB limit: %d", size)
+		}
+		// Check for int32 overflow before conversion (max int32 = 2147483647)
+		if size > 2147483647 {
+			return nil, fmt.Errorf("max_upload_buffer_per_stream exceeds int32 limit: %d", size)
 		}
 		parsed.MaxUploadBufferPerStream = int32(size)
 	}
