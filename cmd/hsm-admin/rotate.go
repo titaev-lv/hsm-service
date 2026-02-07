@@ -197,10 +197,12 @@ func rotateKeyCommand(args []string) error {
 	log.Printf("  New key: %s (version %d)", newLabel, newVersion)
 	log.Printf("")
 	log.Printf("⚠️  IMPORTANT:")
-	log.Printf("  1. Restart the HSM service to load the new key")
-	log.Printf("  2. Re-encrypt all data encrypted with the old key")
-	log.Printf("  3. After 7 days overlap period, delete the old key:")
-	log.Printf("     hsm-admin delete-kek --label %s --confirm", currentLabel)
+	log.Printf("  1. New key will be auto-loaded via hot reload (within 30 seconds)")
+	log.Printf("     No service restart required! Check logs for 'KEK hot reload successful'")
+	log.Printf("  2. Re-encrypt all data encrypted with the old key during 7-day overlap period")
+	log.Printf("  3. After overlap period, cleanup old versions:")
+	log.Printf("     hsm-admin cleanup-old-versions --dry-run  # preview what will be deleted")
+	log.Printf("     hsm-admin cleanup-old-versions --force    # execute cleanup")
 
 	return nil
 }
@@ -217,7 +219,7 @@ func runCommand(cmd string) error {
 	// We need to mask argument at index 2 (the PIN)
 	maskedParts := make([]string, len(parts))
 	copy(maskedParts, parts)
-	
+
 	if len(parts) >= 3 {
 		// Mask the PIN (2nd argument after binary name)
 		// Check if this looks like create-kek command
@@ -227,7 +229,7 @@ func runCommand(cmd string) error {
 			maskedParts[2] = strings.Repeat("*", len(parts[2]))
 		}
 	}
-	
+
 	logCmd := strings.Join(maskedParts, " ")
 	log.Printf("Executing: %s", logCmd)
 
