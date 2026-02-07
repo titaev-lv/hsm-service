@@ -229,3 +229,66 @@ func TestValidateConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateFilePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{
+			name:    "valid absolute path",
+			path:    "/etc/hsm-service/config.yaml",
+			wantErr: false,
+		},
+		{
+			name:    "valid relative path",
+			path:    "config.yaml",
+			wantErr: false,
+		},
+		{
+			name:    "valid relative path with subdirectory",
+			path:    "configs/config.yaml",
+			wantErr: false,
+		},
+		{
+			name:    "directory traversal with ..",
+			path:    "../../../etc/passwd",
+			wantErr: true,
+		},
+		{
+			name:    "directory traversal in middle",
+			path:    "/var/lib/../../../etc/passwd",
+			wantErr: true,
+		},
+		{
+			name:    "clean path but contains .. after cleaning",
+			path:    "foo/../../bar",
+			wantErr: true,
+		},
+		{
+			name:    "attempts to escape with ../",
+			path:    "../../sensitive/file",
+			wantErr: true,
+		},
+		{
+			name:    "valid path with dots in filename",
+			path:    "config.yaml.backup",
+			wantErr: false,
+		},
+		{
+			name:    "valid path with hidden file",
+			path:    ".config.yaml",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFilePath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateFilePath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
+			}
+		})
+	}
+}

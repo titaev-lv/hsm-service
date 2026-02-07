@@ -12,17 +12,17 @@ import (
 // validateFilePath checks if the path is safe (no directory traversal)
 // This prevents CWE-22 directory traversal attacks
 func validateFilePath(path string) error {
-	// Clean the path to normalize it
-	cleanPath := filepath.Clean(path)
-
-	// Check for directory traversal attempts
-	if strings.Contains(cleanPath, "..") {
+	// Check for directory traversal patterns BEFORE cleaning
+	// This catches attempts like "../../../etc/passwd"
+	if strings.Contains(path, "..") {
 		return fmt.Errorf("invalid path: contains directory traversal")
 	}
 
-	// Ensure it's an absolute path or relative to current directory
-	// (no leading slashes for relative paths with ..)
-	if strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+	// Additional check: clean the path and verify it doesn't escape
+	cleanPath := filepath.Clean(path)
+	
+	// For relative paths, ensure they don't start with ../
+	if !filepath.IsAbs(cleanPath) && strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("invalid path: attempts to escape current directory")
 	}
 
