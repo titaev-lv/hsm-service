@@ -79,7 +79,9 @@ func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSM
 		// Get metadata for this context
 		meta, ok := metadata.Rotation[context]
 		if !ok {
-			ctx.Close()
+			if err := ctx.Close(); err != nil {
+				log.Printf("Warning: failed to close PKCS11 context: %v", err)
+			}
 			return nil, fmt.Errorf("metadata not found for context: %s", context)
 		}
 
@@ -104,7 +106,9 @@ func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSM
 			if version.Checksum != "" {
 				computedChecksum := computeKeyChecksum(version.Label, secretKey)
 				if computedChecksum != version.Checksum {
-					ctx.Close()
+					if err := ctx.Close(); err != nil {
+						log.Printf("Warning: failed to close PKCS11 context: %v", err)
+					}
 					return nil, fmt.Errorf("KEK integrity verification failed for %s: checksum mismatch (expected %s, got %s)",
 						version.Label, version.Checksum, computedChecksum)
 				}
@@ -141,13 +145,17 @@ func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSM
 
 		// Ensure at least the current version was loaded
 		if keys[meta.Current] == nil {
-			ctx.Close()
+			if err := ctx.Close(); err != nil {
+				log.Printf("Warning: failed to close PKCS11 context: %v", err)
+			}
 			return nil, fmt.Errorf("current KEK not loaded: %s", meta.Current)
 		}
 	}
 
 	if len(keys) == 0 {
-		ctx.Close()
+		if err := ctx.Close(); err != nil {
+			log.Printf("Warning: failed to close PKCS11 context: %v", err)
+		}
 		return nil, fmt.Errorf("no AES keys found in configuration")
 	}
 

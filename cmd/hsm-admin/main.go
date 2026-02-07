@@ -34,7 +34,9 @@ func main() {
 		configPath = *configFlagC
 	}
 	if configPath != "" {
-		os.Setenv("CONFIG_PATH", configPath)
+		if err := os.Setenv("CONFIG_PATH", configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to set CONFIG_PATH: %v\n", err)
+		}
 	}
 
 	// Get command from remaining arguments
@@ -122,7 +124,10 @@ func createKEK(args []string) {
 	keySize := fs.Int("size", 256, "Key size in bits (default: 256)")
 	configPath := fs.String("config", getConfigPath(), "Path to config.yaml")
 
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *label == "" || *context == "" {
 		fmt.Println("Error: --label and --context are required")
@@ -217,7 +222,10 @@ func listKEK(args []string) {
 	configPath := fs.String("config", getConfigPath(), "Path to config.yaml")
 	verbose := fs.Bool("verbose", false, "Show detailed information")
 
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Get HSM PIN from environment
 	pin := os.Getenv("HSM_PIN")
@@ -308,7 +316,10 @@ func deleteKEK(args []string) {
 	confirm := fs.Bool("confirm", false, "Confirm deletion (required)")
 	configPath := fs.String("config", getConfigPath(), "Path to config.yaml")
 
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *label == "" {
 		fmt.Println("Error: --label is required")
@@ -377,7 +388,10 @@ func exportMetadata(args []string) {
 	output := fs.String("output", "kek-metadata.json", "Output file path")
 	configPath := fs.String("config", getConfigPath(), "Path to config.yaml")
 
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Load configuration (no HSM access needed)
 	cfg, err := config.LoadConfig(*configPath)

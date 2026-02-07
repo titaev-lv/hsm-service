@@ -20,7 +20,9 @@ func cleanupOldVersionsCommand(args []string) error {
 	dryRun := fs.Bool("dry-run", false, "Show what would be deleted without actually deleting")
 	force := fs.Bool("force", false, "Force deletion without confirmation")
 
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("failed to parse flags: %w", err)
+	}
 
 	// Get HSM PIN from environment
 	pin := os.Getenv("HSM_PIN")
@@ -184,7 +186,9 @@ func cleanupOldVersionsCommand(args []string) error {
 		if !*dryRun && !*force {
 			fmt.Printf("\n  Delete %d versions? (yes/no): ", len(toDelete))
 			var response string
-			fmt.Scanln(&response)
+			if _, err := fmt.Scanln(&response); err != nil {
+				return fmt.Errorf("failed to read confirmation: %w", err)
+			}
 			if response != "yes" {
 				fmt.Println("  Skipped")
 				continue

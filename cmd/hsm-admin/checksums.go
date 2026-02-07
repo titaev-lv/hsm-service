@@ -22,7 +22,9 @@ func updateChecksumsCommand(args []string) error {
 	configPath := fs.String("config", getConfigPath(), "Path to config.yaml")
 	dryRun := fs.Bool("dry-run", false, "Show what would be updated without making changes")
 
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("failed to parse flags: %w", err)
+	}
 
 	// Get HSM PIN from environment
 	pin := os.Getenv("HSM_PIN")
