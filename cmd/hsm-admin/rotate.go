@@ -45,7 +45,8 @@ func rotateKeyCommand(args []string) error {
 
 	// 3. Acquire exclusive lock on metadata file to prevent concurrent rotations
 	// #nosec G304 - path is validated above
-	lockFile, err := os.OpenFile(cleanPath+".lock", os.O_CREATE|os.O_RDWR, 0644)
+	// Use 0600 permissions for lock file security
+	lockFile, err := os.OpenFile(cleanPath+".lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create lock file: %w", err)
 	}
@@ -189,7 +190,8 @@ func rotateKeyCommand(args []string) error {
 	// Open file for writing
 	// Note: metadataPath is already validated at function start
 	// #nosec G304 - path is validated at function entry
-	f, err := os.OpenFile(metadataPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	// Use 0600 permissions - metadata contains sensitive key information
+	f, err := os.OpenFile(metadataPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata for writing: %w", err)
 	}
@@ -270,7 +272,8 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(cleanDst, data, 0644)
+	// Use 0600 permissions - copied metadata files contain sensitive information
+	return os.WriteFile(cleanDst, data, 0600)
 }
 
 // checkRotationStatus checks rotation status for all keys

@@ -14,18 +14,18 @@ import (
 func validateFilePath(path string) error {
 	// Clean the path to normalize it
 	cleanPath := filepath.Clean(path)
-	
+
 	// Check for directory traversal attempts
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("invalid path: contains directory traversal")
 	}
-	
+
 	// Ensure it's an absolute path or relative to current directory
 	// (no leading slashes for relative paths with ..)
 	if strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("invalid path: attempts to escape current directory")
 	}
-	
+
 	return nil
 }
 
@@ -35,7 +35,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err := validateFilePath(path); err != nil {
 		return nil, fmt.Errorf("invalid config path: %w", err)
 	}
-	
+
 	// Read YAML file
 	// #nosec G304 - path is validated above
 	data, err := os.ReadFile(path)
@@ -65,7 +65,7 @@ func LoadMetadata(path string) (*Metadata, error) {
 	if err := validateFilePath(path); err != nil {
 		return nil, fmt.Errorf("invalid metadata path: %w", err)
 	}
-	
+
 	// #nosec G304 - path is validated above
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -86,7 +86,7 @@ func SaveMetadata(path string, meta *Metadata) error {
 	if err := validateFilePath(path); err != nil {
 		return fmt.Errorf("invalid metadata path: %w", err)
 	}
-	
+
 	data, err := yaml.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("marshal metadata to YAML: %w", err)
@@ -94,7 +94,8 @@ func SaveMetadata(path string, meta *Metadata) error {
 
 	// Open file with O_TRUNC to preserve inode (important for bind mounts)
 	// #nosec G304 - path is validated above
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	// Use 0600 permissions - metadata contains sensitive key information
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("open metadata file: %w", err)
 	}

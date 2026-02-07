@@ -135,7 +135,8 @@ func updateChecksumsCommand(args []string) error {
 	}
 
 	// #nosec G304 - path is validated above
-	file, err := os.OpenFile(cleanPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	// Use 0600 permissions - metadata contains sensitive key information
+	file, err := os.OpenFile(cleanPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open metadata file: %w", err)
 	}

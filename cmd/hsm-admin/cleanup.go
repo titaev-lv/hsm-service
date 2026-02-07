@@ -238,7 +238,8 @@ func cleanupOldVersionsCommand(args []string) error {
 		if err != nil {
 			log.Printf("Warning: failed to read metadata for backup: %v", err)
 		} else {
-			if err := os.WriteFile(backupPath, oldData, 0644); err != nil {
+			// Use 0600 permissions - backup contains sensitive key information
+			if err := os.WriteFile(backupPath, oldData, 0600); err != nil {
 				log.Printf("Warning: failed to write backup: %v", err)
 			} else {
 				fmt.Printf("\n✓ Old metadata backed up to: %s\n", backupPath)
@@ -250,7 +251,8 @@ func cleanupOldVersionsCommand(args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal metadata: %w", err)
 		}
-		if err := os.WriteFile(metadataPath, data, 0644); err != nil {
+		// Use 0600 permissions - metadata contains sensitive key information
+		if err := os.WriteFile(metadataPath, data, 0600); err != nil {
 			return fmt.Errorf("failed to write metadata: %w", err)
 		}
 		fmt.Printf("✓ Metadata updated: %s\n", metadataPath)
