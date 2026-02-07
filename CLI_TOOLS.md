@@ -446,14 +446,14 @@ hsm-admin export-metadata [--output <file>]
         {
           "version": "v3",
           "label": "kek-exchange-key-v3",
-          "created_at": "2024-03-15T14:30:00Z",
+          "created_at": "2024-03-15T14:30:00.000000Z",
           "checksum": "a1b2c3d4e5f6...",
           "status": "active"
         },
         {
           "version": "v2",
           "label": "kek-exchange-key-v2",
-          "created_at": "2024-02-01T10:00:00Z",
+          "created_at": "2024-02-01T10:00:00.000000Z",
           "checksum": "x1y2z3w4v5...",
           "status": "old"
         }

@@ -400,12 +400,14 @@ cat > /var/lib/hsm-service/metadata.yaml << EOF
 rotation:
   exchange-key:
     current: kek-exchange-key-v1
+    rotation_interval_days: 90
     versions:
       - label: kek-exchange-key-v1
         version: 1
         created_at: "$CURRENT_DATE"
   2fa:
     current: kek-2fa-v1
+    rotation_interval_days: 90
     versions:
       - label: kek-2fa-v1
         version: 1
@@ -1000,8 +1002,8 @@ sudo tail -f /var/log/hsm-service/rotation.log
 # Изменить дату создания ключа в metadata.yaml
 sudo nano /var/lib/hsm-service/metadata.yaml
 
-# Изменить created_at на дату 91 день назад
-# created_at: '2025-10-15T00:00:00Z'
+# Изменить created_at на дату 91 день назад (RFC3339 с микросекундами)
+# created_at: 2025-10-15T00:00:00.000000Z
 
 # Запустить проверку
 sudo systemctl start hsm-rotation-check.service

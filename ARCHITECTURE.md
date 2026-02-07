@@ -354,7 +354,7 @@ rotation:
     versions:
       - label: kek-exchange-key-v1            # Label ключа в HSM
         version: 1                        # Номер версии
-        created_at: '2026-01-09T00:00:00Z'  # Дата создания
+        created_at: 2026-01-09T00:00:00.000000Z  # Дата создания (RFC3339 с микросекундами)
   
   2fa:
     current: kek-2fa-v1
@@ -362,7 +362,7 @@ rotation:
     versions:
       - label: kek-2fa-v1
         version: 1
-        created_at: '2026-01-09T00:00:00Z'
+        created_at: 2026-01-09T00:00:00.000000Z
 
 # После ротации:
 # exchange-key:
@@ -370,10 +370,10 @@ rotation:
 #   versions:
 #     - label: kek-exchange-key-v1
 #       version: 1
-#       created_at: '2026-01-09T00:00:00Z'
+#       created_at: 2026-01-09T00:00:00.000000Z
 #     - label: kek-exchange-key-v2
 #       version: 2
-#       created_at: '2026-04-09T00:00:00Z'
+#       created_at: 2026-04-09T00:00:00.000000Z
 ```
 
 **Характеристики:**
@@ -584,7 +584,7 @@ hsm-admin rotate exchange-key
 #   exchange-key:
 #     label: kek-exchange-key-v2
 #     version: 2
-#     created_at: '2026-01-10T15:30:00Z'
+#     created_at: 2026-01-10T15:30:00.000000Z
 
 # 3. HSM Service автоматически перезагружает metadata.yaml в течение 30 сек
 #    - Загружает kek-exchange-key-v2 из HSM

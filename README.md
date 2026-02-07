@@ -81,13 +81,14 @@ graph TB
 rotation:
   exchange-key:
     current: kek-exchange-key-v2      # Активная версия для новых операций
+    rotation_interval_days: 90        # PCI DSS compliance
     versions:
       - label: kek-exchange-key-v1    # Старая версия (для расшифровки)
         version: 1
-        created_at: '2026-01-09T00:00:00Z'
+        created_at: 2026-01-09T00:00:00.000000Z  # RFC3339 с микросекундами
       - label: kek-exchange-key-v2    # Новая версия
         version: 2
-        created_at: '2026-01-16T10:30:00Z'
+        created_at: 2026-01-16T10:30:00.000000Z
 ```
 
 Это обеспечивает:
@@ -668,17 +669,17 @@ rotation:
     versions:
       - label: kek-exchange-key-v1   # Старая версия (доступна для decrypt)
         version: 1
-        created_at: '2026-01-09T00:00:00Z'
+        created_at: 2026-01-09T00:00:00.000000Z  # Всегда с микросекундами
       - label: kek-exchange-key-v2   # Новая версия (используется для encrypt)
         version: 2
-        created_at: '2026-01-16T10:30:00Z'
+        created_at: 2026-01-16T10:30:00.000000Z
   
   2fa:
     current: kek-2fa-v1
     versions:
       - label: kek-2fa-v1
         version: 1
-        created_at: '2026-01-09T00:00:00Z'
+        created_at: 2026-01-09T00:00:00.000000Z
 ```
 
 ### Environment Variables

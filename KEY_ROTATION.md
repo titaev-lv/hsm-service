@@ -38,10 +38,10 @@ rotation:
     versions:
       - label: kek-exchange-key-v2    # Новый ключ
         version: 2
-        created_at: '2026-01-09T14:30:00Z'
+        created_at: 2026-01-09T14:30:00.000000Z
       - label: kek-exchange-key-v1    # Старый ключ (период overlap)
         version: 1
-        created_at: '2025-10-10T10:00:00Z'
+        created_at: 2025-10-10T10:00:00.000000Z
 ```
 
 ## 🔥 Zero-Downtime Hot Reload
@@ -459,7 +459,7 @@ rotation:
     versions:
       - label: kek-exchange-key-v1
         version: 1
-        created_at: '2026-01-09T00:00:00Z'
+        created_at: 2026-01-09T00:00:00.000000Z
 ```
 
 **2. Создать systemd timer для автоматической проверки:**
