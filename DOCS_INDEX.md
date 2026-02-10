@@ -75,7 +75,7 @@
 |----------|----------|----------|-------|
 | [BUILD.md](BUILD.md) | Сборка оптимизированных бинарников для production | DevOps/Backend | 15 мин |
 | [PRODUCTION_DEBIAN.md](PRODUCTION_DEBIAN.md) | Установка на Debian 13 + nftables | DevOps | 30 мин |
-| [MONITORING.md](MONITORING.md) | Prometheus метрики и алерты | DevOps | 15 мин |
+| [MONITORING.md](MONITORING.md) | Prometheus метрики, алерты, audit/error логи | DevOps | 15 мин |
 | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | Бэкап и восстановление | DevOps | 10 мин |
 
 ### 🔴 Безопасность

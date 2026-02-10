@@ -165,6 +165,23 @@ sudo systemctl daemon-reload
 sudo systemctl restart hsm-service
 ```
 
+#### 1.4 Недоступна директория логов
+
+**Ошибка**:
+```
+Log path validation failed
+```
+
+**Решение**:
+```bash
+# Проверить директорию логов
+ls -la /var/log/hsm-service
+
+# Исправить владельца и права
+sudo chown -R hsm:hsm /var/log/hsm-service
+sudo chmod 750 /var/log/hsm-service
+```
+
 ### Problem 2: Port already in use
 
 **Симптомы**:
@@ -211,7 +228,7 @@ sudo chown -R hsm:hsm /var/log/hsm-service
 
 # Исправить permissions
 sudo chmod 700 /var/lib/softhsm/tokens
-sudo chmod 755 /var/log/hsm-service
+sudo chmod 750 /var/log/hsm-service
 ```
 
 ---

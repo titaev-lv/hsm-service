@@ -426,31 +426,29 @@ tlsConfig.OCSPStapling = true
 
 2. **✅ FIXED: Log rotation implemented**
    ```go
-   // main.go:18-30
-   logWriter := &lumberjack.Logger{
-       Filename:   "/var/log/hsm-service/hsm-service.log",
-       MaxSize:    100, // MB per file
-       MaxBackups: 10,  // Keep 10 old log files
-       MaxAge:     30,  // Keep logs for 30 days
-       Compress:   true, // Compress rotated logs
+   // server/logger.go
+   errorFile := &lumberjack.Logger{
+       Filename:   "/var/log/hsm-service/error.log",
+       MaxSize:    100,
+       MaxBackups: 10,
+       MaxAge:     30,
+       Compress:   true,
    }
-   
-   multiWriter := io.MultiWriter(os.Stdout, logWriter)
-   logger := slog.New(slog.NewJSONHandler(multiWriter, nil))
-   slog.SetDefault(logger)
+   auditFile := &lumberjack.Logger{
+       Filename:   "/var/log/hsm-service/audit.log",
+       MaxSize:    100,
+       MaxBackups: 10,
+       MaxAge:     30,
+       Compress:   true,
+   }
    ```
-   - ✅ Automatic log rotation at 100MB per file
-   - ✅ Keeps maximum 10 backup files
-   - ✅ Auto-deletion after 30 days (compliance retention)
-   - ✅ Compression of old logs (disk space optimization)
-   - ✅ Logs to both file and stdout (Docker/Kubernetes compatibility)
+   - ✅ Разделение audit/error логов
+   - ✅ Ротация 100MB, 10 backup, 30 дней, gzip
+   - ✅ Audit лог в stdout + файл
+   - ✅ Fail-fast при недоступности лог-директории
+   - ✅ request_id для корреляции
+   - ✅ Время в логах: UTC, RFC3339 с микросекундами
    - **Status:** Disk exhaustion risk mitigated
-   
-   **Configuration:**
-   - Log directory: `/var/log/hsm-service/`
-   - Max size per file: 100 MB
-   - Retention: 10 files × 100 MB = 1 GB max
-   - Cleanup: Automatic after 30 days
 
 3. **✅ FIXED: Prometheus metrics and alerting infrastructure**
    ```go

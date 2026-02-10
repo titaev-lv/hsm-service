@@ -121,6 +121,7 @@ cp metadata.yaml.example metadata.yaml
 
 ```bash
 # Собрать Docker образ и запустить
+mkdir -p logs
 docker compose up -d --build
 
 # Проверить что контейнер запустился
@@ -258,6 +259,10 @@ docker compose up -d --build
 # Проверить права на директории
 ls -la data/tokens/
 chmod 755 data/tokens/
+
+# Проверить права на директорию логов
+ls -la logs/
+chmod 750 logs/
 ```
 
 ### ❌ Ошибка: "OU not authorized"

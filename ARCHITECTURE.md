@@ -100,7 +100,7 @@ graph LR
         subgraph "HTTP Layer"
             MTLS[mTLS Handler]
             RT[Rate Limiter]
-            LOG[Audit Logger]
+            LOG[Audit/Error Logger]
         end
         
         subgraph "Business Logic"
@@ -182,7 +182,7 @@ hsm-service/
 │   │   ├── acl_reload_test.go  # Тесты hot reload ACL
 │   │   ├── middleware.go       # Rate limit, audit log
 │   │   ├── middleware_test.go  # Тесты middleware
-│   │   ├── logger.go           # Audit logging
+│   │   ├── logger.go           # Audit/error logging (split logs)
 │   │   ├── logger_test.go      # Тесты logger
 │   │   └── metrics.go          # Prometheus метрики
 │   │

@@ -380,6 +380,41 @@ sum(rate(hsm_tls_errors_total{error_type="certificate_required"}[5m]))
 
 ---
 
+## Логирование
+
+HSM Service ведет два независимых потока логов:
+
+- **audit.log** — все запросы (audit trail)
+- **error.log** — системные события и ошибки
+
+**Особенности:**
+- JSON формат, единое время: UTC, RFC3339 с микросекундами
+- `request_id` добавляется во все события для корреляции
+- Audit лог пишется в stdout (удобно для `docker logs`)
+- В debug режиме audit дублируется в error лог
+- Сервис не стартует без доступа на запись/ротацию
+
+**Пути по умолчанию:**
+- `/var/log/hsm-service/audit.log`
+- `/var/log/hsm-service/error.log`
+
+**Пример настройки в config.yaml:**
+```yaml
+logging:
+  level: info
+  format: json
+  error_path: /var/log/hsm-service/error.log
+  audit_path: /var/log/hsm-service/audit.log
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  audit_to_stdout: true
+  audit_mirror_to_error_on_debug: true
+```
+
+---
+
 ## Alerting Rules
 
 ### Critical Alerts

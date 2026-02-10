@@ -100,6 +100,39 @@ rotation:
 
 ---
 
+## 🧾 Логирование и аудит
+
+HSM Service использует разделение **audit** и **error** логов с единым JSON форматом.
+
+**Ключевые принципы:**
+- Audit лог фиксирует каждое обращение к API и события доступа.
+- Error лог содержит системные сообщения, ошибки и диагностику.
+- В каждый лог добавляется `request_id` для корреляции.
+- Время логов: UTC, RFC3339 с микросекундами.
+- Audit лог пишется в файл и в stdout (полезно для `docker logs`).
+- Если лог‑директория недоступна для записи/ротации, сервис **не стартует**.
+
+**Стандартные пути (конфигурируются):**
+- `/var/log/hsm-service/audit.log`
+- `/var/log/hsm-service/error.log`
+
+**Пример logging конфигурации:**
+```yaml
+logging:
+  level: info
+  format: json
+  error_path: /var/log/hsm-service/error.log
+  audit_path: /var/log/hsm-service/audit.log
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  audit_to_stdout: true
+  audit_mirror_to_error_on_debug: true
+```
+
+---
+
 ## 💡 Зачем это нужно?
 
 ### Проблема: Ключи шифрования везде

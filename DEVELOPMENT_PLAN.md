@@ -81,89 +81,43 @@ graph TB
 
 ---
 
-## � Унификация логирования
+## 📊 Унификация логирования (обновлено)
 
-### ✅ Текущее состояние (ЭТАЛОН для всей системы)
-
-HSM Service корректно реализует логирование и служит образцом для других проектов:
+HSM Service реализует эталонный подход к логированию для всей системы.
 
 | Параметр | Реализация | Статус |
 |----------|-----------|--------|
-| **Библиотека** | `log/slog` (stdlib only) | ✅ Правильно |
-| **Формат** | JSON | ✅ Правильно |
-| **Вывод** | MultiWriter(os.Stdout, file) | ✅ Видно в docker logs |
-| **Ротация** | lumberjack (100MB, 10 backups, 30d) | ✅ Production-ready |
-| **Инициализация** | main.go, ПЕРЕД config load | ✅ Safe по дизайну |
-| **Путь логов** | /var/log/hsm-service/hsm-service.log | ✅ Hardcoded (volume mount) |
-| **Graceful shutdown** | ✅ Implicit (file closes при exit) | ✅ Правильно |
+| **Библиотека** | `log/slog` (stdlib) | ✅ |
+| **Формат** | JSON | ✅ |
+| **Вывод** | stdout + file | ✅ |
+| **Разделение** | audit.log + error.log | ✅ |
+| **Ротация** | lumberjack (100MB, 10 backups, 30d, gzip) | ✅ |
+| **request_id** | есть в audit/error | ✅ |
+| **Время** | UTC, RFC3339 с микросекундами | ✅ |
+| **Fail-fast** | без прав на лог-директорию сервис не стартует | ✅ |
+| **Пути** | из config с дефолтами | ✅ |
 
-**Код инициализации (эталон):**
-```go
-// main.go lines 17-35
-logWriter := &lumberjack.Logger{
-    Filename:   "/var/log/hsm-service/hsm-service.log",
-    MaxSize:    100,
-    MaxBackups: 10,
-    MaxAge:     30,
-    Compress:   true,
-}
-
-multiWriter := io.MultiWriter(os.Stdout, logWriter)
-logger := slog.New(slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
-    Level: slog.LevelInfo,
-}))
-slog.SetDefault(logger)
-log.SetOutput(multiWriter)
+**Пример конфигурации:**
+```yaml
+logging:
+  level: info
+  format: json
+  error_path: /var/log/hsm-service/error.log
+  audit_path: /var/log/hsm-service/audit.log
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  audit_to_stdout: true
+  audit_mirror_to_error_on_debug: true
 ```
 
-### 🔧 Рекомендации (улучшения)
+**Модульность:**
+- `module=api`, `module=acl`, `module=crypto`
+- `module=rate_limit`, `module=middleware`, `module=server`, `module=keymanager`
+- audit логгер: `component=audit`, `module=audit`
 
-**1. Добавить модульное логирование:**
-
-```go
-// Текущее состояние:
-log.Infof("Key rotated") // Общий логгер
-
-// Рекомендуемое:
-log := slog.With("module", "keymanager")
-log.Info("Key rotated")
-
-// Результат в JSON:
-{"timestamp":"...","level":"INFO","message":"Key rotated","module":"keymanager"}
-```
-
-**Миграция:**
-- Заменить все `log.Infof(...)` на `log := slog.New(...); log.Info(...)`
-- Добавить `"module"` атрибут для основных компонентов:
-  - `module: "api"` — для HTTP API обработчиков
-  - `module: "keymanager"` — для операций с ключами
-  - `module: "acl"` — для проверок доступа
-  - `module: "crypto"` — для криптопреобразований
-
-**Результат:**
-```json
-{"timestamp":"2026-02-10T14:30:45Z","level":"INFO","message":"Key rotated","module":"keymanager"}
-{"timestamp":"2026-02-10T14:30:46Z","level":"INFO","message":"Connection established","module":"api"}
-```
-
-**2. Проверка доступности лог-директории при запуске (не критично, но рекомендуется):**
-
-```go
-// Перед инициализацией lumberjack
-logDir := filepath.Dir(logWriter.Filename)
-if err := os.MkdirAll(logDir, 0755); err != nil {
-    log.Fatalf("Cannot create log directory %s: %v", logDir, err)
-}
-
-// Проверить право на запись
-testFile := filepath.Join(logDir, ".write-test")
-if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-    log.Fatalf("Cannot write to log directory %s: %v", logDir, err)
-}
-os.Remove(testFile)
-```
-
-**Риск:** Без этого, если /var/log не смонтирован в Docker, логи молча будут потеряны.
+**Важно:** /var/log/hsm-service должен быть смонтирован и доступен для записи, иначе сервис завершится.
 
 ---
 
