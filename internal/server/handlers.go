@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
-	"log"
 	"log/slog"
 	"net/http"
 
@@ -41,12 +40,18 @@ type HealthResponse struct {
 	KEKStatus    map[string]string `json:"kek_status"`
 }
 
+var (
+	logAPI    = slog.With("module", "api")
+	logACL    = slog.With("module", "acl")
+	logCrypto = slog.With("module", "crypto")
+)
+
 // Helper functions
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("Error encoding JSON response: %v", err)
+		logAPI.Error("error encoding JSON response", "error", err)
 	}
 }
 
@@ -59,6 +64,7 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST
 		if r.Method != http.MethodPost {
+			SetAuditErrorCode(w, "method_not_allowed")
 			respondError(w, http.StatusMethodNotAllowed, "only POST allowed")
 			return
 		}
@@ -70,13 +76,21 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		// 1. Parse request
 		var req EncryptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			slog.Warn("invalid JSON in request", "path", r.URL.Path, "method", r.Method)
+			reqID := RequestIDFromContext(r.Context())
+			logAPI.Warn("invalid JSON in request",
+				"request_id", reqID,
+				"path", r.URL.Path,
+				"method", r.Method,
+			)
+			SetAuditErrorCode(w, "invalid_json")
 			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
+		SetAuditContext(w, req.Context)
 
 		// 2. Extract client certificate
 		if len(r.TLS.PeerCertificates) == 0 {
+			SetAuditErrorCode(w, "no_client_cert")
 			respondError(w, http.StatusUnauthorized, "no client certificate")
 			return
 		}
@@ -91,11 +105,14 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 
 		// 3. ACL check
 		if err := aclChecker.CheckAccess(clientCert, req.Context); err != nil {
-			slog.Warn("ACL check failed",
+			reqID := RequestIDFromContext(r.Context())
+			logACL.Warn("ACL check failed",
+				"request_id", reqID,
 				"client_cn", clientCN,
 				"context", req.Context,
 				"error", err,
 			)
+			SetAuditErrorCode(w, "acl_denied")
 			// Metrics: track ACL failure (security monitoring)
 			RecordACLFailure()
 			RecordRequest("/encrypt", clientCN, "acl_denied")
@@ -106,6 +123,7 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		// 4. Decode plaintext from base64
 		plaintext, err := base64.StdEncoding.DecodeString(req.Plaintext)
 		if err != nil {
+			SetAuditErrorCode(w, "invalid_base64")
 			respondError(w, http.StatusBadRequest, "invalid base64 plaintext")
 			return
 		}
@@ -120,11 +138,14 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		// AAD will be built based on key's mode (shared=OU, private=CN)
 		ciphertext, keyID, err := keyManager.Encrypt(plaintext, req.Context, clientOU, clientCN)
 		if err != nil {
-			slog.Error("encryption failed",
+			reqID := RequestIDFromContext(r.Context())
+			logCrypto.Error("encryption failed",
+				"request_id", reqID,
 				"client_cn", clientCN,
 				"context", req.Context,
 				"error", err,
 			)
+			SetAuditErrorCode(w, "encrypt_error")
 			// Metrics: track HSM error
 			RecordHSMError("encrypt")
 			RecordEncryptOp(req.Context, "failure")
@@ -132,6 +153,7 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 			respondError(w, http.StatusInternalServerError, "encryption failed")
 			return
 		}
+		SetAuditKeyID(w, keyID)
 
 		// Metrics: track successful encryption
 		RecordEncryptOp(req.Context, "success")
@@ -151,6 +173,7 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST
 		if r.Method != http.MethodPost {
+			SetAuditErrorCode(w, "method_not_allowed")
 			respondError(w, http.StatusMethodNotAllowed, "only POST allowed")
 			return
 		}
@@ -162,13 +185,22 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		// 1. Parse request
 		var req DecryptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			slog.Warn("invalid JSON in request", "path", r.URL.Path, "method", r.Method)
+			reqID := RequestIDFromContext(r.Context())
+			logAPI.Warn("invalid JSON in request",
+				"request_id", reqID,
+				"path", r.URL.Path,
+				"method", r.Method,
+			)
+			SetAuditErrorCode(w, "invalid_json")
 			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
+		SetAuditContext(w, req.Context)
+		SetAuditKeyID(w, req.KeyID)
 
 		// 2. Extract client certificate
 		if len(r.TLS.PeerCertificates) == 0 {
+			SetAuditErrorCode(w, "no_client_cert")
 			respondError(w, http.StatusUnauthorized, "no client certificate")
 			return
 		}
@@ -177,11 +209,14 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 
 		// 3. ACL check
 		if err := aclChecker.CheckAccess(clientCert, req.Context); err != nil {
-			slog.Warn("ACL check failed",
+			reqID := RequestIDFromContext(r.Context())
+			logACL.Warn("ACL check failed",
+				"request_id", reqID,
 				"client_cn", clientCN,
 				"context", req.Context,
 				"error", err,
 			)
+			SetAuditErrorCode(w, "acl_denied")
 			// Metrics: track ACL failure (security monitoring)
 			RecordACLFailure()
 			RecordRequest("/decrypt", clientCN, "acl_denied")
@@ -192,6 +227,7 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		// 4. Decode ciphertext from base64
 		ciphertext, err := base64.StdEncoding.DecodeString(req.Ciphertext)
 		if err != nil {
+			SetAuditErrorCode(w, "invalid_base64")
 			respondError(w, http.StatusBadRequest, "invalid base64 ciphertext")
 			return
 		}
@@ -212,12 +248,15 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		// AAD will be rebuilt based on key's mode (shared=OU, private=CN)
 		plaintext, err := keyManager.Decrypt(ciphertext, req.Context, clientOU, clientCN, req.KeyID)
 		if err != nil {
-			slog.Warn("decryption failed",
+			reqID := RequestIDFromContext(r.Context())
+			logCrypto.Warn("decryption failed",
+				"request_id", reqID,
 				"client_cn", clientCN,
 				"context", req.Context,
 				"key_id", req.KeyID,
 				"error", err,
 			)
+			SetAuditErrorCode(w, "decrypt_error")
 			// Metrics: track HSM error
 			RecordHSMError("decrypt")
 			RecordDecryptOp(req.Context, "failure")

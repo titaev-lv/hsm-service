@@ -75,8 +75,24 @@ func TestEnvOverrides(t *testing.T) {
 	// Set environment variables
 	os.Setenv("HSM_SERVER_PORT", "9443")
 	os.Setenv("HSM_LOG_LEVEL", "debug")
+	os.Setenv("HSM_LOG_ERROR_PATH", "/tmp/error.log")
+	os.Setenv("HSM_LOG_AUDIT_PATH", "/tmp/audit.log")
+	os.Setenv("HSM_LOG_MAX_SIZE_MB", "55")
+	os.Setenv("HSM_LOG_MAX_BACKUPS", "7")
+	os.Setenv("HSM_LOG_MAX_AGE_DAYS", "9")
+	os.Setenv("HSM_LOG_COMPRESS", "false")
+	os.Setenv("HSM_LOG_AUDIT_TO_STDOUT", "false")
+	os.Setenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG", "false")
 	defer os.Unsetenv("HSM_SERVER_PORT")
 	defer os.Unsetenv("HSM_LOG_LEVEL")
+	defer os.Unsetenv("HSM_LOG_ERROR_PATH")
+	defer os.Unsetenv("HSM_LOG_AUDIT_PATH")
+	defer os.Unsetenv("HSM_LOG_MAX_SIZE_MB")
+	defer os.Unsetenv("HSM_LOG_MAX_BACKUPS")
+	defer os.Unsetenv("HSM_LOG_MAX_AGE_DAYS")
+	defer os.Unsetenv("HSM_LOG_COMPRESS")
+	defer os.Unsetenv("HSM_LOG_AUDIT_TO_STDOUT")
+	defer os.Unsetenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG")
 
 	configContent := `
 server:
@@ -132,6 +148,89 @@ logging:
 	}
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("Logging.Level = %s, want debug (from env)", cfg.Logging.Level)
+	}
+	if cfg.Logging.ErrorPath != "/tmp/error.log" || cfg.Logging.AuditPath != "/tmp/audit.log" {
+		t.Errorf("unexpected log paths: error=%s audit=%s", cfg.Logging.ErrorPath, cfg.Logging.AuditPath)
+	}
+	if cfg.Logging.MaxSizeMB != 55 || cfg.Logging.MaxBackups != 7 || cfg.Logging.MaxAgeDays != 9 {
+		t.Errorf("unexpected log sizes: size=%d backups=%d age=%d", cfg.Logging.MaxSizeMB, cfg.Logging.MaxBackups, cfg.Logging.MaxAgeDays)
+	}
+	if cfg.Logging.Compress == nil || *cfg.Logging.Compress {
+		t.Errorf("expected compress=false from env")
+	}
+	if cfg.Logging.AuditToStdout == nil || *cfg.Logging.AuditToStdout {
+		t.Errorf("expected audit_to_stdout=false from env")
+	}
+	if cfg.Logging.AuditMirrorToErrorOnDebug == nil || *cfg.Logging.AuditMirrorToErrorOnDebug {
+		t.Errorf("expected audit_mirror_to_error_on_debug=false from env")
+	}
+}
+
+func TestLoggingDefaults(t *testing.T) {
+	configContent := `
+server:
+  port: "8443"
+  tls:
+    cert_path: "/pki/server/cert.crt"
+    key_path: "/pki/server/cert.key"
+    ca_path: "/pki/ca/ca.crt"
+
+hsm:
+  pkcs11_lib: "/usr/lib/softhsm/libsofthsm2.so"
+  slot_id: "0"
+  pin: "1234"
+  metadata_file: "/app/metadata.yaml"
+  keys:
+    test-key:
+      type: "aes"
+
+acl:
+  mappings:
+    Trading:
+      - test-key
+
+rate_limit:
+  requests_per_second: 100
+  burst: 200
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(configContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	if cfg.Logging.Level != "info" {
+		t.Errorf("Logging.Level = %s, want info", cfg.Logging.Level)
+	}
+	if cfg.Logging.Format != "json" {
+		t.Errorf("Logging.Format = %s, want json", cfg.Logging.Format)
+	}
+	if cfg.Logging.ErrorPath == "" || cfg.Logging.AuditPath == "" {
+		t.Errorf("expected default log paths set, got error=%q audit=%q", cfg.Logging.ErrorPath, cfg.Logging.AuditPath)
+	}
+	if cfg.Logging.MaxSizeMB != 100 || cfg.Logging.MaxBackups != 10 || cfg.Logging.MaxAgeDays != 30 {
+		t.Errorf("unexpected defaults: size=%d backups=%d age=%d", cfg.Logging.MaxSizeMB, cfg.Logging.MaxBackups, cfg.Logging.MaxAgeDays)
+	}
+	if cfg.Logging.Compress == nil || !*cfg.Logging.Compress {
+		t.Errorf("expected default compress=true")
+	}
+	if cfg.Logging.AuditToStdout == nil || !*cfg.Logging.AuditToStdout {
+		t.Errorf("expected default audit_to_stdout=true")
+	}
+	if cfg.Logging.AuditMirrorToErrorOnDebug == nil || !*cfg.Logging.AuditMirrorToErrorOnDebug {
+		t.Errorf("expected default audit_mirror_to_error_on_debug=true")
 	}
 }
 

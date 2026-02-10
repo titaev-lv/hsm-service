@@ -99,6 +99,14 @@ type RateLimitConfig struct {
 
 // LoggingConfig defines logging configuration
 type LoggingConfig struct {
-	Level  string `yaml:"level"`  // debug, info, warn, error
-	Format string `yaml:"format"` // json, text
+	Level                     string `yaml:"level"`                          // debug, info, warn, error
+	Format                    string `yaml:"format"`                         // json, text
+	ErrorPath                 string `yaml:"error_path"`                     // /var/log/hsm-service/error.log
+	AuditPath                 string `yaml:"audit_path"`                     // /var/log/hsm-service/audit.log
+	MaxSizeMB                 int    `yaml:"max_size_mb"`                    // MB
+	MaxBackups                int    `yaml:"max_backups"`                    // count
+	MaxAgeDays                int    `yaml:"max_age_days"`                   // days
+	Compress                  *bool  `yaml:"compress"`                       // default true
+	AuditToStdout             *bool  `yaml:"audit_to_stdout"`                // default true
+	AuditMirrorToErrorOnDebug *bool  `yaml:"audit_mirror_to_error_on_debug"` // default true
 }

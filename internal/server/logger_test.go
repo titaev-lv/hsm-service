@@ -1,6 +1,8 @@
 package server
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/titaev-lv/hsm-service/internal/config"
@@ -14,34 +16,88 @@ func TestInitLogger(t *testing.T) {
 		{
 			name: "json format",
 			config: &config.LoggingConfig{
-				Level:  "info",
-				Format: "json",
+				Level:       "info",
+				Format:      "json",
+				MaxSizeMB:   1,
+				MaxBackups:  1,
+				MaxAgeDays:  1,
+				Compress:    boolPtr(true),
+				AuditToStdout:            boolPtr(true),
+				AuditMirrorToErrorOnDebug: boolPtr(true),
 			},
 		},
 		{
 			name: "text format",
 			config: &config.LoggingConfig{
-				Level:  "debug",
-				Format: "text",
+				Level:       "debug",
+				Format:      "text",
+				MaxSizeMB:   1,
+				MaxBackups:  1,
+				MaxAgeDays:  1,
+				Compress:    boolPtr(true),
+				AuditToStdout:            boolPtr(true),
+				AuditMirrorToErrorOnDebug: boolPtr(true),
 			},
 		},
 		{
 			name: "default level",
 			config: &config.LoggingConfig{
-				Level:  "unknown",
-				Format: "json",
+				Level:       "unknown",
+				Format:      "json",
+				MaxSizeMB:   1,
+				MaxBackups:  1,
+				MaxAgeDays:  1,
+				Compress:    boolPtr(true),
+				AuditToStdout:            boolPtr(true),
+				AuditMirrorToErrorOnDebug: boolPtr(true),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tt.config.ErrorPath = filepath.Join(dir, "error.log")
+			tt.config.AuditPath = filepath.Join(dir, "audit.log")
+
 			err := InitLogger(tt.config)
 			if err != nil {
 				t.Errorf("InitLogger() error = %v", err)
 			}
 		})
 	}
+}
+
+func TestValidateLogPaths(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.LoggingConfig{
+		ErrorPath: filepath.Join(dir, "error.log"),
+		AuditPath: filepath.Join(dir, "audit.log"),
+	}
+
+	if err := ValidateLogPaths(cfg); err != nil {
+		t.Fatalf("ValidateLogPaths() error = %v", err)
+	}
+}
+
+func TestValidateLogPathsReadOnlyDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Skipf("chmod not supported: %v", err)
+	}
+
+	cfg := &config.LoggingConfig{
+		ErrorPath: filepath.Join(dir, "error.log"),
+		AuditPath: filepath.Join(dir, "audit.log"),
+	}
+
+	if err := ValidateLogPaths(cfg); err == nil {
+		t.Fatalf("expected error for read-only dir")
+	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 func TestSanitizeForLog(t *testing.T) {

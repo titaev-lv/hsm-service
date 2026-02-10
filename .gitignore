@@ -58,6 +58,7 @@ Thumbs.db
 # Logs
 *.log
 /var/log/
+logs/
 
 # Temporary files
 tmp/

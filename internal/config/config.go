@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -148,6 +149,42 @@ func applyEnvOverrides(cfg *Config) {
 	if format := os.Getenv("HSM_LOG_FORMAT"); format != "" {
 		cfg.Logging.Format = format
 	}
+	if errorPath := os.Getenv("HSM_LOG_ERROR_PATH"); errorPath != "" {
+		cfg.Logging.ErrorPath = errorPath
+	}
+	if auditPath := os.Getenv("HSM_LOG_AUDIT_PATH"); auditPath != "" {
+		cfg.Logging.AuditPath = auditPath
+	}
+	if maxSize := os.Getenv("HSM_LOG_MAX_SIZE_MB"); maxSize != "" {
+		if v, err := strconv.Atoi(maxSize); err == nil {
+			cfg.Logging.MaxSizeMB = v
+		}
+	}
+	if maxBackups := os.Getenv("HSM_LOG_MAX_BACKUPS"); maxBackups != "" {
+		if v, err := strconv.Atoi(maxBackups); err == nil {
+			cfg.Logging.MaxBackups = v
+		}
+	}
+	if maxAge := os.Getenv("HSM_LOG_MAX_AGE_DAYS"); maxAge != "" {
+		if v, err := strconv.Atoi(maxAge); err == nil {
+			cfg.Logging.MaxAgeDays = v
+		}
+	}
+	if compress := os.Getenv("HSM_LOG_COMPRESS"); compress != "" {
+		if v, err := strconv.ParseBool(compress); err == nil {
+			cfg.Logging.Compress = &v
+		}
+	}
+	if auditStdout := os.Getenv("HSM_LOG_AUDIT_TO_STDOUT"); auditStdout != "" {
+		if v, err := strconv.ParseBool(auditStdout); err == nil {
+			cfg.Logging.AuditToStdout = &v
+		}
+	}
+	if auditMirror := os.Getenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG"); auditMirror != "" {
+		if v, err := strconv.ParseBool(auditMirror); err == nil {
+			cfg.Logging.AuditMirrorToErrorOnDebug = &v
+		}
+	}
 }
 
 // validateConfig validates the configuration
@@ -208,6 +245,33 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Logging.Format == "" {
 		cfg.Logging.Format = "json" // default
+	}
+	if cfg.Logging.ErrorPath == "" {
+		cfg.Logging.ErrorPath = "/var/log/hsm-service/error.log"
+	}
+	if cfg.Logging.AuditPath == "" {
+		cfg.Logging.AuditPath = "/var/log/hsm-service/audit.log"
+	}
+	if cfg.Logging.MaxSizeMB == 0 {
+		cfg.Logging.MaxSizeMB = 100
+	}
+	if cfg.Logging.MaxBackups == 0 {
+		cfg.Logging.MaxBackups = 10
+	}
+	if cfg.Logging.MaxAgeDays == 0 {
+		cfg.Logging.MaxAgeDays = 30
+	}
+	if cfg.Logging.Compress == nil {
+		v := true
+		cfg.Logging.Compress = &v
+	}
+	if cfg.Logging.AuditToStdout == nil {
+		v := true
+		cfg.Logging.AuditToStdout = &v
+	}
+	if cfg.Logging.AuditMirrorToErrorOnDebug == nil {
+		v := true
+		cfg.Logging.AuditMirrorToErrorOnDebug = &v
 	}
 
 	return nil

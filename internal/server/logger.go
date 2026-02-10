@@ -1,11 +1,22 @@
 package server
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/titaev-lv/hsm-service/internal/config"
+	"gopkg.in/natefinch/lumberjack.v2"
+)
+
+var (
+	errorLogger *slog.Logger
+	auditLogger *slog.Logger
 )
 
 // InitLogger initializes the global slog logger based on configuration
@@ -25,25 +36,124 @@ func InitLogger(cfg *config.LoggingConfig) error {
 	}
 
 	opts := &slog.HandlerOptions{
-		Level: level,
+		Level:       level,
+		ReplaceAttr: replaceTimeAttr,
 	}
 
-	var handler slog.Handler
+	errorFile := &lumberjack.Logger{
+		Filename:   cfg.ErrorPath,
+		MaxSize:    cfg.MaxSizeMB,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAgeDays,
+		Compress:   cfg.Compress != nil && *cfg.Compress,
+	}
+
+	errorWriter := io.MultiWriter(os.Stdout, errorFile)
+
+	var errorHandler slog.Handler
 	if cfg.Format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		errorHandler = slog.NewJSONHandler(errorWriter, opts)
 	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		errorHandler = slog.NewTextHandler(errorWriter, opts)
 	}
 
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
+	errorLogger = slog.New(errorHandler)
+	slog.SetDefault(errorLogger)
+	log.SetOutput(errorWriter)
+
+	auditFile := &lumberjack.Logger{
+		Filename:   cfg.AuditPath,
+		MaxSize:    cfg.MaxSizeMB,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAgeDays,
+		Compress:   cfg.Compress != nil && *cfg.Compress,
+	}
+
+	auditWriter := io.Writer(auditFile)
+	if cfg.AuditToStdout != nil && *cfg.AuditToStdout {
+		auditWriter = io.MultiWriter(os.Stdout, auditWriter)
+	}
+	if level == slog.LevelDebug && cfg.AuditMirrorToErrorOnDebug != nil && *cfg.AuditMirrorToErrorOnDebug {
+		auditWriter = io.MultiWriter(auditWriter, errorWriter)
+	}
+
+	var auditHandler slog.Handler
+	if cfg.Format == "json" {
+		auditHandler = slog.NewJSONHandler(auditWriter, opts)
+	} else {
+		auditHandler = slog.NewTextHandler(auditWriter, opts)
+	}
+
+	auditLogger = slog.New(auditHandler).With("component", "audit", "module", "audit")
 
 	return nil
 }
 
+func replaceTimeAttr(_ []string, attr slog.Attr) slog.Attr {
+	if attr.Key != slog.TimeKey {
+		return attr
+	}
+	if t, ok := attr.Value.Any().(time.Time); ok {
+		attr.Value = slog.StringValue(t.UTC().Format("2006-01-02T15:04:05.000000Z"))
+	}
+	return attr
+}
+
 // AuditLogger returns a logger specifically for audit events
 func AuditLogger() *slog.Logger {
-	return slog.With("component", "audit")
+	if auditLogger == nil {
+		return slog.With("component", "audit", "module", "audit")
+	}
+	return auditLogger
+}
+
+// ValidateLogPaths ensures log directories are writable and support rename.
+func ValidateLogPaths(cfg *config.LoggingConfig) error {
+	if err := validateLogPath(cfg.ErrorPath); err != nil {
+		return fmt.Errorf("error log path validation failed: %w", err)
+	}
+	if err := validateLogPath(cfg.AuditPath); err != nil {
+		return fmt.Errorf("audit log path validation failed: %w", err)
+	}
+	return nil
+}
+
+func validateLogPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("log path is empty")
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create log dir %s: %w", dir, err)
+	}
+
+	// Create, write, and rename a temp file to validate write and rotation rights.
+	f, err := os.CreateTemp(dir, ".write-test-*")
+	if err != nil {
+		return fmt.Errorf("create write test in %s: %w", dir, err)
+	}
+	name := f.Name()
+	if _, err := f.WriteString("test"); err != nil {
+		_ = f.Close()
+		_ = os.Remove(name)
+		return fmt.Errorf("write test in %s: %w", dir, err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return fmt.Errorf("close write test in %s: %w", dir, err)
+	}
+
+	rotated := name + ".rotate"
+	if err := os.Rename(name, rotated); err != nil {
+		_ = os.Remove(name)
+		return fmt.Errorf("rename write test in %s: %w", dir, err)
+	}
+	if err := os.Remove(rotated); err != nil {
+		return fmt.Errorf("cleanup write test in %s: %w", dir, err)
+	}
+
+	return nil
 }
 
 // SanitizeForLog removes or redacts sensitive fields from log data

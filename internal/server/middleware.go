@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -9,37 +13,191 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type contextKey string
+
+const requestIDHeader = "X-Request-ID"
+
+const requestIDKey contextKey = "request_id"
+
+var (
+	logMiddleware = slog.With("module", "middleware")
+	logRateLimit  = slog.With("module", "rate_limit")
+)
+
+type auditResponseWriter struct {
+	http.ResponseWriter
+	status         int
+	auditContext   string
+	auditKeyID     string
+	auditErrorCode string
+}
+
+func (w *auditResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func RequestIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(requestIDKey); v != nil {
+		if id, ok := v.(string); ok {
+			return id
+		}
+	}
+	return ""
+}
+
+func SetAuditContext(w http.ResponseWriter, ctx string) {
+	if aw, ok := w.(*auditResponseWriter); ok {
+		aw.auditContext = ctx
+	}
+}
+
+func SetAuditKeyID(w http.ResponseWriter, keyID string) {
+	if aw, ok := w.(*auditResponseWriter); ok {
+		aw.auditKeyID = keyID
+	}
+}
+
+func SetAuditErrorCode(w http.ResponseWriter, code string) {
+	if aw, ok := w.(*auditResponseWriter); ok {
+		aw.auditErrorCode = code
+	}
+}
+
+func generateRequestID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(buf)
+}
+
+func auditActionFromPath(path string) string {
+	switch path {
+	case "/encrypt":
+		return "encrypt"
+	case "/decrypt":
+		return "decrypt"
+	case "/health":
+		return "health"
+	default:
+		return "unknown"
+	}
+}
+
+func auditResultFromStatus(status int) string {
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		return "success"
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests {
+		return "denied"
+	}
+	return "error"
+}
+
+func tlsVersionString(version uint16) string {
+	switch version {
+	case tls.VersionTLS13:
+		return "TLS1.3"
+	case tls.VersionTLS12:
+		return "TLS1.2"
+	case tls.VersionTLS11:
+		return "TLS1.1"
+	case tls.VersionTLS10:
+		return "TLS1.0"
+	default:
+		return "unknown"
+	}
+}
+
 // AuditLogMiddleware logs all requests with client information and duration
 func AuditLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
+		requestID := r.Header.Get(requestIDHeader)
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+		if requestID != "" {
+			w.Header().Set(requestIDHeader, requestID)
+		}
+
+		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
+		r = r.WithContext(ctx)
+
+		aw := &auditResponseWriter{ResponseWriter: w, status: http.StatusOK}
+
 		// Extract client certificate info
 		var clientCN string
 		var clientOU string
+		var tlsVersion string
+		var cipherSuite string
+		var certSerial string
+		var certIssuer string
+		var certNotBefore string
+		var certNotAfter string
 		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 			cert := r.TLS.PeerCertificates[0]
 			clientCN = cert.Subject.CommonName
 			if len(cert.Subject.OrganizationalUnit) > 0 {
 				clientOU = cert.Subject.OrganizationalUnit[0]
 			}
+			tlsVersion = tlsVersionString(r.TLS.Version)
+			cipherSuite = tls.CipherSuiteName(r.TLS.CipherSuite)
+			certSerial = cert.SerialNumber.String()
+			certIssuer = cert.Issuer.String()
+			certNotBefore = cert.NotBefore.UTC().Format("2006-01-02T15:04:05.000000Z")
+			certNotAfter = cert.NotAfter.UTC().Format("2006-01-02T15:04:05.000000Z")
 		}
 
 		// Call next handler
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(aw, r)
 
 		// Record request duration metric
 		duration := time.Since(start).Seconds()
 		RequestDuration.WithLabelValues(r.URL.Path).Observe(duration)
 
+		auditErrorCode := aw.auditErrorCode
+		if auditErrorCode == "" {
+			switch aw.status {
+			case http.StatusUnauthorized:
+				auditErrorCode = "unauthorized"
+			case http.StatusForbidden:
+				auditErrorCode = "acl_denied"
+			case http.StatusTooManyRequests:
+				auditErrorCode = "rate_limit"
+			case http.StatusMethodNotAllowed:
+				auditErrorCode = "method_not_allowed"
+			case http.StatusBadRequest:
+				auditErrorCode = "bad_request"
+			case http.StatusInternalServerError:
+				auditErrorCode = "internal_error"
+			}
+		}
+
 		// Log audit event
 		AuditLogger().Info("request",
+			"request_id", requestID,
+			"event_type", "audit",
+			"action", auditActionFromPath(r.URL.Path),
 			"method", r.Method,
 			"path", r.URL.Path,
+			"status_code", aw.status,
+			"result", auditResultFromStatus(aw.status),
+			"error_code", auditErrorCode,
 			"client_cn", clientCN,
 			"client_ou", clientOU,
 			"remote_addr", r.RemoteAddr,
 			"duration_ms", time.Since(start).Milliseconds(),
+			"context", aw.auditContext,
+			"key_id", aw.auditKeyID,
+			"tls_version", tlsVersion,
+			"cipher_suite", cipherSuite,
+			"client_cert_serial", certSerial,
+			"client_cert_issuer", certIssuer,
+			"client_cert_not_before", certNotBefore,
+			"client_cert_not_after", certNotAfter,
 		)
 	})
 }
@@ -49,7 +207,9 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				slog.Error("panic recovered",
+				reqID := RequestIDFromContext(r.Context())
+				logMiddleware.Error("panic recovered",
+					"request_id", reqID,
 					"error", err,
 					"method", r.Method,
 					"path", r.URL.Path,
@@ -64,7 +224,9 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 // RequestLogMiddleware logs basic request information
 func RequestLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Debug("incoming request",
+		reqID := RequestIDFromContext(r.Context())
+		logMiddleware.Debug("incoming request",
+			"request_id", reqID,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"remote_addr", r.RemoteAddr,
@@ -145,7 +307,7 @@ func (rl *RateLimiter) cleanupStale(maxAge time.Duration) {
 	}
 
 	if removed > 0 {
-		slog.Info("rate limiter cleanup",
+		logRateLimit.Info("rate limiter cleanup",
 			"removed", removed,
 			"remaining", len(rl.limiters),
 		)
@@ -158,6 +320,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract client CN from certificate
 			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+				SetAuditErrorCode(w, "no_client_cert")
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -166,13 +329,16 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 
 			// Check rate limit
 			if !limiter.GetLimiter(clientCN).Allow() {
-				slog.Warn("rate limit exceeded",
+				reqID := RequestIDFromContext(r.Context())
+				logRateLimit.Warn("rate limit exceeded",
+					"request_id", reqID,
 					"client_cn", clientCN,
 					"path", r.URL.Path,
 				)
 				// Metrics: track rate limit hit
 				RecordRateLimitHit(clientCN)
 				w.Header().Set("Retry-After", "1")
+				SetAuditErrorCode(w, "rate_limit")
 				respondError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
 			}

@@ -84,10 +84,10 @@ func NewServer(cfg *config.ServerConfig, keyManager *hsm.KeyManager, aclChecker 
 	// Register Prometheus metrics endpoint (A09:2021 monitoring requirement)
 	mux.Handle("/metrics", promhttp.Handler())
 
-	// 5. Apply middleware stack (rate limit -> audit -> recovery -> request log)
-	handler := RateLimitMiddleware(rateLimiter)(
-		RecoveryMiddleware(
-			AuditLogMiddleware(
+	// 5. Apply middleware stack (audit -> rate limit -> recovery -> request log)
+	handler := AuditLogMiddleware(
+		RateLimitMiddleware(rateLimiter)(
+			RecoveryMiddleware(
 				RequestLogMiddleware(mux),
 			),
 		),

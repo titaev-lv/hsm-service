@@ -34,6 +34,9 @@ services:
       
       # SoftHSM tokens (writable, must persist between restarts)
       - ./data/tokens:/var/lib/softhsm/tokens:rw
+
+      # Logs (writable, required for audit/error logs)
+      - ./logs:/var/log/hsm-service:rw
       
       # SoftHSM configuration (read-only)
       - ./softhsm2.conf:/etc/softhsm2.conf:ro
