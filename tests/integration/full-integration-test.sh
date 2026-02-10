@@ -241,6 +241,10 @@ cleanup_test_volumes() {
 # ==========================================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
+mkdir -p "$TEST_LOGS_DIR"
+TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
+mkdir -p "$TEST_LOGS_DIR"
 
 # Cleanup function to restore config and PKI on exit
 cleanup_on_exit() {
@@ -490,6 +494,14 @@ rate_limit:
 logging:
   level: info
   format: json
+    error_path: /logs/error.log
+    audit_path: /logs/audit.log
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 30
+    compress: true
+    audit_to_stdout: true
+    audit_mirror_to_error_on_debug: true
 CONFIG_EOF
 print_success "Test config created with hsm-test-token slot_id"
 
@@ -524,6 +536,7 @@ services:
       - ./revoked-test.yaml:/app/revoked.yaml:rw
       - hsm-test-tokens-volume:/var/lib/softhsm/tokens
       - ./softhsm2.conf:/etc/softhsm/softhsm2.conf:ro
+            - ./logs-test:/logs:rw
     
     networks:
       - hsm-test-net
@@ -1862,6 +1875,7 @@ services:
       - ./config-test.yaml:/app/config-test.yaml:ro
       - hsm-test-tokens-volume:/var/lib/softhsm/tokens
       - ./softhsm2.conf:/etc/softhsm/softhsm2.conf:ro
+            - ./logs-test:/logs:rw
     networks:
       - hsm-net
     restart: unless-stopped
@@ -1962,6 +1976,7 @@ services:
       - ./revoked-test.yaml:/app/revoked.yaml:rw
       - hsm-test-tokens-volume:/var/lib/softhsm/tokens:rw
       - ./softhsm2.conf:/etc/softhsm2.conf:ro
+            - ./logs-test:/logs:rw
 
     networks:
       - test-net
@@ -2017,5 +2032,6 @@ echo "  Docker build:  /tmp/docker-build.log"
 echo "  Compose up:    /tmp/docker-compose-up.log"
 echo "  Rotation:      /tmp/rotation.log"
 echo "  Cleanup:       /tmp/cleanup.log"
+echo "  Audit/Error:   $PROJECT_ROOT/logs-test/"
 echo ""
 echo -e "${GREEN}Integration test suite completed successfully!${NC}"

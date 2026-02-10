@@ -19,9 +19,14 @@ print_error() { echo -e "${RED}✗${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LOGS_DIR="$PROJECT_ROOT/logs"
+mkdir -p "$LOGS_DIR"
+
 print_header "E2E Test Suite - HSM Service"
 echo "Date: $(date)"
 echo "Location: $SCRIPT_DIR"
+echo "Logs dir: $LOGS_DIR"
 echo ""
 
 PASSED=0
