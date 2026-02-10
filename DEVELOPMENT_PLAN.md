@@ -81,7 +81,93 @@ graph TB
 
 ---
 
-## 👤 Предложения пользователя
+## � Унификация логирования
+
+### ✅ Текущее состояние (ЭТАЛОН для всей системы)
+
+HSM Service корректно реализует логирование и служит образцом для других проектов:
+
+| Параметр | Реализация | Статус |
+|----------|-----------|--------|
+| **Библиотека** | `log/slog` (stdlib only) | ✅ Правильно |
+| **Формат** | JSON | ✅ Правильно |
+| **Вывод** | MultiWriter(os.Stdout, file) | ✅ Видно в docker logs |
+| **Ротация** | lumberjack (100MB, 10 backups, 30d) | ✅ Production-ready |
+| **Инициализация** | main.go, ПЕРЕД config load | ✅ Safe по дизайну |
+| **Путь логов** | /var/log/hsm-service/hsm-service.log | ✅ Hardcoded (volume mount) |
+| **Graceful shutdown** | ✅ Implicit (file closes при exit) | ✅ Правильно |
+
+**Код инициализации (эталон):**
+```go
+// main.go lines 17-35
+logWriter := &lumberjack.Logger{
+    Filename:   "/var/log/hsm-service/hsm-service.log",
+    MaxSize:    100,
+    MaxBackups: 10,
+    MaxAge:     30,
+    Compress:   true,
+}
+
+multiWriter := io.MultiWriter(os.Stdout, logWriter)
+logger := slog.New(slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
+    Level: slog.LevelInfo,
+}))
+slog.SetDefault(logger)
+log.SetOutput(multiWriter)
+```
+
+### 🔧 Рекомендации (улучшения)
+
+**1. Добавить модульное логирование:**
+
+```go
+// Текущее состояние:
+log.Infof("Key rotated") // Общий логгер
+
+// Рекомендуемое:
+log := slog.With("module", "keymanager")
+log.Info("Key rotated")
+
+// Результат в JSON:
+{"timestamp":"...","level":"INFO","message":"Key rotated","module":"keymanager"}
+```
+
+**Миграция:**
+- Заменить все `log.Infof(...)` на `log := slog.New(...); log.Info(...)`
+- Добавить `"module"` атрибут для основных компонентов:
+  - `module: "api"` — для HTTP API обработчиков
+  - `module: "keymanager"` — для операций с ключами
+  - `module: "acl"` — для проверок доступа
+  - `module: "crypto"` — для криптопреобразований
+
+**Результат:**
+```json
+{"timestamp":"2026-02-10T14:30:45Z","level":"INFO","message":"Key rotated","module":"keymanager"}
+{"timestamp":"2026-02-10T14:30:46Z","level":"INFO","message":"Connection established","module":"api"}
+```
+
+**2. Проверка доступности лог-директории при запуске (не критично, но рекомендуется):**
+
+```go
+// Перед инициализацией lumberjack
+logDir := filepath.Dir(logWriter.Filename)
+if err := os.MkdirAll(logDir, 0755); err != nil {
+    log.Fatalf("Cannot create log directory %s: %v", logDir, err)
+}
+
+// Проверить право на запись
+testFile := filepath.Join(logDir, ".write-test")
+if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+    log.Fatalf("Cannot write to log directory %s: %v", logDir, err)
+}
+os.Remove(testFile)
+```
+
+**Риск:** Без этого, если /var/log не смонтирован в Docker, логи молча будут потеряны.
+
+---
+
+## �👤 Предложения пользователя
 
 ### 1. Объединение create-kek в hsm-admin
 
