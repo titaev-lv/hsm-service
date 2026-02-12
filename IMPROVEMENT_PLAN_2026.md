@@ -1,7 +1,7 @@
 # 🚀 HSM Service — План усовершенствования 2026
 
 > **Дата анализа**: 8 февраля 2026  
-> **Текущая версия**: v1.1.1  
+> **Текущая версия**: v1.1.2  
 > **Целевая версия**: v2.0.0  
 > **Статус**: Готов к исполнению
 
@@ -24,7 +24,7 @@
 
 ### Ключевые достижения
 
-✅ **Безопасность (v1.0.1 - v1.1.1)**
+✅ **Безопасность (v1.0.1 - v1.1.2)**
 - All OWASP Top 10 2021 vulnerabilities addressed
 - 7 security fixes (G115, G204, G304, G302/G306, G104, PIN leak)
 - TLS 1.3-only, mTLS enforced, AES-256-GCM
@@ -353,9 +353,9 @@ hsm-admin restore \
 
 ```yaml
 # backup-manifest.yaml (generated during backup)
-version: "1.0"
-backup_date: "2026-02-08T10:30:00Z"
-hsm_service_version: "v1.1.1"
+  version: "1.0"
+  backup_date: "2026-02-08T10:30:00Z"
+  hsm_service_version: "v1.1.2"
 encryption:
   algorithm: AES-256-GCM
   key_derivation: Argon2id
@@ -438,7 +438,7 @@ echo "✅ Backup completed: $BACKUP_FILE"
      -v /backup/hsm:/backup:ro \
      -v hsm-tokens:/var/lib/softhsm/tokens \
      -e BACKUP_ENCRYPTION_KEY=$KEY \
-     hsm-service:v1.1.1 \
+    hsm-service:v1.1.2 \
      /app/hsm-admin restore \
        --input /backup/hsm-backup-20260208-103000.enc \
        --verify-checksums
