@@ -1,5 +1,32 @@
 # Changelog 
 
+
+## v1.1.2 - 2026-02-12
+
+### Features
+- Split audit and error logs with independent rotation and JSON output
+- Add request tracking via X-Request-ID with status/result/error_code in audit logs
+- Include TLS/PCI fields in audit logs (tls_version, tls_cipher, cert metadata)
+- Add module tags for api/acl/crypto/middleware/rate_limit loggers
+- Standardize timestamps to UTC RFC3339 microseconds in slog output
+
+### Configuration
+- Make logging fully config-driven with defaults and env overrides
+- Add options for audit stdout mirroring and debug mirroring to error logs
+
+### Reliability
+- Fail fast if log directories are not writable (write/rename checks)
+- Restrict log directory permissions to 0750
+
+### Tests
+- Add logging config default/env override tests
+- Add logger initialization and log path validation tests
+- Update integration and e2e scripts to create log dirs and mount /logs
+
+### Documentation
+- Update README, monitoring, security, troubleshooting, and production guides
+- Document audit/error log split, request_id, and log path requirements
+
 ## v1.1.1 - 2026-02-08
 
 ### Security Fixes
