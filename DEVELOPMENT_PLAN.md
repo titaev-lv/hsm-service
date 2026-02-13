@@ -91,6 +91,7 @@ HSM Service реализует эталонный подход к логиров
 | **Формат** | JSON | ✅ |
 | **Вывод** | stdout + file | ✅ |
 | **Разделение** | audit.log + error.log | ✅ |
+| **Access log** | access.log (HTTP requests) | ✅ |
 | **Ротация** | lumberjack (100MB, 10 backups, 30d, gzip) | ✅ |
 | **request_id** | есть в audit/error | ✅ |
 | **Время** | UTC, RFC3339 с микросекундами | ✅ |
@@ -104,11 +105,13 @@ logging:
   format: json
   error_path: /var/log/hsm-service/error.log
   audit_path: /var/log/hsm-service/audit.log
+  access_path: /var/log/hsm-service/access.log
   max_size_mb: 100
   max_backups: 10
   max_age_days: 30
   compress: true
   audit_to_stdout: true
+  access_to_stdout: true
   audit_mirror_to_error_on_debug: true
 ```
 
@@ -116,6 +119,22 @@ logging:
 - `module=api`, `module=acl`, `module=crypto`
 - `module=rate_limit`, `module=middleware`, `module=server`, `module=keymanager`
 - audit логгер: `component=audit`, `module=audit`
+
+**Access log:**
+- Отдельный `access.log` только для HTTP запросов
+- Минимальный набор полей:
+  - time
+  - request_id
+  - method
+  - path
+  - status
+  - duration_ms
+  - client_ip
+  - user_agent
+  - tls_version
+  - request_size_bytes
+  - response_size_bytes
+- Audit сохраняется для PCI DSS и содержит контекст/ключи/результаты
 
 **Важно:** /var/log/hsm-service должен быть смонтирован и доступен для записи, иначе сервис завершится.
 

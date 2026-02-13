@@ -22,7 +22,8 @@ func TestInitLogger(t *testing.T) {
 				MaxBackups:  1,
 				MaxAgeDays:  1,
 				Compress:    boolPtr(true),
-				AuditToStdout:            boolPtr(true),
+				AuditToStdout:             boolPtr(true),
+				AccessToStdout:            boolPtr(true),
 				AuditMirrorToErrorOnDebug: boolPtr(true),
 			},
 		},
@@ -35,7 +36,8 @@ func TestInitLogger(t *testing.T) {
 				MaxBackups:  1,
 				MaxAgeDays:  1,
 				Compress:    boolPtr(true),
-				AuditToStdout:            boolPtr(true),
+				AuditToStdout:             boolPtr(true),
+				AccessToStdout:            boolPtr(true),
 				AuditMirrorToErrorOnDebug: boolPtr(true),
 			},
 		},
@@ -48,7 +50,8 @@ func TestInitLogger(t *testing.T) {
 				MaxBackups:  1,
 				MaxAgeDays:  1,
 				Compress:    boolPtr(true),
-				AuditToStdout:            boolPtr(true),
+				AuditToStdout:             boolPtr(true),
+				AccessToStdout:            boolPtr(true),
 				AuditMirrorToErrorOnDebug: boolPtr(true),
 			},
 		},
@@ -59,6 +62,7 @@ func TestInitLogger(t *testing.T) {
 			dir := t.TempDir()
 			tt.config.ErrorPath = filepath.Join(dir, "error.log")
 			tt.config.AuditPath = filepath.Join(dir, "audit.log")
+			tt.config.AccessPath = filepath.Join(dir, "access.log")
 
 			err := InitLogger(tt.config)
 			if err != nil {
@@ -73,6 +77,7 @@ func TestValidateLogPaths(t *testing.T) {
 	cfg := &config.LoggingConfig{
 		ErrorPath: filepath.Join(dir, "error.log"),
 		AuditPath: filepath.Join(dir, "audit.log"),
+		AccessPath: filepath.Join(dir, "access.log"),
 	}
 
 	if err := ValidateLogPaths(cfg); err != nil {
@@ -89,6 +94,7 @@ func TestValidateLogPathsReadOnlyDir(t *testing.T) {
 	cfg := &config.LoggingConfig{
 		ErrorPath: filepath.Join(dir, "error.log"),
 		AuditPath: filepath.Join(dir, "audit.log"),
+		AccessPath: filepath.Join(dir, "access.log"),
 	}
 
 	if err := ValidateLogPaths(cfg); err == nil {

@@ -77,21 +77,25 @@ func TestEnvOverrides(t *testing.T) {
 	os.Setenv("HSM_LOG_LEVEL", "debug")
 	os.Setenv("HSM_LOG_ERROR_PATH", "/tmp/error.log")
 	os.Setenv("HSM_LOG_AUDIT_PATH", "/tmp/audit.log")
+	os.Setenv("HSM_LOG_ACCESS_PATH", "/tmp/access.log")
 	os.Setenv("HSM_LOG_MAX_SIZE_MB", "55")
 	os.Setenv("HSM_LOG_MAX_BACKUPS", "7")
 	os.Setenv("HSM_LOG_MAX_AGE_DAYS", "9")
 	os.Setenv("HSM_LOG_COMPRESS", "false")
 	os.Setenv("HSM_LOG_AUDIT_TO_STDOUT", "false")
+	os.Setenv("HSM_LOG_ACCESS_TO_STDOUT", "false")
 	os.Setenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG", "false")
 	defer os.Unsetenv("HSM_SERVER_PORT")
 	defer os.Unsetenv("HSM_LOG_LEVEL")
 	defer os.Unsetenv("HSM_LOG_ERROR_PATH")
 	defer os.Unsetenv("HSM_LOG_AUDIT_PATH")
+	defer os.Unsetenv("HSM_LOG_ACCESS_PATH")
 	defer os.Unsetenv("HSM_LOG_MAX_SIZE_MB")
 	defer os.Unsetenv("HSM_LOG_MAX_BACKUPS")
 	defer os.Unsetenv("HSM_LOG_MAX_AGE_DAYS")
 	defer os.Unsetenv("HSM_LOG_COMPRESS")
 	defer os.Unsetenv("HSM_LOG_AUDIT_TO_STDOUT")
+	defer os.Unsetenv("HSM_LOG_ACCESS_TO_STDOUT")
 	defer os.Unsetenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG")
 
 	configContent := `
@@ -149,8 +153,8 @@ logging:
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("Logging.Level = %s, want debug (from env)", cfg.Logging.Level)
 	}
-	if cfg.Logging.ErrorPath != "/tmp/error.log" || cfg.Logging.AuditPath != "/tmp/audit.log" {
-		t.Errorf("unexpected log paths: error=%s audit=%s", cfg.Logging.ErrorPath, cfg.Logging.AuditPath)
+	if cfg.Logging.ErrorPath != "/tmp/error.log" || cfg.Logging.AuditPath != "/tmp/audit.log" || cfg.Logging.AccessPath != "/tmp/access.log" {
+		t.Errorf("unexpected log paths: error=%s audit=%s access=%s", cfg.Logging.ErrorPath, cfg.Logging.AuditPath, cfg.Logging.AccessPath)
 	}
 	if cfg.Logging.MaxSizeMB != 55 || cfg.Logging.MaxBackups != 7 || cfg.Logging.MaxAgeDays != 9 {
 		t.Errorf("unexpected log sizes: size=%d backups=%d age=%d", cfg.Logging.MaxSizeMB, cfg.Logging.MaxBackups, cfg.Logging.MaxAgeDays)
@@ -160,6 +164,9 @@ logging:
 	}
 	if cfg.Logging.AuditToStdout == nil || *cfg.Logging.AuditToStdout {
 		t.Errorf("expected audit_to_stdout=false from env")
+	}
+	if cfg.Logging.AccessToStdout == nil || *cfg.Logging.AccessToStdout {
+		t.Errorf("expected access_to_stdout=false from env")
 	}
 	if cfg.Logging.AuditMirrorToErrorOnDebug == nil || *cfg.Logging.AuditMirrorToErrorOnDebug {
 		t.Errorf("expected audit_mirror_to_error_on_debug=false from env")
@@ -217,8 +224,8 @@ rate_limit:
 	if cfg.Logging.Format != "json" {
 		t.Errorf("Logging.Format = %s, want json", cfg.Logging.Format)
 	}
-	if cfg.Logging.ErrorPath == "" || cfg.Logging.AuditPath == "" {
-		t.Errorf("expected default log paths set, got error=%q audit=%q", cfg.Logging.ErrorPath, cfg.Logging.AuditPath)
+	if cfg.Logging.ErrorPath == "" || cfg.Logging.AuditPath == "" || cfg.Logging.AccessPath == "" {
+		t.Errorf("expected default log paths set, got error=%q audit=%q access=%q", cfg.Logging.ErrorPath, cfg.Logging.AuditPath, cfg.Logging.AccessPath)
 	}
 	if cfg.Logging.MaxSizeMB != 100 || cfg.Logging.MaxBackups != 10 || cfg.Logging.MaxAgeDays != 30 {
 		t.Errorf("unexpected defaults: size=%d backups=%d age=%d", cfg.Logging.MaxSizeMB, cfg.Logging.MaxBackups, cfg.Logging.MaxAgeDays)
@@ -228,6 +235,9 @@ rate_limit:
 	}
 	if cfg.Logging.AuditToStdout == nil || !*cfg.Logging.AuditToStdout {
 		t.Errorf("expected default audit_to_stdout=true")
+	}
+	if cfg.Logging.AccessToStdout == nil || !*cfg.Logging.AccessToStdout {
+		t.Errorf("expected default access_to_stdout=true")
 	}
 	if cfg.Logging.AuditMirrorToErrorOnDebug == nil || !*cfg.Logging.AuditMirrorToErrorOnDebug {
 		t.Errorf("expected default audit_mirror_to_error_on_debug=true")

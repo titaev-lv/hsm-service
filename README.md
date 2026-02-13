@@ -102,10 +102,11 @@ rotation:
 
 ## 🧾 Логирование и аудит
 
-HSM Service использует разделение **audit** и **error** логов с единым JSON форматом.
+HSM Service использует разделение **audit**, **access** и **error** логов с единым JSON форматом.
 
 **Ключевые принципы:**
-- Audit лог фиксирует каждое обращение к API и события доступа.
+- Audit лог фиксирует каждое обращение к API и события доступа (для PCI DSS).
+- Access лог фиксирует все HTTP запросы с минимальным набором полей.
 - Error лог содержит системные сообщения, ошибки и диагностику.
 - В каждый лог добавляется `request_id` для корреляции.
 - Время логов: UTC, RFC3339 с микросекундами.
@@ -114,6 +115,7 @@ HSM Service использует разделение **audit** и **error** л�
 
 **Стандартные пути (конфигурируются):**
 - `/var/log/hsm-service/audit.log`
+- `/var/log/hsm-service/access.log`
 - `/var/log/hsm-service/error.log`
 
 **Пример logging конфигурации:**
@@ -123,11 +125,13 @@ logging:
   format: json
   error_path: /var/log/hsm-service/error.log
   audit_path: /var/log/hsm-service/audit.log
+  access_path: /var/log/hsm-service/access.log
   max_size_mb: 100
   max_backups: 10
   max_age_days: 30
   compress: true
   audit_to_stdout: true
+  access_to_stdout: true
   audit_mirror_to_error_on_debug: true
 ```
 

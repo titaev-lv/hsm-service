@@ -103,10 +103,12 @@ type LoggingConfig struct {
 	Format                    string `yaml:"format"`                         // json, text
 	ErrorPath                 string `yaml:"error_path"`                     // /var/log/hsm-service/error.log
 	AuditPath                 string `yaml:"audit_path"`                     // /var/log/hsm-service/audit.log
+	AccessPath                string `yaml:"access_path"`                    // /var/log/hsm-service/access.log
 	MaxSizeMB                 int    `yaml:"max_size_mb"`                    // MB
 	MaxBackups                int    `yaml:"max_backups"`                    // count
 	MaxAgeDays                int    `yaml:"max_age_days"`                   // days
 	Compress                  *bool  `yaml:"compress"`                       // default true
 	AuditToStdout             *bool  `yaml:"audit_to_stdout"`                // default true
+	AccessToStdout            *bool  `yaml:"access_to_stdout"`               // default true
 	AuditMirrorToErrorOnDebug *bool  `yaml:"audit_mirror_to_error_on_debug"` // default true
 }

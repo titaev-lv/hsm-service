@@ -155,6 +155,9 @@ func applyEnvOverrides(cfg *Config) {
 	if auditPath := os.Getenv("HSM_LOG_AUDIT_PATH"); auditPath != "" {
 		cfg.Logging.AuditPath = auditPath
 	}
+	if accessPath := os.Getenv("HSM_LOG_ACCESS_PATH"); accessPath != "" {
+		cfg.Logging.AccessPath = accessPath
+	}
 	if maxSize := os.Getenv("HSM_LOG_MAX_SIZE_MB"); maxSize != "" {
 		if v, err := strconv.Atoi(maxSize); err == nil {
 			cfg.Logging.MaxSizeMB = v
@@ -178,6 +181,11 @@ func applyEnvOverrides(cfg *Config) {
 	if auditStdout := os.Getenv("HSM_LOG_AUDIT_TO_STDOUT"); auditStdout != "" {
 		if v, err := strconv.ParseBool(auditStdout); err == nil {
 			cfg.Logging.AuditToStdout = &v
+		}
+	}
+	if accessStdout := os.Getenv("HSM_LOG_ACCESS_TO_STDOUT"); accessStdout != "" {
+		if v, err := strconv.ParseBool(accessStdout); err == nil {
+			cfg.Logging.AccessToStdout = &v
 		}
 	}
 	if auditMirror := os.Getenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG"); auditMirror != "" {
@@ -252,6 +260,9 @@ func validateConfig(cfg *Config) error {
 	if cfg.Logging.AuditPath == "" {
 		cfg.Logging.AuditPath = "/var/log/hsm-service/audit.log"
 	}
+	if cfg.Logging.AccessPath == "" {
+		cfg.Logging.AccessPath = "/var/log/hsm-service/access.log"
+	}
 	if cfg.Logging.MaxSizeMB == 0 {
 		cfg.Logging.MaxSizeMB = 100
 	}
@@ -268,6 +279,10 @@ func validateConfig(cfg *Config) error {
 	if cfg.Logging.AuditToStdout == nil {
 		v := true
 		cfg.Logging.AuditToStdout = &v
+	}
+	if cfg.Logging.AccessToStdout == nil {
+		v := true
+		cfg.Logging.AccessToStdout = &v
 	}
 	if cfg.Logging.AuditMirrorToErrorOnDebug == nil {
 		v := true

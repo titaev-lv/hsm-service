@@ -49,9 +49,11 @@ logging:
   format: json
   error_path: /var/log/hsm-service/error.log
   audit_path: /var/log/hsm-service/audit.log
+  access_path: /var/log/hsm-service/access.log
   max_size_mb: 100
   max_backups: 10
   max_age_days: 30
   compress: true
   audit_to_stdout: true
+  access_to_stdout: true
   audit_mirror_to_error_on_debug: true

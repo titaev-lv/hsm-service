@@ -624,7 +624,10 @@ receivers:
 
 ### Structured Logging (JSON)
 
-HSM Service логирует в JSON формате:
+HSM Service логирует в JSON формате и разделяет потоки:
+- audit.log (PCI DSS, крипто-операции)
+- access.log (все HTTP запросы)
+- error.log (системные ошибки и диагностика)
 
 ```json
 {
@@ -637,6 +640,23 @@ HSM Service логирует в JSON формате:
   "duration_ms": 15.3,
   "status_code": 200
 }
+
+Пример access log:
+```json
+{
+  "time": "2024-01-15T10:30:45.000000Z",
+  "request_id": "4f3b2b1c-6a7d-4b9a-9f2f-2a9b9b8f1c77",
+  "method": "POST",
+  "path": "/encrypt",
+  "status": 200,
+  "duration_ms": 15,
+  "client_ip": "10.0.0.5:53412",
+  "user_agent": "curl/8.4.0",
+  "tls_version": "TLS1.3",
+  "request_size_bytes": 128,
+  "response_size_bytes": 256
+}
+```
 ```
 
 ### Log Levels

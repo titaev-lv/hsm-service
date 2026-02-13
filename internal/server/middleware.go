@@ -30,11 +30,18 @@ type auditResponseWriter struct {
 	auditContext   string
 	auditKeyID     string
 	auditErrorCode string
+	bytesWritten   int64
 }
 
 func (w *auditResponseWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *auditResponseWriter) Write(b []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(b)
+	w.bytesWritten += int64(n)
+	return n, err
 }
 
 func RequestIDFromContext(ctx context.Context) string {
@@ -199,6 +206,23 @@ func AuditLogMiddleware(next http.Handler) http.Handler {
 			"client_cert_not_before", certNotBefore,
 			"client_cert_not_after", certNotAfter,
 		)
+
+		accessFields := []any{
+			"request_id", requestID,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", aw.status,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"client_ip", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+			"tls_version", tlsVersion,
+		}
+		if r.ContentLength >= 0 {
+			accessFields = append(accessFields, "request_size_bytes", r.ContentLength)
+		}
+		accessFields = append(accessFields, "response_size_bytes", aw.bytesWritten)
+
+		AccessLogger().Info("request", accessFields...)
 	})
 }
 

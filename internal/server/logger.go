@@ -17,6 +17,7 @@ import (
 var (
 	errorLogger *slog.Logger
 	auditLogger *slog.Logger
+	accessLogger *slog.Logger
 )
 
 // InitLogger initializes the global slog logger based on configuration
@@ -86,6 +87,28 @@ func InitLogger(cfg *config.LoggingConfig) error {
 
 	auditLogger = slog.New(auditHandler).With("component", "audit", "module", "audit")
 
+	accessFile := &lumberjack.Logger{
+		Filename:   cfg.AccessPath,
+		MaxSize:    cfg.MaxSizeMB,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAgeDays,
+		Compress:   cfg.Compress != nil && *cfg.Compress,
+	}
+
+	accessWriter := io.Writer(accessFile)
+	if cfg.AccessToStdout != nil && *cfg.AccessToStdout {
+		accessWriter = io.MultiWriter(os.Stdout, accessWriter)
+	}
+
+	var accessHandler slog.Handler
+	if cfg.Format == "json" {
+		accessHandler = slog.NewJSONHandler(accessWriter, opts)
+	} else {
+		accessHandler = slog.NewTextHandler(accessWriter, opts)
+	}
+
+	accessLogger = slog.New(accessHandler).With("component", "access", "module", "access")
+
 	return nil
 }
 
@@ -107,6 +130,14 @@ func AuditLogger() *slog.Logger {
 	return auditLogger
 }
 
+// AccessLogger returns a logger specifically for access events
+func AccessLogger() *slog.Logger {
+	if accessLogger == nil {
+		return slog.With("component", "access", "module", "access")
+	}
+	return accessLogger
+}
+
 // ValidateLogPaths ensures log directories are writable and support rename.
 func ValidateLogPaths(cfg *config.LoggingConfig) error {
 	if err := validateLogPath(cfg.ErrorPath); err != nil {
@@ -114,6 +145,9 @@ func ValidateLogPaths(cfg *config.LoggingConfig) error {
 	}
 	if err := validateLogPath(cfg.AuditPath); err != nil {
 		return fmt.Errorf("audit log path validation failed: %w", err)
+	}
+	if err := validateLogPath(cfg.AccessPath); err != nil {
+		return fmt.Errorf("access log path validation failed: %w", err)
 	}
 	return nil
 }
