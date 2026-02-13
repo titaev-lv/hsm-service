@@ -1978,7 +1978,7 @@ services:
       - ./revoked-test.yaml:/app/revoked.yaml:rw
       - hsm-test-tokens-volume:/var/lib/softhsm/tokens:rw
       - ./softhsm2.conf:/etc/softhsm2.conf:ro
-            - ./logs-test:/logs:rw
+      - ./logs-test:/logs:rw
 
     networks:
       - test-net
