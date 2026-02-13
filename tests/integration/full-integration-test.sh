@@ -1877,7 +1877,7 @@ services:
       - ./config-test.yaml:/app/config-test.yaml:ro
       - hsm-test-tokens-volume:/var/lib/softhsm/tokens
       - ./softhsm2.conf:/etc/softhsm/softhsm2.conf:ro
-            - ./logs-test:/logs:rw
+      - ./logs-test:/logs:rw
     networks:
       - hsm-net
     restart: unless-stopped
