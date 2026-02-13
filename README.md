@@ -112,6 +112,8 @@ HSM Service использует разделение **audit**, **access** и *
 - Время логов: UTC, RFC3339 с микросекундами.
 - Audit лог пишется в файл и в stdout (полезно для `docker logs`).
 - Если лог‑директория недоступна для записи/ротации, сервис **не стартует**.
+- При SIGTERM/SIGINT выполняется graceful shutdown с `Shutdown(ctx)` и закрытием лог‑writers.
+- Panic recovery middleware логирует stack trace в `error.log` и возвращает 500.
 
 **Стандартные пути (конфигурируются):**
 - `/var/log/hsm-service/audit.log`

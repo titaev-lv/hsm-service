@@ -302,12 +302,12 @@ go test -run TestACL ./internal/server/
 ### full-integration-test.sh
 
 **Расположение**: `tests/integration/full-integration-test.sh`  
-**Тестов**: 45 тестов  
+**Тестов**: 76 тестов  
 **Время выполнения**: ~2-3 минуты
 
 **Этапы тестирования**:
 
-**Phase 1: Environment Setup** (10 тестов)
+**Phase 1: Environment Setup** (13 тестов)
 - Docker контейнер запущен
 - HSM инициализирован
 - Сертификаты созданы
@@ -318,6 +318,9 @@ go test -run TestACL ./internal/server/
 - TLS работает
 - mTLS проверяется
 - Rate limiting активен
+- Graceful shutdown по SIGTERM
+- Лог «received signal, shutting down» присутствует
+- Нет panic/fatal после остановки
 
 **Phase 2: Basic Operations** (8 тестов)
 - Encrypt операция (Trading client)
@@ -356,13 +359,12 @@ go test -run TestACL ./internal/server/
 - Metadata обновлена
 - Hot reload без перезапуска
 
-**Phase 5: Advanced Scenarios** (6 тестов)
+**Phase 5: Advanced Scenarios** (5 тестов)
 - Concurrent операции (100 запросов)
 - Rate limiting (превышение лимита)
 - Metrics корректные
 - Audit logs записаны
 - Error handling
-- Graceful shutdown
 
 **Запуск**:
 ```bash
