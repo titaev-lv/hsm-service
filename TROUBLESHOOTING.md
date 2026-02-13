@@ -67,6 +67,9 @@ echo "7. Recent Errors:"
 journalctl -u hsm-service --since "5 minutes ago" | grep -i error | tail -5
 echo
 
+# 7.1 Access log (file)
+tail -n 20 /var/log/hsm-service/access.log
+
 # 8. Check resources
 echo "8. Resources:"
 echo "Memory: $(free -h | grep Mem | awk '{print $3 "/" $2}')"

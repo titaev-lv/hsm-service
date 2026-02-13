@@ -733,6 +733,8 @@ func (rl *RateLimiter) StartCleanup() {
 - ✅ Requirement 6.5.3 (Cryptographic practices)
 - ✅ Requirement 8 (Authentication)
 - ✅ Requirement 10 (Audit logging)
+    - audit.log (PCI DSS events)
+    - access.log (all HTTP requests)
 
 **Minor Gaps:**
 - ⚠️ Requirement 3.6.6 (Split knowledge/dual control) - Single HSM PIN

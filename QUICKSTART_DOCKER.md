@@ -253,6 +253,11 @@ openssl x509 -in pki/server/hsm-service.local.crt -noout -subject -dates      # 
 # Проверить логи
 docker compose logs hsm-service
 
+# Логи в файлах (в контейнере)
+# /var/log/hsm-service/audit.log
+# /var/log/hsm-service/access.log
+# /var/log/hsm-service/error.log
+
 # Пересобрать образ
 docker compose up -d --build
 

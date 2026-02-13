@@ -90,10 +90,10 @@ HSM Service реализует эталонный подход к логиров
 | **Библиотека** | `log/slog` (stdlib) | ✅ |
 | **Формат** | JSON | ✅ |
 | **Вывод** | stdout + file | ✅ |
-| **Разделение** | audit.log + error.log | ✅ |
+| **Разделение** | audit.log + access.log + error.log | ✅ |
 | **Access log** | access.log (HTTP requests) | ✅ |
 | **Ротация** | lumberjack (100MB, 10 backups, 30d, gzip) | ✅ |
-| **request_id** | есть в audit/error | ✅ |
+| **request_id** | есть в audit/access/error | ✅ |
 | **Время** | UTC, RFC3339 с микросекундами | ✅ |
 | **Fail-fast** | без прав на лог-директорию сервис не стартует | ✅ |
 | **Пути** | из config с дефолтами | ✅ |
