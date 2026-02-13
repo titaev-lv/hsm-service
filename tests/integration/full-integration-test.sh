@@ -494,16 +494,16 @@ rate_limit:
 logging:
   level: info
   format: json
-    error_path: /logs/error.log
-    audit_path: /logs/audit.log
-    access_path: /logs/access.log
-    max_size_mb: 100
-    max_backups: 10
-    max_age_days: 30
-    compress: true
-    audit_to_stdout: true
-    access_to_stdout: true
-    audit_mirror_to_error_on_debug: true
+  error_path: /logs/error.log
+  audit_path: /logs/audit.log
+  access_path: /logs/access.log
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  audit_to_stdout: true
+  access_to_stdout: true
+  audit_mirror_to_error_on_debug: true
 CONFIG_EOF
 print_success "Test config created with hsm-test-token slot_id"
 
