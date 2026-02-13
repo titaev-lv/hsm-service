@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -232,11 +233,13 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if err := recover(); err != nil {
 				reqID := RequestIDFromContext(r.Context())
-				logMiddleware.Error("panic recovered",
+				ErrorLogger().Error("panic recovered",
 					"request_id", reqID,
-					"error", err,
+					"panic", err,
 					"method", r.Method,
 					"path", r.URL.Path,
+					"remote_addr", r.RemoteAddr,
+					"stack", string(debug.Stack()),
 				)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}

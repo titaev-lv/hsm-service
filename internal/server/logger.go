@@ -15,9 +15,12 @@ import (
 )
 
 var (
-	errorLogger *slog.Logger
-	auditLogger *slog.Logger
-	accessLogger *slog.Logger
+	errorLogger   *slog.Logger
+	auditLogger   *slog.Logger
+	accessLogger  *slog.Logger
+	errorLogFile  *lumberjack.Logger
+	auditLogFile  *lumberjack.Logger
+	accessLogFile *lumberjack.Logger
 )
 
 // InitLogger initializes the global slog logger based on configuration
@@ -48,6 +51,7 @@ func InitLogger(cfg *config.LoggingConfig) error {
 		MaxAge:     cfg.MaxAgeDays,
 		Compress:   cfg.Compress != nil && *cfg.Compress,
 	}
+	errorLogFile = errorFile
 
 	errorWriter := io.MultiWriter(os.Stdout, errorFile)
 
@@ -69,6 +73,7 @@ func InitLogger(cfg *config.LoggingConfig) error {
 		MaxAge:     cfg.MaxAgeDays,
 		Compress:   cfg.Compress != nil && *cfg.Compress,
 	}
+	auditLogFile = auditFile
 
 	auditWriter := io.Writer(auditFile)
 	if cfg.AuditToStdout != nil && *cfg.AuditToStdout {
@@ -94,6 +99,7 @@ func InitLogger(cfg *config.LoggingConfig) error {
 		MaxAge:     cfg.MaxAgeDays,
 		Compress:   cfg.Compress != nil && *cfg.Compress,
 	}
+	accessLogFile = accessFile
 
 	accessWriter := io.Writer(accessFile)
 	if cfg.AccessToStdout != nil && *cfg.AccessToStdout {
@@ -120,6 +126,35 @@ func replaceTimeAttr(_ []string, attr slog.Attr) slog.Attr {
 		attr.Value = slog.StringValue(t.UTC().Format("2006-01-02T15:04:05.000000Z"))
 	}
 	return attr
+}
+
+// CloseLogger closes the underlying log writers.
+func CloseLogger() error {
+	var firstErr error
+	if accessLogFile != nil {
+		if err := accessLogFile.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if auditLogFile != nil {
+		if err := auditLogFile.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if errorLogFile != nil {
+		if err := errorLogFile.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// ErrorLogger returns the main application logger (error.log).
+func ErrorLogger() *slog.Logger {
+	if errorLogger == nil {
+		return slog.Default()
+	}
+	return errorLogger
 }
 
 // AuditLogger returns a logger specifically for audit events

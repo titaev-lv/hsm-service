@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -119,7 +122,7 @@ func main() {
 	errChan := make(chan error, 1)
 	go func() {
 		logServer.Info("starting HSM service", "port", cfg.Server.Port)
-		if err := srv.Start(); err != nil {
+		if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
 		}
 	}()
@@ -150,7 +153,7 @@ func main() {
 
 		// 3. Stop HTTP server
 		logServer.Info("stopping HTTP server")
-		if err := srv.Shutdown(); err != nil {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logServer.Error("error during shutdown", "error", err)
 		}
 
@@ -169,6 +172,9 @@ func main() {
 	}
 
 	logServer.Info("HSM service stopped")
+	if err := server.CloseLogger(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to close loggers: %v\n", err)
+	}
 }
 
 // performAutoCleanup performs automatic cleanup of old key versions on startup

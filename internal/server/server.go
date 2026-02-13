@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -145,7 +146,7 @@ func (s *Server) Start() error {
 }
 
 // Shutdown gracefully shuts down the server
-func (s *Server) Shutdown() error {
+func (s *Server) Shutdown(ctx context.Context) error {
 	// KeyManager closing is handled in main.go shutdown sequence
-	return nil
+	return s.httpServer.Shutdown(ctx)
 }

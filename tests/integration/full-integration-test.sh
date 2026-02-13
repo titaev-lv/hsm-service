@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=73
+TOTAL_TESTS=76
 
 # Helper functions
 print_header() {
@@ -631,6 +631,52 @@ if docker compose -f "$TEST_COMPOSE_FILE" logs | grep -i "fatal\|panic"; then
     print_error "Fatal errors found in logs"
 fi
 print_success "No fatal errors in logs"
+
+print_test "Verify graceful shutdown on SIGTERM"
+print_info "Sending SIGTERM to container..."
+if ! docker kill --signal=SIGTERM hsm-service-test > /dev/null 2>&1; then
+    print_error "Failed to send SIGTERM to container"
+fi
+
+print_info "Waiting for container to stop..."
+for i in {1..20}; do
+    if ! docker ps | grep -q hsm-service-test; then
+        break
+    fi
+    sleep 1
+done
+
+if docker ps | grep -q hsm-service-test; then
+    docker logs hsm-service-test --tail 50
+    print_error "Container did not stop after SIGTERM"
+fi
+print_success "Container stopped after SIGTERM"
+
+print_test "Verify shutdown log entry is present"
+if ! docker logs hsm-service-test 2>&1 | grep -q "received signal, shutting down"; then
+    docker logs hsm-service-test --tail 100
+    print_error "Shutdown log entry not found"
+fi
+print_success "Shutdown log entry found"
+
+print_test "Verify no panic/fatal after shutdown"
+if docker logs hsm-service-test 2>&1 | grep -i "fatal\|panic"; then
+    docker logs hsm-service-test --tail 100
+    print_error "Fatal or panic found after shutdown"
+fi
+print_success "No fatal/panic after shutdown"
+
+print_info "Restarting container after shutdown test..."
+if ! docker compose -f "$TEST_COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
+    cat /tmp/docker-compose-up.log
+    print_error "docker-compose up failed after shutdown test"
+fi
+sleep 3
+if ! docker ps | grep -q hsm-service-test; then
+    docker compose -f "$TEST_COMPOSE_FILE" logs
+    print_error "Container not running after restart"
+fi
+print_success "Container restarted"
 
 # ==========================================
 # PHASE 6: HSM INITIALIZATION

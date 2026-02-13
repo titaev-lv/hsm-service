@@ -133,3 +133,20 @@ func TestRateLimitMiddleware_NoCert(t *testing.T) {
 		t.Errorf("Expected status 401, got %d", w.Code)
 	}
 }
+
+func TestRecoveryMiddleware_Panic(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	})
+
+	middleware := RecoveryMiddleware(handler)
+
+	req := httptest.NewRequest("GET", "/panic", nil)
+	w := httptest.NewRecorder()
+
+	middleware.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d", w.Code)
+	}
+}
