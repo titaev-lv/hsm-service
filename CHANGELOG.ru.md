@@ -1,5 +1,21 @@
 # Changelog 
 
+## v1.1.3 - 2026-02-13
+
+### Новые возможности
+- Добавлен access.log для HTTP запросов с request_id и метриками размеров
+- В access логах добавлены request/response size и tls_version
+
+### Конфигурация
+- Добавлены поля и ENV overrides для access логов (access_path, access_to_stdout)
+
+### Тестирование
+- Обновлены шаблоны интеграционных тестов для access логов
+- Исправлены docker-compose шаблоны (logs-test volume)
+
+### Документация
+- Обновлены production/monitoring/quickstart/troubleshooting по access логам
+
 ## v1.1.2 - 2026-02-12
 
 ### Новые возможности

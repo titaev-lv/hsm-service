@@ -1,5 +1,20 @@
 # Changelog 
 
+## v1.1.3 - 2026-02-13
+
+### Features
+- Add access.log for HTTP requests with request_id and size metrics
+- Include request/response sizes and TLS version in access logs
+
+### Configuration
+- Add access log config fields and env overrides (access_path, access_to_stdout)
+
+### Tests
+- Update integration test config/compose templates for access log paths
+- Fix docker-compose test templates for logs-test volume indentation
+
+### Documentation
+- Document access log in production, monitoring, quickstart, and troubleshooting guides
 
 ## v1.1.2 - 2026-02-12
 
@@ -26,6 +41,7 @@
 ### Documentation
 - Update README, monitoring, security, troubleshooting, and production guides
 - Document audit/error log split, request_id, and log path requirements
+
 
 ## v1.1.1 - 2026-02-08
 
