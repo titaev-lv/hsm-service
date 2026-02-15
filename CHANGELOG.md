@@ -1,5 +1,21 @@
 # Changelog 
 
+## v1.1.4 - 2026-02-15
+
+### Features
+- Add graceful shutdown handling for SIGTERM/SIGINT with server.Shutdown(ctx)
+- Add panic recovery middleware with stack traces in error.log
+
+### Reliability
+- Close log writers on shutdown to flush audit/access/error logs
+
+### Tests
+- Add recovery middleware unit test
+- Add integration checks for SIGTERM shutdown and clean logs
+
+### Documentation
+- Document graceful shutdown and panic recovery behavior
+
 ## v1.1.3 - 2026-02-13
 
 ### Features

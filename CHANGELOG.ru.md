@@ -1,5 +1,21 @@
 # Changelog 
 
+## v1.1.4 - 2026-02-15
+
+### Новые возможности
+- Добавлен graceful shutdown по SIGTERM/SIGINT с server.Shutdown(ctx)
+- Добавлен panic recovery middleware со stack trace в error.log
+
+### Надежность
+- Закрытие log writers при остановке для корректной записи audit/access/error
+
+### Тестирование
+- Добавлен unit-тест recovery middleware
+- Добавлены интеграционные проверки SIGTERM shutdown и чистых логов
+
+### Документация
+- Обновлено описание graceful shutdown и panic recovery
+
 ## v1.1.3 - 2026-02-13
 
 ### Новые возможности
