@@ -709,14 +709,14 @@ graph TB
 
 ## 📅 Roadmap по приоритетам
 
-### Phase 1: v1.1.0 (Q1 2026) — CLI Consolidation
+### Phase 1: v1.2.0 (Q1 2026) — CLI Consolidation (DONE)
 
 | Task | Priority | Effort | Status |
 |------|----------|--------|--------|
-| Merge create-kek → hsm-admin | 🔴 High | 2d | TODO |
-| Deprecation warnings | 🟡 Medium | 1d | TODO |
-| Update documentation | 🟡 Medium | 1d | TODO |
-| Update init-hsm.sh | 🟡 Medium | 0.5d | TODO |
+| Merge create-kek → hsm-admin | 🔴 High | 2d | DONE (v1.2.0) |
+| Deprecation warnings | 🟡 Medium | 1d | DONE (v1.2.0) |
+| Update documentation | 🟡 Medium | 1d | DONE (v1.2.0) |
+| Update init-hsm.sh | 🟡 Medium | 0.5d | DONE (v1.2.0) |
 
 ### Phase 2: v1.2.0 (Q1 2026) — Multi-Slot Architecture
 
@@ -760,6 +760,8 @@ graph TB
 ## 📐 Детальные спецификации
 
 ### Spec 1: create-kek → hsm-admin Migration
+
+**Status:** Implemented in v1.2.0
 
 **File changes:**
 
