@@ -1,5 +1,21 @@
 # Changelog 
 
+## v1.2.0 - 2026-02-17
+
+### Features
+- Add `hsm-admin create-kek` subcommand with direct PKCS#11 key creation
+- Use internal create-kek logic during rotation (no external binary)
+
+### Deprecations
+- Mark standalone `create-kek` utility as deprecated
+
+### Scripts
+- Update init-hsm.sh to use `hsm-admin create-kek`
+
+### Documentation
+- Update production and CLI guides to reference `hsm-admin create-kek`
+- Mark `create-kek` build/deploy steps as optional
+
 ## v1.1.4 - 2026-02-15
 
 ### Features
