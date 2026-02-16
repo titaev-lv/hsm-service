@@ -35,32 +35,16 @@ Total: 2 KEK(s)
 
 ### 2. create-kek - Создать KEK
 
-**Примечание**: Автоматическое создание KEK через crypto11 API ограничено. Используйте:
+Создает KEK напрямую через PKCS#11 API.
 
-**Option 1: create-kek utility (рекомендуется)**
 ```bash
-# Напрямую через низкоуровневый PKCS#11 API
-/app/create-kek "kek-trading-v2" "05" "1234"
-
-# Где:
-#   kek-trading-v2 - label ключа
-#   05 - ID ключа (hex, уникальный)
-#   1234 - HSM PIN
+export HSM_PIN=1234
+./hsm-admin create-kek --label kek-trading-v2 --context trading --version 2
 ```
 
-**Option 2: pkcs11-tool**
+Дополнительные параметры:
 ```bash
-pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
-  --login --pin 1234 \
-  --keygen --key-type AES:256 \
-  --label kek-trading-v2 \
-  --id 05
-```
-
-**Option 3: Инструкции от hsm-admin**
-```bash
-./hsm-admin create-kek --label kek-trading-v2 --context trading
-# Покажет детальные инструкции для ручного создания
+./hsm-admin create-kek --label kek-trading-v2 --context trading --size 256
 ```
 
 После создания добавить в config.yaml:
@@ -183,7 +167,7 @@ Status: ✓ Available in HSM
 
 ## Ограничения
 
-- **create-kek**: Требует ручного создания через pkcs11-tool из-за ограничений crypto11 API
+- **create-kek**: Работает только при корректной инициализации токена и PIN
 - **list-kek**: Показывает только KEK из config.yaml (не сканирует весь токен)
 - **delete-kek**: Необратимая операция - нет способа восстановить удаленный ключ
 - **HSM PIN**: Всегда передается через ENV, никогда не хранится в config.yaml

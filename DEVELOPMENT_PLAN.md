@@ -176,7 +176,7 @@ create-kek "kek-exchange-key-v1" "1234" 1
 hsm-admin rotate exchange-key
 
 # СТАНЕТ (единый CLI)
-hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1
+HSM_PIN=1234 hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1
 hsm-admin rotate exchange-key
 ```
 
@@ -789,7 +789,7 @@ create-kek "kek-exchange-key-v1" "1234" 1
 # DEPRECATED: Use 'hsm-admin create-kek --label ...' instead
 
 # New way
-hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key
+HSM_PIN=1234 hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key
 ```
 
 ---

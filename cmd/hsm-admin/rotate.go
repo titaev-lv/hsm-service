@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -126,37 +124,10 @@ func rotateKeyCommand(args []string) error {
 		return fmt.Errorf("HSM_PIN environment variable not set")
 	}
 
-	// 8. Create new KEK using create-kek utility
-	// Determine the path to create-kek based on the environment
-	createKekPath := os.Getenv("CREATE_KEK_PATH")
-	if createKekPath == "" {
-		// Try common paths
-		possiblePaths := []string{
-			"/opt/hsm-service/bin/create-kek", // Production (Debian)
-			"/app/create-kek",                 // Docker
-			"./create-kek",                    // Current directory
-		}
-
-		for _, path := range possiblePaths {
-			if _, err := os.Stat(path); err == nil {
-				createKekPath = path
-				break
-			}
-		}
-
-		if createKekPath == "" {
-			return fmt.Errorf("create-kek binary not found. Set CREATE_KEK_PATH environment variable or ensure it's in one of: /opt/hsm-service/bin/create-kek, /app/create-kek, ./create-kek")
-		}
-	}
-
-	// Build command arguments safely (avoid shell injection)
-	var createErr error
-	cmdArgs := []string{newLabel, hsmPIN, strconv.Itoa(newVersion)}
-
+	// 8. Create new KEK via hsm-admin create-kek logic
 	log.Printf("Creating new KEK: %s", newLabel)
-	createErr = runCommand(createKekPath, cmdArgs)
-	if createErr != nil {
-		return fmt.Errorf("failed to create new KEK: %w", createErr)
+	if err := createKEKWithConfig(cfg, hsmPIN, newLabel, contextName, newVersion, defaultKeySize); err != nil {
+		return fmt.Errorf("failed to create new KEK: %w", err)
 	}
 
 	// 9. Add new version to metadata
@@ -219,41 +190,6 @@ func rotateKeyCommand(args []string) error {
 	log.Printf("  3. After overlap period, cleanup old versions:")
 	log.Printf("     hsm-admin cleanup-old-versions --dry-run  # preview what will be deleted")
 	log.Printf("     hsm-admin cleanup-old-versions --force    # execute cleanup")
-
-	return nil
-}
-
-// runCommand executes a command with the given binary path and arguments
-// This is safe from shell injection as it uses exec.Command directly with arguments
-func runCommand(binaryPath string, args []string) error {
-	if binaryPath == "" {
-		return fmt.Errorf("empty binary path")
-	}
-
-	// Log command with PIN masked for security
-	// create-kek format: create-kek <label> <pin> <version>
-	// We need to mask argument at index 1 (the PIN, 0-indexed in args slice)
-	maskedArgs := make([]string, len(args))
-	copy(maskedArgs, args)
-
-	// Check if this looks like create-kek command
-	if strings.Contains(binaryPath, "create-kek") && len(args) >= 3 {
-		// Format: args[0]=<label>, args[1]=<pin>, args[2]=<version>
-		// Mask args[1] (PIN)
-		maskedArgs[1] = strings.Repeat("*", len(args[1]))
-	}
-
-	logCmd := binaryPath + " " + strings.Join(maskedArgs, " ")
-	log.Printf("Executing: %s", logCmd)
-
-	// Execute the command safely (no shell involved)
-	command := exec.Command(binaryPath, args...)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("command failed: %w", err)
-	}
 
 	return nil
 }

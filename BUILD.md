@@ -154,7 +154,7 @@ GOOS=linux GOARCH=amd64 go build \
 
 ---
 
-### 3. create-kek (создание KEK)
+### 3. create-kek (deprecated, optional)
 
 ```bash
 GOOS=linux GOARCH=amd64 go build \
@@ -165,8 +165,7 @@ GOOS=linux GOARCH=amd64 go build \
 ```
 
 **Использование**:
-- Создание KEK ключей в HSM
-- Используется в init-hsm.sh
+- Legacy-совместимость, рекомендуется использовать `hsm-admin create-kek`
 
 **Размер**: ~7-10 MB
 
@@ -198,7 +197,7 @@ GOOS=linux GOARCH=amd64 go build \
 ```bash
 strip build/hsm-service
 strip build/hsm-admin
-strip build/create-kek
+strip build/create-kek  # optional (deprecated)
 ```
 
 **Результат**: Уменьшение размера на ~30%
@@ -214,7 +213,7 @@ sudo apt install upx-ucl
 # Сжать бинарники
 upx --best --lzma build/hsm-service
 upx --best --lzma build/hsm-admin
-upx --best --lzma build/create-kek
+upx --best --lzma build/create-kek  # optional (deprecated)
 ```
 
 **Результат**: Уменьшение размера на ~50-70%

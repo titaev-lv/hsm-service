@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	fmt.Println("DEPRECATED: use 'hsm-admin create-kek' instead")
+	fmt.Println("")
+
 	if len(os.Args) < 3 || len(os.Args) > 4 {
 		fmt.Println("Usage: create-kek <label> <pin> [version]")
 		fmt.Println("Example: create-kek kek-exchange-v1 1234 1")

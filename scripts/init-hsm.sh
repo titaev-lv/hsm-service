@@ -69,7 +69,7 @@ CREATED_ANY=false
 
 if [ "$CHECK_KEK_EXCHANGE" -eq 0 ]; then
     echo "⚠️  kek-exchange-key-v1 not found. Creating..."
-    /app/create-kek "kek-exchange-key-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-exchange-key-v1"
+    /app/hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1 || echo "Failed to create kek-exchange-key-v1"
     CREATED_ANY=true
 else
     echo "✓ kek-exchange-key-v1 already exists"
@@ -77,7 +77,7 @@ fi
 
 if [ "$CHECK_KEK_2FA" -eq 0 ]; then
     echo "⚠️  kek-2fa-v1 not found. Creating..."
-    /app/create-kek "kek-2fa-v1" "$TOKEN_PIN" 1 || echo "Failed to create kek-2fa-v1"
+    /app/hsm-admin create-kek --label kek-2fa-v1 --context 2fa --version 1 || echo "Failed to create kek-2fa-v1"
     CREATED_ANY=true
 else
     echo "✓ kek-2fa-v1 already exists"

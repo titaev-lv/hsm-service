@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"os"
 
 	"github.com/ThalesGroup/crypto11"
-	"github.com/miekg/pkcs11"
 	"github.com/titaev-lv/hsm-service/internal/config"
 )
 
@@ -50,7 +48,9 @@ func main() {
 
 	switch command {
 	case "create-kek":
-		createKEK(args[1:])
+		if err := createKEKCommand(args[1:]); err != nil {
+			log.Fatalf("Create KEK failed: %v", err)
+		}
 	case "list-kek":
 		listKEK(args[1:])
 	case "delete-kek":
@@ -115,106 +115,6 @@ func printUsage() {
 	fmt.Println("Environment Variables:")
 	fmt.Println("  HSM_PIN          HSM token PIN (required)")
 	fmt.Println("  CONFIG_PATH      Path to config.yaml (searched: /etc/hsm-service/config.yaml if not set)")
-}
-
-func createKEK(args []string) {
-	fs := flag.NewFlagSet("create-kek", flag.ExitOnError)
-	label := fs.String("label", "", "KEK label (required)")
-	context := fs.String("context", "", "Context name (required)")
-	keySize := fs.Int("size", 256, "Key size in bits (default: 256)")
-	configPath := fs.String("config", getConfigPath(), "Path to config.yaml")
-
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
-		os.Exit(1)
-	}
-
-	if *label == "" || *context == "" {
-		fmt.Println("Error: --label and --context are required")
-		fs.Usage()
-		os.Exit(1)
-	}
-
-	if *keySize != 128 && *keySize != 192 && *keySize != 256 {
-		fmt.Println("Error: --size must be 128, 192, or 256")
-		os.Exit(1)
-	}
-
-	// Get HSM PIN from environment
-	pin := os.Getenv("HSM_PIN")
-	if pin == "" {
-		log.Fatal("HSM_PIN environment variable not set")
-	}
-
-	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-
-	// Initialize PKCS#11 context
-	p11ctx, err := crypto11.Configure(&crypto11.Config{
-		Path:       cfg.HSM.PKCS11Lib,
-		TokenLabel: cfg.HSM.SlotID,
-		Pin:        pin,
-	})
-	if err != nil {
-		log.Fatalf("Failed to configure PKCS#11: %v", err)
-	}
-	defer p11ctx.Close()
-
-	fmt.Printf("Creating KEK: %s (context: %s, size: %d bits)\n", *label, *context, *keySize)
-
-	// Generate random key material
-	keyBytes := make([]byte, *keySize/8)
-	if _, err := rand.Read(keyBytes); err != nil {
-		log.Fatalf("Failed to generate random key: %v", err)
-	}
-
-	// Use low-level PKCS#11 API to create the key
-	// crypto11.Context embeds *pkcs11.Ctx
-	template := []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_AES),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, []byte(*label)),
-		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
-		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
-		pkcs11.NewAttribute(pkcs11.CKA_ENCRYPT, true),
-		pkcs11.NewAttribute(pkcs11.CKA_DECRYPT, true),
-		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, false),
-		pkcs11.NewAttribute(pkcs11.CKA_VALUE, keyBytes),
-	}
-
-	// We need to use the underlying PKCS#11 session
-	// For simplicity, we'll use crypto11's ImportSecretKeyWithLabel which is simpler
-
-	// Actually, let's just document the manual process
-	fmt.Println()
-	fmt.Println("MANUAL KEY CREATION REQUIRED:")
-	fmt.Println("crypto11 doesn't expose direct key creation API.")
-	fmt.Println()
-	fmt.Println("Option 1: Use pkcs11-tool:")
-	fmt.Printf("  pkcs11-tool --module %s --login --pin %s \\\n", cfg.HSM.PKCS11Lib, "****")
-	fmt.Printf("    --keygen --key-type AES:%d --label %s \\\n", *keySize, *label)
-	fmt.Printf("    --token-label %s\n", cfg.HSM.SlotID)
-	fmt.Println()
-	fmt.Println("Option 2: Use SoftHSM2 CLI:")
-	fmt.Printf("  softhsm2-util --import key.bin --slot <slot-id> \\\n")
-	fmt.Printf("    --label %s --id %s --pin %s\n", *label, *label, "****")
-	fmt.Println()
-	fmt.Println("After creating the key, add to config.yaml:")
-	fmt.Printf("  hsm:\n")
-	fmt.Printf("    keys:\n")
-	fmt.Printf("      %s:\n", *context)
-	fmt.Printf("        label: %s\n", *label)
-	fmt.Printf("        type: aes\n")
-
-	// For testing/demo purposes, let's try with the template approach
-	_ = template // suppress unused warning
-
-	fmt.Println()
-	fmt.Println("Note: Automated KEK creation requires low-level PKCS#11 access")
 }
 
 func listKEK(args []string) {

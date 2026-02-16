@@ -1,4 +1,6 @@
-# create-kek - KEK Creation Utility
+# create-kek - KEK Creation Utility (Deprecated)
+
+**Deprecated:** use `hsm-admin create-kek` instead.
 
 Simple utility to create AES-256 KEKs in HSM using low-level PKCS#11 API.
 
@@ -11,17 +13,17 @@ Simple utility to create AES-256 KEKs in HSM using low-level PKCS#11 API.
 ## Usage
 
 ```bash
-./create-kek <label> <id-hex> <pin>
+./create-kek <label> <pin> [version]
 ```
 
 **Arguments:**
 - `label` - Key label (e.g., "kek-exchange-key-v1")
-- `id-hex` - Key ID in hex format (e.g., "01", "02", "ff")
 - `pin` - HSM user PIN
+- `version` - Key version (default: 1)
 
 **Example:**
 ```bash
-./create-kek "kek-trading-v1" "05" "1234"
+./create-kek "kek-trading-v1" "1234" 1
 ```
 
 ## Output
@@ -47,10 +49,10 @@ The utility creates AES-256 secret keys with:
 
 ```bash
 # From host
-docker-compose exec hsm-service /app/create-kek "kek-new-v1" "10" "1234"
+docker-compose exec hsm-service /app/create-kek "kek-new-v1" "1234" 1
 
 # Inside container
-/app/create-kek "kek-new-v1" "10" "$HSM_PIN"
+/app/create-kek "kek-new-v1" "$HSM_PIN" 1
 ```
 
 ## After Creating KEK
@@ -71,11 +73,7 @@ docker-compose restart
 
 ## ID Assignment
 
-Use unique hex IDs for each KEK:
-- `01` - kek-exchange-key-v1
-- `02` - kek-2fa-v1
-- `03` - kek-payment-v1
-- `04-ff` - Available for new KEKs
+The tool generates a unique ID automatically.
 
 ## Troubleshooting
 

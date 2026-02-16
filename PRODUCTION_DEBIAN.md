@@ -152,19 +152,17 @@ sudo chmod 755 /etc/hsm-service
 # Скопировать с build-сервера (с вашего CI/CD или локально)
 scp hsm-service hsm@production-server:/opt/hsm-service/bin/
 scp hsm-admin hsm@production-server:/opt/hsm-service/bin/
-scp create-kek hsm@production-server:/opt/hsm-service/bin/
 
 # Установить права выполнения
-ssh hsm@production-server "chmod +x /opt/hsm-service/bin/hsm-service /opt/hsm-service/bin/hsm-admin /opt/hsm-service/bin/create-kek"
+ssh hsm@production-server "chmod +x /opt/hsm-service/bin/hsm-service /opt/hsm-service/bin/hsm-admin"
 
 # Проверка бинарников
 ssh hsm@production-server "ls -lh /opt/hsm-service/bin/"
 # -rwxr-xr-x 1 hsm hsm 12M Jan 19 10:00 hsm-service
 # -rwxr-xr-x 1 hsm hsm 10M Jan 19 10:01 hsm-admin
-# -rwxr-xr-x 1 hsm hsm  8M Jan 19 10:02 create-kek
 ```
 
-**Примечание**: `create-kek` используется для создания KEK (Key Encryption Key) в HSM. Требуется на инициализацию системы.
+**Примечание**: `create-kek` больше не требуется для инициализации. Используйте `hsm-admin create-kek`.
 
 ---
 
@@ -397,9 +395,9 @@ sudo su - hsm
 # Set HSM_PIN environment variable
 export HSM_PIN=1234  # Ваш PIN!
 
-# Шаг 1: Создать ключи в HSM с помощью create-kek
-/opt/hsm-service/bin/create-kek "kek-exchange-key-v1" "$HSM_PIN" 1
-/opt/hsm-service/bin/create-kek "kek-2fa-v1" "$HSM_PIN" 1
+# Шаг 1: Создать ключи в HSM с помощью hsm-admin
+/opt/hsm-service/bin/hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1
+/opt/hsm-service/bin/hsm-admin create-kek --label kek-2fa-v1 --context 2fa --version 1
 
 # Шаг 2: Инициализировать metadata.yaml с контекстами
 # Это связывает физические ключи с логическими контекстами
@@ -439,9 +437,9 @@ echo "Checking rotation status:"
 
 **Как это работает:**
 
-1. **`create-kek`** - создает физический ключ в HSM (PKCS#11 операция)
-   - Параметры: `create-kek <label> <pin> [version]`
-   - Создает ключ с меткой `kek-exchange-key-v1`
+1. **`hsm-admin create-kek`** - создает физический ключ в HSM (PKCS#11 операция)
+  - Параметры: `hsm-admin create-kek --label <label> --context <context> [--version <n>] [--size <bits>]`
+  - Создает ключ с меткой `kek-exchange-key-v1`
 
 2. **metadata.yaml** - описывает логическую структуру ключей
    - Связывает контекст (например `exchange-key`) с физическим ключом
@@ -451,10 +449,11 @@ echo "Checking rotation status:"
 3. **`hsm-admin update-checksums`** - вычисляет и сохраняет checksums
    - Используется для проверки целостности ключей
 
-**Параметры `create-kek`:**
-- `<label>` - Уникальное имя ключа (например: `kek-exchange-key-v1`)
-- `<pin>` - PIN токена HSM (используется для доступа)
-- `[version]` - Номер версии (опционально, по умолчанию: 1)
+**Параметры `hsm-admin create-kek`:**
+- `--label` - Уникальное имя ключа (например: `kek-exchange-key-v1`)
+- `--context` - Контекст (например: `exchange-key`)
+- `--version` - Номер версии (опционально, по умолчанию: 1)
+- `--size` - Размер ключа (128, 192, 256; по умолчанию: 256)
 
 **Примечание о PIN'ах:**
 - **`HSM_PIN`** (флаг `--pin` при инициализации токена) - обычный PIN пользователя для доступа к ключам

@@ -76,42 +76,36 @@ source ~/.hsm-admin.env
 
 ## Команды
 
-### `create-kek` (отдельная утилита)
+### `create-kek`
 
 Создать новый KEK (Key Encryption Key) в HSM.
 
-**⚠️ Примечание**: Это **отдельная утилита**, не команда `hsm-admin`. См. [cmd/create-kek/](cmd/create-kek/) для исходного кода.
-
 **Синтаксис**:
 ```bash
-create-kek <label> <pin> [version]
+hsm-admin create-kek --label <label> --context <context> [--version <n>] [--size <bits>]
 ```
 
 **Параметры**:
-- `<label>` (обязательный) - уникальное имя KEK (например: `kek-exchange-key-v1`)
-- `<pin>` (обязательный) - PIN токена HSM
-- `[version]` (опционально) - версия ключа (по умолчанию: 1)
+- `--label` (обязательный) - уникальное имя KEK (например: `kek-exchange-key-v1`)
+- `--context` (обязательный) - контекст (например: `exchange-key`)
+- `--version` (опционально) - версия ключа (по умолчанию: 1)
+- `--size` (опционально) - размер ключа (128, 192, 256; по умолчанию: 256)
 
 **Пример**:
 ```bash
+export HSM_PIN=1234
+
 # Create KEK for exchange key (version 1)
-/opt/hsm-service/bin/create-kek "kek-exchange-key-v1" "1234" 1
+./hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1
 
 # Create KEK for 2FA (version 1)
-/opt/hsm-service/bin/create-kek "kek-2fa-v1" "1234" 1
-
-# Using environment variable
-export HSM_PIN=1234
-/opt/hsm-service/bin/create-kek "kek-exchange-key-v2" "$HSM_PIN" 2
+./hsm-admin create-kek --label kek-2fa-v1 --context 2fa --version 1
 ```
 
 **Output**:
 ```
-Generating 256-bit AES key...
-Label: kek-exchange-key-v1
-ID: 1a2b3c4d5e6f7g8h
-Handle: 5
-✓ KEK created successfully
+✓ Created KEK: kek-exchange-key-v1 (handle: 5, ID: 1a2b3c4d5e6f7g8h, version: 1, created: 2026-02-17T10:30:00Z)
+  Generated unique ID: 1a2b3c4d5e6f7g8h
 ```
 
 **Когда использовать**:
@@ -228,7 +222,7 @@ export HSM_PIN=1234
 Starting rotation for context: exchange-key
 Loaded metadata with 2 contexts
 Creating new KEK: kek-exchange-key-v3
-Executing: /app/create-kek kek-exchange-key-v3 1234 3
+Creating new KEK: kek-exchange-key-v3
 Created metadata backup: metadata.yaml.backup-20260115-143000
 ✓ Key rotation completed:
   Context: exchange-key
@@ -478,12 +472,12 @@ hsm-admin export-metadata [--output <file>]
 ### Сценарий 1: Начальная настройка
 
 ```bash
-# 1. Create initial KEKs using create-kek utility
-/opt/hsm-service/bin/create-kek "kek-exchange-key-v1" "1234" 1
-/opt/hsm-service/bin/create-kek "kek-2fa-v1" "1234" 1
+# 1. Create initial KEKs using hsm-admin
+export HSM_PIN=1234
+./hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1
+./hsm-admin create-kek --label kek-2fa-v1 --context 2fa --version 1
 
 # 2. Verify with hsm-admin
-export HSM_PIN=1234
 ./hsm-admin list-kek
 
 # 3. Update checksums
