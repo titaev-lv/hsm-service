@@ -60,7 +60,7 @@
 
 🟠 **Medium Priority**
 6. **Audit API**: No structured audit queries
-7. **CLI Consolidation**: 2 separate binaries (create-kek, hsm-admin)
+7. **CLI Consolidation**: Single hsm-admin CLI (DONE v2.0.0)
 8. **Multi-Slot Isolation**: All KEKs in single HSM slot
 9. **Certificate Automation**: No cert-manager integration
 10. **Disaster Recovery**: No documented runbooks
@@ -104,7 +104,6 @@ gantt
 **Проблема:**
 - internal/hsm: 6.9% coverage (должно быть >80%)
 - cmd/hsm-admin: 0% coverage
-- cmd/create-kek: 0% coverage
 - Нет unit-тестов для критических криптографических операций
 
 **Метрики качества:**
@@ -114,7 +113,6 @@ $ go test ./... -cover
 ❌ internal/hsm:     6.9%   # CRITICAL GAP
 ✅ internal/server:  56.8%  # Acceptable
 ❌ cmd/hsm-admin:    0.0%   # No tests
-❌ cmd/create-kek:   0.0%   # No tests
 ```
 
 **План действий:**
@@ -226,13 +224,14 @@ tests/
 
 ### 1.2 CLI Consolidation 🟡 MEDIUM
 
+**Статус:** DONE (v2.0.0)
+
 **Текущее состояние:**
 ```
 /app/
-  create-kek           # 100 строк, отдельный бинарь
   hsm-admin            # 470 строк, основной CLI
   
-# Проблемы:
+# Проблемы (до v2.0.0):
 # - Дублирование PKCS#11 инициализации
 # - Разный UX (create-kek: args, hsm-admin: flags)
 # - Документация разбита
@@ -274,7 +273,7 @@ func createKEKCommand() {
         os.Exit(1)
     }
     
-    // Call existing logic from old create-kek/main.go
+    // Call shared KEK creation logic
     if err := createKEK(*label, *context, *version, *size); err != nil {
         log.Fatalf("Failed to create KEK: %v", err)
     }
@@ -285,30 +284,16 @@ func createKEKCommand() {
 
 **Migration strategy:**
 
-1. **Phase 1.2.1**: Add `hsm-admin create-kek` (keep old binary)
+1. **Phase 1.2.0**: Add `hsm-admin create-kek` (keep old binary)
    ```bash
    # New way (preferred)
    hsm-admin create-kek --label kek-exchange-v1 --context exchange-key
-   
-   # Old way (deprecated, prints warning)
-   create-kek "kek-exchange-v1" "1234" 1
-   # WARNING: create-kek is deprecated, use 'hsm-admin create-kek' instead
    ```
+   - cmd/create-kek/  Deprecated
 
-2. **Phase 1.2.2**: Update documentation
-   - CLI_TOOLS.md - add create-kek section
-   - init-hsm.sh - use new command
-   - QUICKSTART_DOCKER.md - update examples
-
-3. **Phase 1.2.3**: Deprecation period (3 months)
-   - Keep old binary with warning
-   - Monitor usage logs
-
-4. **Phase 1.2.4**: Remove old binary (v1.2.0)
-   - Delete cmd/create-kek/
-   - Update Dockerfile
-
-**Effort:** 3 дня разработки + 1 день документации
+2. **Phase 2.0.0**: Remove old binary (DONE)
+  - Delete cmd/create-kek/ (DONE)
+  - Update Dockerfile
 
 ---
 

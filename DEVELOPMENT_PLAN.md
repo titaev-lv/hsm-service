@@ -42,8 +42,7 @@ graph TB
     end
 
     subgraph "CLI Tools"
-        ADMIN[hsm-admin<br/>rotate, cleanup, list...]
-        CREATE[create-kek<br/>отдельная утилита]
+      ADMIN[hsm-admin<br/>create-kek, rotate, cleanup, list...]
     end
 
     C1 -->|mTLS| API
@@ -54,7 +53,6 @@ graph TB
     SLOT --> KEK2
     SLOT --> KEK3
     ADMIN -.->|PKCS#11| SLOT
-    CREATE -.->|PKCS#11| SLOT
 ```
 
 ### Сильные стороны ✅
@@ -72,7 +70,7 @@ graph TB
 
 | Область | Текущее состояние | Проблема |
 |---------|-------------------|----------|
-| **CLI утилиты** | 2 отдельных бинарника | Дублирование, сложность deployment |
+| **CLI утилиты** | Единый `hsm-admin` | ✅ DONE (v2.0.0) |
 | **Архитектура слотов** | Все KEK в одном слоте | Нет изоляции между контекстами |
 | **High Availability** | Single instance | Нет clustering |
 | **Key Escrow** | Отсутствует | Нет split knowledge |
@@ -144,38 +142,35 @@ logging:
 
 ### 1. Объединение create-kek в hsm-admin
 
-**Текущее состояние:**
-- `create-kek` — отдельный бинарник (~100 строк)
-- `hsm-admin` — основной CLI (~470 строк)
-- Дублирование PKCS#11 инициализации
+**Статус**: Полная миграция и удаление `create-kek` выполнены в v2.0.0.
 
-**Проблемы:**
+**Текущее состояние:**
+- `hsm-admin` — единственный CLI для всех операций с KEK
+- `create-kek` удален (v2.0.0)
+
+**Проблемы (до v2.0.0):**
 - Два бинарника для deployment
 - Разный API (create-kek: позиционные args, hsm-admin: flags)
 - Документация разбита
 
 ```mermaid
 graph LR
-    subgraph "ТЕКУЩЕЕ"
-        A1[create-kek<br/>label pin version] --> HSM1[HSM]
-        A2[hsm-admin<br/>rotate, list, delete...] --> HSM1
-    end
+  subgraph "БЫЛО"
+    A1[create-kek<br/>label pin version] --> HSM1[HSM]
+    A2[hsm-admin<br/>rotate, list, delete...] --> HSM1
+  end
 
-    subgraph "ПРЕДЛАГАЕТСЯ"
-        B1[hsm-admin<br/>create-kek<br/>+ все остальные команды] --> HSM2[HSM]
-    end
+  subgraph "СТАЛО"
+    B1[hsm-admin<br/>create-kek<br/>+ все остальные команды] --> HSM2[HSM]
+  end
 
-    ТЕКУЩЕЕ -->|Migration| ПРЕДЛАГАЕТСЯ
+  БЫЛО -->|Migration| СТАЛО
 ```
 
 **Решение:**
 
 ```bash
-# БЫЛО (два бинарника)
-create-kek "kek-exchange-key-v1" "1234" 1
-hsm-admin rotate exchange-key
-
-# СТАНЕТ (единый CLI)
+# Единый CLI
 HSM_PIN=1234 hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key --version 1
 hsm-admin rotate exchange-key
 ```
@@ -183,11 +178,8 @@ hsm-admin rotate exchange-key
 **Изменения в коде:**
 
 ```go
-// cmd/hsm-admin/main.go — добавить case
-case "create-kek":
-    createKEKCommand(args[1:])  // Перенести логику из cmd/create-kek/main.go
-
-// Удалить cmd/create-kek/ после миграции
+// cmd/hsm-admin/main.go — create-kek case (v1.2.0)
+// cmd/create-kek/ удален (v2.0.0)
 ```
 
 **Преимущества:**
@@ -200,7 +192,7 @@ case "create-kek":
 1. Перенести код create-kek в hsm-admin
 2. Обновить init-hsm.sh использовать `hsm-admin create-kek`
 3. Deprecation notice для create-kek (1-2 релиза)
-4. Удалить create-kek в v1.3.0
+4. Удалить create-kek в v2.0.0 (DONE)
 
 ---
 
@@ -761,14 +753,14 @@ graph TB
 
 ### Spec 1: create-kek → hsm-admin Migration
 
-**Status:** Implemented in v1.2.0
+**Status:** Implemented in v1.2.0; standalone `create-kek` removed in v2.0.0.
 
 **File changes:**
 
 ```
 cmd/hsm-admin/main.go        # Add createKEKCommand()
 cmd/hsm-admin/create_kek.go  # New file with logic from cmd/create-kek/main.go
-cmd/create-kek/              # DEPRECATED, remove in v1.3.0
+cmd/create-kek/              # Removed in v2.0.0
 scripts/init-hsm.sh          # Update to use hsm-admin create-kek
 CLI_TOOLS.md                 # Update documentation
 ```
@@ -783,16 +775,7 @@ hsm-admin create-kek \
   --size 256
 ```
 
-**Backward compatibility:**
-
-```bash
-# Old way (deprecated, shows warning)
-create-kek "kek-exchange-key-v1" "1234" 1
-# DEPRECATED: Use 'hsm-admin create-kek --label ...' instead
-
-# New way
-HSM_PIN=1234 hsm-admin create-kek --label kek-exchange-key-v1 --context exchange-key
-```
+**Backward compatibility:** removed in v2.0.0 (use `hsm-admin create-kek`).
 
 ---
 

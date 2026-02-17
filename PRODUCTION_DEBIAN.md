@@ -162,7 +162,7 @@ ssh hsm@production-server "ls -lh /opt/hsm-service/bin/"
 # -rwxr-xr-x 1 hsm hsm 10M Jan 19 10:01 hsm-admin
 ```
 
-**Примечание**: `create-kek` больше не требуется для инициализации. Используйте `hsm-admin create-kek`.
+**Примечание**: Для инициализации KEK используйте `hsm-admin create-kek`.
 
 ---
 

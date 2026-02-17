@@ -1,5 +1,19 @@
 # Changelog 
 
+## v2.0.0 - 2026-02-18
+
+### Breaking Changes
+- Удален отдельный бинарник `create-kek` (используйте `hsm-admin create-kek`)
+
+### Сборка и релизы
+- Удалены шаги сборки create-kek из Makefile, Dockerfile и release пакета
+
+### Документация
+- Удалены упоминания create-kek из build и CLI документации
+
+### Исправления
+- Исправлен CloseLogger untyped bool
+
 ## v1.2.0 - 2026-02-17
 
 ### Новые возможности

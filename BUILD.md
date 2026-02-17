@@ -34,7 +34,6 @@ make build
 # Результат:
 # - build/hsm-service      (основной сервис)
 # - build/hsm-admin        (CLI утилита)
-# - build/create-kek       (создание KEK ключей)
 
 Или вручную:
 
@@ -55,12 +54,6 @@ GOOS=linux GOARCH=amd64 go build \
   -o build/hsm-admin \
   ./cmd/hsm-admin
 
-# Собрать create-kek
-GOOS=linux GOARCH=amd64 go build \
-  -ldflags="-s -w" \
-  -trimpath \
-  -o build/create-kek \
-  ./cmd/create-kek
 ```
 
 ---
@@ -154,23 +147,6 @@ GOOS=linux GOARCH=amd64 go build \
 
 ---
 
-### 3. create-kek (deprecated, optional)
-
-```bash
-GOOS=linux GOARCH=amd64 go build \
-  -ldflags="-s -w" \
-  -trimpath \
-  -o build/create-kek \
-  ./cmd/create-kek
-```
-
-**Использование**:
-- Legacy-совместимость, рекомендуется использовать `hsm-admin create-kek`
-
-**Размер**: ~7-10 MB
-
----
-
 ## ⚡ Оптимизация бинарников
 
 ### Шаг 1: Build с оптимизациями
@@ -197,7 +173,6 @@ GOOS=linux GOARCH=amd64 go build \
 ```bash
 strip build/hsm-service
 strip build/hsm-admin
-strip build/create-kek  # optional (deprecated)
 ```
 
 **Результат**: Уменьшение размера на ~30%
@@ -213,7 +188,6 @@ sudo apt install upx-ucl
 # Сжать бинарники
 upx --best --lzma build/hsm-service
 upx --best --lzma build/hsm-admin
-upx --best --lzma build/create-kek  # optional (deprecated)
 ```
 
 **Результат**: Уменьшение размера на ~50-70%
@@ -309,7 +283,6 @@ ldd build/hsm-service
 ls -lh build/
 # -rwxr-xr-x 1 user user  9.6M Jan 14 10:00 hsm-service
 # -rwxr-xr-x 1 user user  4.0M Jan 14 10:01 hsm-admin
-# -rwxr-xr-x 1 user user 1.7M Jan 14 10:02 create-kek
 ```
 
 ---
@@ -344,12 +317,6 @@ GOOS=linux GOARCH=amd64 go build \
   -trimpath \
   -o "${RELEASE_DIR}/bin/hsm-admin" \
   ./cmd/hsm-admin
-
-GOOS=linux GOARCH=amd64 go build \
-  -ldflags="-s -w" \
-  -trimpath \
-  -o "${RELEASE_DIR}/bin/create-kek" \
-  ./cmd/create-kek
 
 # Скопировать конфигурацию
 cp config.yaml "${RELEASE_DIR}/config/config.yaml.example"
@@ -389,8 +356,7 @@ release/
 └── hsm-service-1.0.0-linux-amd64.tar.gz  (~15-20 MB)
     ├── bin/
     │   ├── hsm-service
-    │   ├── hsm-admin
-    │   └── create-kek
+    │   └── hsm-admin
     ├── config/
     │   ├── config.yaml.example
     │   ├── metadata.yaml.example
@@ -436,7 +402,7 @@ sudo chmod +x /opt/hsm-service/scripts/*
 
 ### Checklist
 
-- [ ] Собраны все 3 бинарника (hsm-service, hsm-admin, create-kek)
+- [ ] Собраны все 2 бинарника (hsm-service, hsm-admin)
 - [ ] Размеры адекватные (~10-15 MB каждый)
 - [ ] CHECKSUMS.txt создан
 - [ ] Конфигурация включена в пакет
@@ -487,12 +453,6 @@ build:
 		-trimpath \
 		-o build/hsm-admin \
 		./cmd/hsm-admin
-	@echo "Building create-kek..."
-	@GOOS=linux GOARCH=amd64 go build \
-		-ldflags="-s -w" \
-		-trimpath \
-		-o build/create-kek \
-		./cmd/create-kek
 	@echo "✓ Build complete"
 
 clean:
@@ -508,7 +468,6 @@ release: build
 install: build
 	@sudo cp build/hsm-service /usr/local/bin/
 	@sudo cp build/hsm-admin /usr/local/bin/
-	@sudo cp build/create-kek /usr/local/bin/
 	@echo "✓ Installed to /usr/local/bin/"
 ```
 

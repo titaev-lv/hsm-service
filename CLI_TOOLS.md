@@ -529,9 +529,9 @@ nano /etc/hsm-service/config.yaml
 #     NewServiceGroup:
 #       - new-service
 
-# 2. Create KEK using create-kek utility
+# 2. Create KEK using hsm-admin
 export HSM_PIN=1234
-/opt/hsm-service/bin/create-kek "kek-new-service-v1" "$HSM_PIN" 1
+/opt/hsm-service/bin/hsm-admin create-kek --label kek-new-service-v1 --context new-service --version 1
 
 # 3. Verify with hsm-admin
 ./hsm-admin list-kek

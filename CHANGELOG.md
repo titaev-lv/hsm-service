@@ -1,5 +1,19 @@
 # Changelog 
 
+## v2.0.0 - 2026-02-18
+
+### Breaking Changes
+- Remove standalone `create-kek` binary (use `hsm-admin create-kek`)
+
+### Build & Packaging
+- Drop create-kek build steps from Makefile, Dockerfile, and release packaging
+
+### Documentation
+- Remove create-kek references from build and CLI docs
+
+### Bug Fixes
+- Fix CloseLogger untyped bool
+
 ## v1.2.0 - 2026-02-17
 
 ### Features

@@ -23,8 +23,6 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o hsm-service .
 # Build admin CLI
 RUN cd cmd/hsm-admin && CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o ../../hsm-admin .
 
-# Build create-kek helper
-RUN cd cmd/create-kek && CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o ../../create-kek .
 
 # Runtime image
 FROM alpine:latest
@@ -46,7 +44,6 @@ WORKDIR /app
 # Copy binaries from builder
 COPY --from=builder /app/hsm-service .
 COPY --from=builder /app/hsm-admin .
-COPY --from=builder /app/create-kek .
 
 # Copy configuration files
 COPY config.yaml .

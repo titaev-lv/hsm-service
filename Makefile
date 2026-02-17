@@ -11,7 +11,6 @@ RELEASE_DIR := release
 # Binaries
 BINARY_SERVICE := $(BUILD_DIR)/hsm-service
 BINARY_ADMIN := $(BUILD_DIR)/hsm-admin
-BINARY_KEK := $(BUILD_DIR)/create-kek
 
 .PHONY: all build clean test release install help check-clean
 
@@ -38,7 +37,7 @@ help:
 	@echo ""
 
 # Build all binaries
-build: $(BINARY_SERVICE) $(BINARY_ADMIN) $(BINARY_KEK)
+build: $(BINARY_SERVICE) $(BINARY_ADMIN)
 	@echo "✓ Build complete"
 
 # Build hsm-service
@@ -60,16 +59,6 @@ $(BINARY_ADMIN):
 		-trimpath \
 		-o $(BINARY_ADMIN) \
 		./cmd/hsm-admin
-
-# Build create-kek
-$(BINARY_KEK):
-	@echo "Building create-kek..."
-	@mkdir -p $(BUILD_DIR)
-	@GOOS=linux GOARCH=amd64 go build \
-		-ldflags="-s -w" \
-		-trimpath \
-		-o $(BINARY_KEK) \
-		./cmd/create-kek
 
 # Clean build artifacts
 clean:
@@ -131,7 +120,6 @@ install: build
 	@echo "Installing binaries..."
 	@sudo cp $(BINARY_SERVICE) /usr/local/bin/
 	@sudo cp $(BINARY_ADMIN) /usr/local/bin/
-	@sudo cp $(BINARY_KEK) /usr/local/bin/
 	@echo "✓ Installed to /usr/local/bin/"
 
 # Build Docker image

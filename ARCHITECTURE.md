@@ -141,10 +141,6 @@ graph LR
 ```
 hsm-service/
 ├── cmd/
-│   ├── create-kek/             # CLI утилита для создания KEK
-│   │   ├── main.go
-│   │   └── README.md
-│   │
 │   └── hsm-admin/              # CLI утилита для управления KEK
 │       ├── main.go
 │       ├── rotate.go           # Ротация ключей
