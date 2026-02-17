@@ -131,21 +131,17 @@ func replaceTimeAttr(_ []string, attr slog.Attr) slog.Attr {
 // CloseLogger closes the underlying log writers.
 func CloseLogger() error {
 	var firstErr error
-	if accessLogFile != nil {
-		if err := accessLogFile.Close(); err != nil && firstErr == nil {
+	closeFile := func(logFile *lumberjack.Logger) {
+		if logFile == nil {
+			return
+		}
+		if err := logFile.Close(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
-	if auditLogFile != nil {
-		if err := auditLogFile.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	if errorLogFile != nil {
-		if err := errorLogFile.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
+	closeFile(accessLogFile)
+	closeFile(auditLogFile)
+	closeFile(errorLogFile)
 	return firstErr
 }
 
