@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -32,14 +33,31 @@ type auditResponseWriter struct {
 	auditKeyID     string
 	auditErrorCode string
 	bytesWritten   int64
+	startTime      time.Time
+	headerWritten  bool
+}
+
+func (w *auditResponseWriter) setProcessingHeader() {
+	if w.headerWritten {
+		return
+	}
+
+	processingUS := time.Since(w.startTime).Microseconds()
+	if processingUS < 0 {
+		processingUS = 0
+	}
+	w.Header().Set("X-HSM-Processing-Us", strconv.FormatInt(processingUS, 10))
+	w.headerWritten = true
 }
 
 func (w *auditResponseWriter) WriteHeader(status int) {
+	w.setProcessingHeader()
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *auditResponseWriter) Write(b []byte) (int, error) {
+	w.setProcessingHeader()
 	n, err := w.ResponseWriter.Write(b)
 	w.bytesWritten += int64(n)
 	return n, err
@@ -134,7 +152,7 @@ func AuditLogMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 		r = r.WithContext(ctx)
 
-		aw := &auditResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		aw := &auditResponseWriter{ResponseWriter: w, status: http.StatusOK, startTime: start}
 
 		// Extract client certificate info
 		var clientCN string
@@ -185,6 +203,8 @@ func AuditLogMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Log audit event
+		durationMS := float64(time.Since(start).Microseconds()) / 1000.0
+
 		AuditLogger().Info("request",
 			"request_id", requestID,
 			"event_type", "audit",
@@ -197,7 +217,7 @@ func AuditLogMiddleware(next http.Handler) http.Handler {
 			"client_cn", clientCN,
 			"client_ou", clientOU,
 			"remote_addr", r.RemoteAddr,
-			"duration_ms", time.Since(start).Milliseconds(),
+			"duration_ms", durationMS,
 			"context", aw.auditContext,
 			"key_id", aw.auditKeyID,
 			"tls_version", tlsVersion,
@@ -213,7 +233,7 @@ func AuditLogMiddleware(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", aw.status,
-			"duration_ms", time.Since(start).Milliseconds(),
+			"duration_ms", durationMS,
 			"client_ip", r.RemoteAddr,
 			"user_agent", r.UserAgent(),
 			"tls_version", tlsVersion,

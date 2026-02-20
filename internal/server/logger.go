@@ -44,6 +44,11 @@ func InitLogger(cfg *config.LoggingConfig) error {
 		ReplaceAttr: replaceTimeAttr,
 	}
 
+	accessOpts := &slog.HandlerOptions{
+		Level:       level,
+		ReplaceAttr: replaceAccessAttr,
+	}
+
 	errorFile := &lumberjack.Logger{
 		Filename:   cfg.ErrorPath,
 		MaxSize:    cfg.MaxSizeMB,
@@ -108,12 +113,12 @@ func InitLogger(cfg *config.LoggingConfig) error {
 
 	var accessHandler slog.Handler
 	if cfg.Format == "json" {
-		accessHandler = slog.NewJSONHandler(accessWriter, opts)
+		accessHandler = slog.NewJSONHandler(accessWriter, accessOpts)
 	} else {
-		accessHandler = slog.NewTextHandler(accessWriter, opts)
+		accessHandler = slog.NewTextHandler(accessWriter, accessOpts)
 	}
 
-	accessLogger = slog.New(accessHandler).With("component", "access", "module", "access")
+	accessLogger = slog.New(accessHandler)
 
 	return nil
 }
@@ -124,6 +129,14 @@ func replaceTimeAttr(_ []string, attr slog.Attr) slog.Attr {
 	}
 	if t, ok := attr.Value.Any().(time.Time); ok {
 		attr.Value = slog.StringValue(t.UTC().Format("2006-01-02T15:04:05.000000Z"))
+	}
+	return attr
+}
+
+func replaceAccessAttr(groups []string, attr slog.Attr) slog.Attr {
+	attr = replaceTimeAttr(groups, attr)
+	if attr.Key == slog.MessageKey || attr.Key == "component" || attr.Key == "module" {
+		return slog.Attr{}
 	}
 	return attr
 }
@@ -164,7 +177,7 @@ func AuditLogger() *slog.Logger {
 // AccessLogger returns a logger specifically for access events
 func AccessLogger() *slog.Logger {
 	if accessLogger == nil {
-		return slog.With("component", "access", "module", "access")
+		return slog.Default()
 	}
 	return accessLogger
 }
