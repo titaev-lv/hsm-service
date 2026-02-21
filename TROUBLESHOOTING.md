@@ -206,7 +206,7 @@ sudo kill <PID>
 
 # Или изменить порт в config.yaml
 server:
-  port: "8444"
+  port: 8444
 ```
 
 ### Problem 3: Permission denied

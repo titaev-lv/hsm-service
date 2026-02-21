@@ -284,7 +284,7 @@ hsm-service/
 **Содержимое:**
 ```yaml
 server:
-  port: "8443"
+  port: 8443
   tls:
     ca_path: /app/pki/ca/ca.crt
     cert_path: /app/pki/server/hsm-service.local.crt

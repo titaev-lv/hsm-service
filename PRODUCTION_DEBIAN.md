@@ -298,7 +298,7 @@ sudo nano /etc/hsm-service/config.yaml
 **Production config.yaml**:
 ```yaml
 server:
-  port: "8443"
+  port: 8443
   tls:
     ca_path: /etc/hsm-service/pki/ca/ca.crt
     cert_path: /etc/hsm-service/pki/server/hsm-service.crt
