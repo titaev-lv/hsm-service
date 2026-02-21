@@ -100,11 +100,11 @@ func NewServer(cfg *config.ServerConfig, keyManager *hsm.KeyManager, aclChecker 
 		Handler:   handler,
 		TLSConfig: tlsConfig,
 		// Timeout protection against Slowloris attacks
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1 MB
+		ReadTimeout:       cfg.Timeouts.Read,
+		WriteTimeout:      cfg.Timeouts.Write,
+		IdleTimeout:       cfg.Timeouts.Idle,
+		ReadHeaderTimeout: cfg.Timeouts.ReadHeader,
+		MaxHeaderBytes:    cfg.Limits.MaxHeaderBytes,
 	}
 
 	// 7. Configure HTTP/2 for maximum throughput (if enabled)

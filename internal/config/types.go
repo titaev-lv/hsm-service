@@ -20,16 +20,20 @@ type Config struct {
 
 // ServerConfig defines HTTP server configuration
 type ServerConfig struct {
-	Port  int          `yaml:"port"`
-	TLS   TLSConfig    `yaml:"tls"`
-	HTTP2 *HTTP2Config `yaml:"http2,omitempty"` // HTTP/2 configuration (optional)
+	Port     int           `yaml:"port"`
+	TLS      TLSConfig     `yaml:"tls"`
+	Timeouts TimeoutConfig `yaml:"timeouts"`
+	Limits   LimitsConfig  `yaml:"limits"`
+	HTTP2    *HTTP2Config  `yaml:"http2,omitempty"` // HTTP/2 configuration (optional)
 }
 
 func (c *ServerConfig) UnmarshalYAML(value *yaml.Node) error {
 	type rawServerConfig struct {
-		Port  any          `yaml:"port"`
-		TLS   TLSConfig    `yaml:"tls"`
-		HTTP2 *HTTP2Config `yaml:"http2,omitempty"`
+		Port     any           `yaml:"port"`
+		TLS      TLSConfig     `yaml:"tls"`
+		Timeouts TimeoutConfig `yaml:"timeouts"`
+		Limits   LimitsConfig  `yaml:"limits"`
+		HTTP2    *HTTP2Config  `yaml:"http2,omitempty"`
 	}
 
 	var raw rawServerConfig
@@ -44,9 +48,25 @@ func (c *ServerConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	c.Port = port
 	c.TLS = raw.TLS
+	c.Timeouts = raw.Timeouts
+	c.Limits = raw.Limits
 	c.HTTP2 = raw.HTTP2
 
 	return nil
+}
+
+// TimeoutConfig contains HTTP server timeout settings.
+type TimeoutConfig struct {
+	Read          time.Duration `yaml:"read"`
+	Write         time.Duration `yaml:"write"`
+	Idle          time.Duration `yaml:"idle"`
+	ReadHeader    time.Duration `yaml:"read_header"`
+	ShutdownGrace time.Duration `yaml:"shutdown_grace"`
+}
+
+// LimitsConfig contains HTTP server limits settings.
+type LimitsConfig struct {
+	MaxHeaderBytes int `yaml:"max_header_bytes"`
 }
 
 func parsePort(v any) (int, error) {

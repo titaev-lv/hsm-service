@@ -145,17 +145,17 @@ The HSM service implements comprehensive security controls including mTLS, TLS 1
        Addr:              ":" + cfg.Port,
        Handler:           handler,
        TLSConfig:         tlsConfig,
-       ReadTimeout:       10 * time.Second,
-       WriteTimeout:      10 * time.Second,
-       IdleTimeout:       60 * time.Second,
-       ReadHeaderTimeout: 5 * time.Second,
+       ReadTimeout:       cfg.Timeouts.Read,
+       WriteTimeout:      cfg.Timeouts.Write,
+       IdleTimeout:       cfg.Timeouts.Idle,
+       ReadHeaderTimeout: cfg.Timeouts.ReadHeader,
        MaxHeaderBytes:    1 << 20, // 1 MB
    }
    ```
-   - ✅ ReadTimeout 10s - защита от медленного чтения request
-   - ✅ WriteTimeout 10s - защита от медленной записи response
-   - ✅ IdleTimeout 60s - автоматическое закрытие keep-alive соединений
-   - ✅ ReadHeaderTimeout 5s - защита от slow header attacks
+   - ✅ ReadTimeout - защита от медленного чтения request (через `server.timeouts.read`)
+   - ✅ WriteTimeout - защита от медленной записи response (через `server.timeouts.write`)
+   - ✅ IdleTimeout - автоматическое закрытие keep-alive соединений (через `server.timeouts.idle`)
+   - ✅ ReadHeaderTimeout - защита от slow header attacks (через `server.timeouts.read_header`)
    - ✅ MaxHeaderBytes 1MB - ограничение размера заголовков
    - **Status:** Slowloris attack protection implemented
 
@@ -198,9 +198,9 @@ httpServer := &http.Server{
     Addr:         ":" + cfg.Port,
     Handler:      handler,
     TLSConfig:    tlsConfig,
-    ReadTimeout:  10 * time.Second,
-    WriteTimeout: 10 * time.Second,
-    IdleTimeout:  60 * time.Second,
+    ReadTimeout:  cfg.Timeouts.Read,
+    WriteTimeout: cfg.Timeouts.Write,
+    IdleTimeout:  cfg.Timeouts.Idle,
 }
 
 // 3. Add limiter cleanup
@@ -672,19 +672,19 @@ httpServer := &http.Server{
     Addr:              ":" + cfg.Port,
     Handler:           handler,
     TLSConfig:         tlsConfig,
-    ReadTimeout:       10 * time.Second,
-    WriteTimeout:      10 * time.Second,
-    IdleTimeout:       60 * time.Second,
-    ReadHeaderTimeout: 5 * time.Second,
+    ReadTimeout:       cfg.Timeouts.Read,
+    WriteTimeout:      cfg.Timeouts.Write,
+    IdleTimeout:       cfg.Timeouts.Idle,
+    ReadHeaderTimeout: cfg.Timeouts.ReadHeader,
     MaxHeaderBytes:    1 << 20, // 1 MB
 }
 ```
 
 **Protection:**
-- ✅ ReadTimeout 10s - slow request protection
-- ✅ WriteTimeout 10s - slow response protection
-- ✅ IdleTimeout 60s - keep-alive connection cleanup
-- ✅ ReadHeaderTimeout 5s - slow header attack protection
+- ✅ ReadTimeout - slow request protection (configurable via `server.timeouts.read`)
+- ✅ WriteTimeout - slow response protection (configurable via `server.timeouts.write`)
+- ✅ IdleTimeout - keep-alive connection cleanup (configurable via `server.timeouts.idle`)
+- ✅ ReadHeaderTimeout - slow header attack protection (configurable via `server.timeouts.read_header`)
 - ✅ MaxHeaderBytes 1MB - header size limit
 - ✅ Slowloris attack mitigation
 

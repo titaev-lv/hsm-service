@@ -4,6 +4,14 @@ server:
     ca_path: /app/pki/ca/ca.crt
     cert_path: /app/pki/server/hsm-service.crt
     key_path: /app/pki/server/hsm-service.key
+  timeouts:
+    read: 10s
+    write: 10s
+    idle: 60s
+    read_header: 5s
+    shutdown_grace: 15s
+  limits:
+    max_header_bytes: 1048576
   # HTTP/2 configuration for maximum throughput on dedicated HSM machines
   # Rationale: Default HTTP/2 settings bottleneck at ~250 concurrent streams
   # Analysis showed CPU idle at 10% while rejecting 95% of spike requests

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -211,6 +212,44 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Server.TLS.CAPath == "" {
 		return fmt.Errorf("server.tls.ca_path is required")
+	}
+
+	if cfg.Server.Timeouts.Read == 0 {
+		cfg.Server.Timeouts.Read = 10 * time.Second
+	}
+	if cfg.Server.Timeouts.Write == 0 {
+		cfg.Server.Timeouts.Write = 10 * time.Second
+	}
+	if cfg.Server.Timeouts.Idle == 0 {
+		cfg.Server.Timeouts.Idle = 60 * time.Second
+	}
+	if cfg.Server.Timeouts.ReadHeader == 0 {
+		cfg.Server.Timeouts.ReadHeader = 5 * time.Second
+	}
+	if cfg.Server.Timeouts.ShutdownGrace == 0 {
+		cfg.Server.Timeouts.ShutdownGrace = 15 * time.Second
+	}
+	if cfg.Server.Limits.MaxHeaderBytes == 0 {
+		cfg.Server.Limits.MaxHeaderBytes = 1 << 20 // 1 MiB
+	}
+
+	if cfg.Server.Timeouts.Read < 0 || cfg.Server.Timeouts.Read > 24*time.Hour {
+		return fmt.Errorf("server.timeouts.read is invalid: %s", cfg.Server.Timeouts.Read)
+	}
+	if cfg.Server.Timeouts.Write < 0 || cfg.Server.Timeouts.Write > 24*time.Hour {
+		return fmt.Errorf("server.timeouts.write is invalid: %s", cfg.Server.Timeouts.Write)
+	}
+	if cfg.Server.Timeouts.Idle < 0 || cfg.Server.Timeouts.Idle > 24*time.Hour {
+		return fmt.Errorf("server.timeouts.idle is invalid: %s", cfg.Server.Timeouts.Idle)
+	}
+	if cfg.Server.Timeouts.ReadHeader < 0 || cfg.Server.Timeouts.ReadHeader > 24*time.Hour {
+		return fmt.Errorf("server.timeouts.read_header is invalid: %s", cfg.Server.Timeouts.ReadHeader)
+	}
+	if cfg.Server.Timeouts.ShutdownGrace < 0 || cfg.Server.Timeouts.ShutdownGrace > 24*time.Hour {
+		return fmt.Errorf("server.timeouts.shutdown_grace is invalid: %s", cfg.Server.Timeouts.ShutdownGrace)
+	}
+	if cfg.Server.Limits.MaxHeaderBytes < 4096 || cfg.Server.Limits.MaxHeaderBytes > (16<<20) {
+		return fmt.Errorf("server.limits.max_header_bytes is invalid: %d", cfg.Server.Limits.MaxHeaderBytes)
 	}
 
 	// Validate HSM config

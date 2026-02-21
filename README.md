@@ -55,6 +55,7 @@ graph TB
 **Ключевые принципы**:
 - 🔒 KEK никогда не покидают HSM
 - 🔐 Все соединения - mTLS (clients ↔ HSM, services ↔ DB)
+- 🔐 TLS/mTLS для входящего API всегда обязателен (флаг `server.tls.enabled` намеренно отсутствует)
 - 🎯 ACL изолирует contexts по Organizational Unit
 - 🔄 Zero-downtime ротация ключей
 - 📊 Полный аудит всех операций

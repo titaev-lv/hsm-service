@@ -285,6 +285,14 @@ hsm-service/
 ```yaml
 server:
   port: 8443
+  timeouts:
+    read: 10s
+    write: 30s
+    idle: 120s
+    read_header: 5s
+    shutdown_grace: 15s
+  limits:
+    max_header_bytes: 1048576
   tls:
     ca_path: /app/pki/ca/ca.crt
     cert_path: /app/pki/server/hsm-service.local.crt

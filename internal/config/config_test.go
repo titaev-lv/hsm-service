@@ -71,6 +71,104 @@ logging:
 	if len(cfg.HSM.Keys) != 1 {
 		t.Errorf("len(HSM.Keys) = %d, want 1", len(cfg.HSM.Keys))
 	}
+	if cfg.Server.Timeouts.Read == 0 || cfg.Server.Timeouts.Write == 0 || cfg.Server.Timeouts.Idle == 0 || cfg.Server.Timeouts.ReadHeader == 0 || cfg.Server.Timeouts.ShutdownGrace == 0 {
+		t.Errorf("expected default server.timeouts to be populated, got %+v", cfg.Server.Timeouts)
+	}
+	if cfg.Server.Limits.MaxHeaderBytes == 0 {
+		t.Errorf("expected default server.limits.max_header_bytes to be populated")
+	}
+}
+
+func TestLoadConfig_InvalidServerTimeout(t *testing.T) {
+	configContent := `
+server:
+  port: "8443"
+  tls:
+    cert_path: "/pki/server/cert.crt"
+    key_path: "/pki/server/cert.key"
+    ca_path: "/pki/ca/ca.crt"
+  timeouts:
+    read: "-1s"
+
+hsm:
+  pkcs11_lib: "/usr/lib/softhsm/libsofthsm2.so"
+  slot_id: "0"
+  metadata_file: "/app/metadata.yaml"
+  keys:
+    exchange-key:
+      type: "aes"
+
+acl:
+  mappings:
+    Trading:
+      - exchange-key
+
+rate_limit:
+  requests_per_second: 100
+  burst: 200
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(configContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadConfig(tmpfile.Name()); err == nil {
+		t.Fatal("expected LoadConfig() to fail for negative server.timeouts.read")
+	}
+}
+
+func TestLoadConfig_InvalidMaxHeaderBytes(t *testing.T) {
+	configContent := `
+server:
+	port: "8443"
+	tls:
+		cert_path: "/pki/server/cert.crt"
+		key_path: "/pki/server/cert.key"
+		ca_path: "/pki/ca/ca.crt"
+	limits:
+		max_header_bytes: 1024
+
+hsm:
+	pkcs11_lib: "/usr/lib/softhsm/libsofthsm2.so"
+	slot_id: "0"
+	metadata_file: "/app/metadata.yaml"
+	keys:
+		exchange-key:
+			type: "aes"
+
+acl:
+	mappings:
+		Trading:
+			- exchange-key
+
+rate_limit:
+	requests_per_second: 100
+	burst: 200
+`
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(configContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadConfig(tmpfile.Name()); err == nil {
+		t.Fatal("expected LoadConfig() to fail for too small server.limits.max_header_bytes")
+	}
 }
 
 func TestEnvOverrides(t *testing.T) {

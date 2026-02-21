@@ -135,8 +135,8 @@ func main() {
 	case sig := <-sigChan:
 		logServer.Info("received signal, shutting down", "signal", sig.String())
 
-		// Create shutdown context with timeout
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		// Create shutdown context with timeout from server config
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.Timeouts.ShutdownGrace)
 		defer cancel()
 
 		// 1. Stop metadata auto-reload
