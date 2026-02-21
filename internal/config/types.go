@@ -1,6 +1,13 @@
 package config
 
-import "time"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
 
 // Config represents the complete application configuration
 type Config struct {
@@ -13,9 +20,60 @@ type Config struct {
 
 // ServerConfig defines HTTP server configuration
 type ServerConfig struct {
-	Port  string       `yaml:"port"`
+	Port  int          `yaml:"port"`
 	TLS   TLSConfig    `yaml:"tls"`
 	HTTP2 *HTTP2Config `yaml:"http2,omitempty"` // HTTP/2 configuration (optional)
+}
+
+func (c *ServerConfig) UnmarshalYAML(value *yaml.Node) error {
+	type rawServerConfig struct {
+		Port  any          `yaml:"port"`
+		TLS   TLSConfig    `yaml:"tls"`
+		HTTP2 *HTTP2Config `yaml:"http2,omitempty"`
+	}
+
+	var raw rawServerConfig
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	port, err := parsePort(raw.Port)
+	if err != nil {
+		return fmt.Errorf("invalid server.port: %w", err)
+	}
+
+	c.Port = port
+	c.TLS = raw.TLS
+	c.HTTP2 = raw.HTTP2
+
+	return nil
+}
+
+func parsePort(v any) (int, error) {
+	switch port := v.(type) {
+	case nil:
+		return 0, nil
+	case int:
+		return port, nil
+	case int64:
+		return int(port), nil
+	case uint64:
+		return int(port), nil
+	case float64:
+		return int(port), nil
+	case string:
+		trimmed := strings.TrimSpace(port)
+		if trimmed == "" {
+			return 0, nil
+		}
+		parsed, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return 0, err
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("unsupported type %T", v)
+	}
 }
 
 // TLSConfig defines TLS certificate paths

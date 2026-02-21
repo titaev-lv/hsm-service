@@ -19,7 +19,7 @@ func TestConfig_Validation(t *testing.T) {
 			name: "Valid config",
 			config: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "/path/to/cert.pem",
 						KeyPath:  "/path/to/key.pem",
@@ -49,7 +49,7 @@ func TestConfig_Validation(t *testing.T) {
 			name: "Missing PKCS11Lib",
 			config: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "cert.pem",
 						KeyPath:  "key.pem",
@@ -74,7 +74,7 @@ func TestConfig_Validation(t *testing.T) {
 			name: "Missing SlotID",
 			config: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "cert.pem",
 						KeyPath:  "key.pem",
@@ -99,7 +99,7 @@ func TestConfig_Validation(t *testing.T) {
 			name: "Empty HSM keys",
 			config: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "cert.pem",
 						KeyPath:  "key.pem",
@@ -122,7 +122,7 @@ func TestConfig_Validation(t *testing.T) {
 			name: "Invalid key type",
 			config: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "cert.pem",
 						KeyPath:  "key.pem",
@@ -147,7 +147,7 @@ func TestConfig_Validation(t *testing.T) {
 			name: "Empty ACL mappings",
 			config: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "cert.pem",
 						KeyPath:  "key.pem",
@@ -293,8 +293,8 @@ acl:
 		t.Errorf("Expected PIN from env 'new-pin-from-env', got '%s'", cfg.HSM.PIN)
 	}
 
-	if cfg.Server.Port != "9443" {
-		t.Errorf("Expected port from env '9443', got '%s'", cfg.Server.Port)
+	if cfg.Server.Port != 9443 {
+		t.Errorf("Expected port from env 9443, got %d", cfg.Server.Port)
 	}
 
 	t.Logf("✓ ENV overrides work correctly")

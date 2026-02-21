@@ -96,7 +96,7 @@ func NewServer(cfg *config.ServerConfig, keyManager *hsm.KeyManager, aclChecker 
 
 	// 6. Create HTTP server
 	httpServer := &http.Server{
-		Addr:      ":" + cfg.Port,
+		Addr:      fmt.Sprintf(":%d", cfg.Port),
 		Handler:   handler,
 		TLSConfig: tlsConfig,
 		// Timeout protection against Slowloris attacks

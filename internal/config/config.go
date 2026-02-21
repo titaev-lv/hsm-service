@@ -119,7 +119,9 @@ func SaveMetadata(path string, meta *Metadata) error {
 func applyEnvOverrides(cfg *Config) {
 	// Server overrides
 	if port := os.Getenv("HSM_SERVER_PORT"); port != "" {
-		cfg.Server.Port = port
+		if v, err := strconv.Atoi(port); err == nil {
+			cfg.Server.Port = v
+		}
 	}
 	if certPath := os.Getenv("HSM_SERVER_CERT"); certPath != "" {
 		cfg.Server.TLS.CertPath = certPath
@@ -198,8 +200,8 @@ func applyEnvOverrides(cfg *Config) {
 // validateConfig validates the configuration
 func validateConfig(cfg *Config) error {
 	// Validate server config
-	if cfg.Server.Port == "" {
-		return fmt.Errorf("server.port is required")
+	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
+		return fmt.Errorf("server.port must be in range 1..65535")
 	}
 	if cfg.Server.TLS.CertPath == "" {
 		return fmt.Errorf("server.tls.cert_path is required")

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,7 @@ logging:
   level: "info"
   format: "json"
 `
+	configContent = strings.ReplaceAll(configContent, "\t", "  ")
 	tmpfile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +62,8 @@ logging:
 	}
 
 	// Validate loaded config
-	if cfg.Server.Port != "8443" {
-		t.Errorf("Server.Port = %s, want 8443", cfg.Server.Port)
+	if cfg.Server.Port != 8443 {
+		t.Errorf("Server.Port = %d, want 8443", cfg.Server.Port)
 	}
 	if cfg.HSM.PKCS11Lib != "/usr/lib/softhsm/libsofthsm2.so" {
 		t.Errorf("HSM.PKCS11Lib = %s, want /usr/lib/softhsm/libsofthsm2.so", cfg.HSM.PKCS11Lib)
@@ -147,8 +149,8 @@ logging:
 	}
 
 	// Check environment overrides
-	if cfg.Server.Port != "9443" {
-		t.Errorf("Server.Port = %s, want 9443 (from env)", cfg.Server.Port)
+	if cfg.Server.Port != 9443 {
+		t.Errorf("Server.Port = %d, want 9443 (from env)", cfg.Server.Port)
 	}
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("Logging.Level = %s, want debug (from env)", cfg.Logging.Level)
@@ -254,7 +256,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "valid config",
 			cfg: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "/cert.crt",
 						KeyPath:  "/cert.key",
@@ -301,7 +303,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "invalid key type",
 			cfg: &Config{
 				Server: ServerConfig{
-					Port: "8443",
+					Port: 8443,
 					TLS: TLSConfig{
 						CertPath: "/cert.crt",
 						KeyPath:  "/cert.key",
