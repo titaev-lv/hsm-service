@@ -355,9 +355,9 @@ logging:
   max_backups: 10
   max_age_days: 30
   compress: true
+  error_to_stdout: true
   audit_to_stdout: true
   access_to_stdout: true
-  audit_mirror_to_error_on_debug: true
 ```
 
 **Примечание:** Значения в `http2` секции можно указывать в килобайтах (k/K) или мегабайтах (m/M), например: `"4M"`, `"512k"`, или просто байтами `"1048576"`.

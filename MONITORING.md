@@ -410,7 +410,6 @@ logging:
   max_age_days: 30
   compress: true
   audit_to_stdout: true
-  audit_mirror_to_error_on_debug: true
 ```
 
 ---

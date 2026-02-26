@@ -49,6 +49,11 @@ func InitLogger(cfg *config.LoggingConfig) error {
 		ReplaceAttr: replaceAccessAttr,
 	}
 
+	auditOpts := &slog.HandlerOptions{
+		Level:       level,
+		ReplaceAttr: replaceAuditAttr,
+	}
+
 	errorFile := &lumberjack.Logger{
 		Filename:   cfg.ErrorPath,
 		MaxSize:    cfg.MaxSizeMB,
@@ -58,7 +63,10 @@ func InitLogger(cfg *config.LoggingConfig) error {
 	}
 	errorLogFile = errorFile
 
-	errorWriter := io.MultiWriter(os.Stdout, errorFile)
+	errorWriter := io.Writer(errorFile)
+	if cfg.ErrorToStdout == nil || *cfg.ErrorToStdout {
+		errorWriter = io.MultiWriter(os.Stdout, errorFile)
+	}
 
 	var errorHandler slog.Handler
 	if cfg.Format == "json" {
@@ -84,15 +92,12 @@ func InitLogger(cfg *config.LoggingConfig) error {
 	if cfg.AuditToStdout != nil && *cfg.AuditToStdout {
 		auditWriter = io.MultiWriter(os.Stdout, auditWriter)
 	}
-	if level == slog.LevelDebug && cfg.AuditMirrorToErrorOnDebug != nil && *cfg.AuditMirrorToErrorOnDebug {
-		auditWriter = io.MultiWriter(auditWriter, errorWriter)
-	}
 
 	var auditHandler slog.Handler
 	if cfg.Format == "json" {
-		auditHandler = slog.NewJSONHandler(auditWriter, opts)
+		auditHandler = slog.NewJSONHandler(auditWriter, auditOpts)
 	} else {
-		auditHandler = slog.NewTextHandler(auditWriter, opts)
+		auditHandler = slog.NewTextHandler(auditWriter, auditOpts)
 	}
 
 	auditLogger = slog.New(auditHandler).With("component", "audit", "module", "audit")
@@ -135,7 +140,15 @@ func replaceTimeAttr(_ []string, attr slog.Attr) slog.Attr {
 
 func replaceAccessAttr(groups []string, attr slog.Attr) slog.Attr {
 	attr = replaceTimeAttr(groups, attr)
-	if attr.Key == slog.MessageKey || attr.Key == "component" || attr.Key == "module" {
+	if attr.Key == slog.MessageKey || attr.Key == "component" || attr.Key == "module" || attr.Key == slog.LevelKey {
+		return slog.Attr{}
+	}
+	return attr
+}
+
+func replaceAuditAttr(groups []string, attr slog.Attr) slog.Attr {
+	attr = replaceTimeAttr(groups, attr)
+	if attr.Key == slog.LevelKey {
 		return slog.Attr{}
 	}
 	return attr

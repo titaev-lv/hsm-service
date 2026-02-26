@@ -181,6 +181,11 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Logging.Compress = &v
 		}
 	}
+	if errorStdout := os.Getenv("HSM_LOG_ERROR_TO_STDOUT"); errorStdout != "" {
+		if v, err := strconv.ParseBool(errorStdout); err == nil {
+			cfg.Logging.ErrorToStdout = &v
+		}
+	}
 	if auditStdout := os.Getenv("HSM_LOG_AUDIT_TO_STDOUT"); auditStdout != "" {
 		if v, err := strconv.ParseBool(auditStdout); err == nil {
 			cfg.Logging.AuditToStdout = &v
@@ -189,11 +194,6 @@ func applyEnvOverrides(cfg *Config) {
 	if accessStdout := os.Getenv("HSM_LOG_ACCESS_TO_STDOUT"); accessStdout != "" {
 		if v, err := strconv.ParseBool(accessStdout); err == nil {
 			cfg.Logging.AccessToStdout = &v
-		}
-	}
-	if auditMirror := os.Getenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG"); auditMirror != "" {
-		if v, err := strconv.ParseBool(auditMirror); err == nil {
-			cfg.Logging.AuditMirrorToErrorOnDebug = &v
 		}
 	}
 }
@@ -317,6 +317,10 @@ func validateConfig(cfg *Config) error {
 		v := true
 		cfg.Logging.Compress = &v
 	}
+	if cfg.Logging.ErrorToStdout == nil {
+		v := true
+		cfg.Logging.ErrorToStdout = &v
+	}
 	if cfg.Logging.AuditToStdout == nil {
 		v := true
 		cfg.Logging.AuditToStdout = &v
@@ -324,10 +328,6 @@ func validateConfig(cfg *Config) error {
 	if cfg.Logging.AccessToStdout == nil {
 		v := true
 		cfg.Logging.AccessToStdout = &v
-	}
-	if cfg.Logging.AuditMirrorToErrorOnDebug == nil {
-		v := true
-		cfg.Logging.AuditMirrorToErrorOnDebug = &v
 	}
 
 	return nil

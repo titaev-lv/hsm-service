@@ -76,6 +76,7 @@ graph TB
 | **Key Escrow** | Отсутствует | Нет split knowledge |
 | **Audit API** | Только логи | Нет API для аудита |
 | **HSM Backup** | Ручной процесс | Нет encrypted backup |
+| **Metrics endpoint** | `/metrics` на основном API listener | Нет изоляции метрик на отдельном listener/port |
 
 ---
 
@@ -108,9 +109,9 @@ logging:
   max_backups: 10
   max_age_days: 30
   compress: true
+  error_to_stdout: true
   audit_to_stdout: true
   access_to_stdout: true
-  audit_mirror_to_error_on_debug: true
 ```
 
 **Модульность:**
@@ -728,6 +729,7 @@ graph TB
 | Key Ceremony CLI | 🟠 Medium | 3d | TODO |
 | Audit API (basic) | 🟡 Medium | 3d | TODO |
 | Encrypted backup | 🟡 Medium | 4d | TODO |
+| Metrics: вынести `/metrics` на отдельный listener/port | 🟡 Medium | 2d | TODO |
 
 ### Phase 4: v1.4.0 (Q2-Q3 2026) — High Availability
 

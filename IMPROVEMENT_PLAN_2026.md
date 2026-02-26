@@ -64,6 +64,7 @@
 8. **Multi-Slot Isolation**: All KEKs in single HSM slot
 9. **Certificate Automation**: No cert-manager integration
 10. **Disaster Recovery**: No documented runbooks
+11. **Metrics Isolation**: `/metrics` is served on main API listener instead of dedicated listener/port
 
 ---
 
@@ -83,6 +84,7 @@ gantt
     Multi-Slot Architecture      :active, 2026-04-01, 21d
     Hardware HSM Support         :2026-04-15, 30d
     Audit API v1                 :2026-05-01, 15d
+    Metrics Listener Separation  :2026-05-20, 7d
     section Q3 2026
     High Availability            :2026-07-01, 45d
     Split Knowledge (Shamir)     :2026-08-01, 21d
@@ -969,6 +971,36 @@ audit:
 ```
 
 **Effort:** 8 дней разработки + 3 дня тестирования + 2 дня документации
+
+---
+
+### 2.4 Metrics Listener Separation 🟡 MEDIUM
+
+**Проблема:**
+- `/metrics` обслуживается на основном API listener (`:8443`)
+- Метрики зависят от runtime-пути основного API и его middleware цепочки
+- Сложнее изолировать scrape-трафик сетевыми политиками
+
+**Решение:**
+- Вынести метрики на отдельный listener и порт (например `:9090`)
+- Добавить отдельную секцию конфигурации:
+
+```yaml
+metrics:
+  enabled: true
+  port: 9090
+  path: /metrics
+```
+
+- Оставить бизнес API на `server.port`, а Prometheus endpoint на `metrics.port`
+- Ограничить доступ к `metrics.port` только из monitoring-сети/compose network
+
+**Критерии успеха:**
+- [ ] Метрики доступны на отдельном порту без влияния на основной API
+- [ ] Prometheus scrape работает после перезапуска сервиса
+- [ ] Политики сети блокируют внешний доступ к `metrics.port`
+
+**Effort:** 2 дня разработки + 1 день тестирования + 0.5 дня документации
 
 ---
 

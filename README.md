@@ -133,9 +133,9 @@ logging:
   max_backups: 10
   max_age_days: 30
   compress: true
+  error_to_stdout: true
   audit_to_stdout: true
   access_to_stdout: true
-  audit_mirror_to_error_on_debug: true
 ```
 
 ---

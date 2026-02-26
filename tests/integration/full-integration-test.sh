@@ -503,7 +503,6 @@ logging:
   compress: true
   audit_to_stdout: true
   access_to_stdout: true
-  audit_mirror_to_error_on_debug: true
 CONFIG_EOF
 print_success "Test config created with hsm-test-token slot_id"
 

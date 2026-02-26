@@ -186,7 +186,7 @@ type LoggingConfig struct {
 	MaxBackups                int    `yaml:"max_backups"`                    // count
 	MaxAgeDays                int    `yaml:"max_age_days"`                   // days
 	Compress                  *bool  `yaml:"compress"`                       // default true
+	ErrorToStdout             *bool  `yaml:"error_to_stdout"`                // default true
 	AuditToStdout             *bool  `yaml:"audit_to_stdout"`                // default true
 	AccessToStdout            *bool  `yaml:"access_to_stdout"`               // default true
-	AuditMirrorToErrorOnDebug *bool  `yaml:"audit_mirror_to_error_on_debug"` // default true
 }

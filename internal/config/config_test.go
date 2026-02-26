@@ -182,9 +182,9 @@ func TestEnvOverrides(t *testing.T) {
 	os.Setenv("HSM_LOG_MAX_BACKUPS", "7")
 	os.Setenv("HSM_LOG_MAX_AGE_DAYS", "9")
 	os.Setenv("HSM_LOG_COMPRESS", "false")
+	os.Setenv("HSM_LOG_ERROR_TO_STDOUT", "false")
 	os.Setenv("HSM_LOG_AUDIT_TO_STDOUT", "false")
 	os.Setenv("HSM_LOG_ACCESS_TO_STDOUT", "false")
-	os.Setenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG", "false")
 	defer os.Unsetenv("HSM_SERVER_PORT")
 	defer os.Unsetenv("HSM_LOG_LEVEL")
 	defer os.Unsetenv("HSM_LOG_ERROR_PATH")
@@ -194,9 +194,9 @@ func TestEnvOverrides(t *testing.T) {
 	defer os.Unsetenv("HSM_LOG_MAX_BACKUPS")
 	defer os.Unsetenv("HSM_LOG_MAX_AGE_DAYS")
 	defer os.Unsetenv("HSM_LOG_COMPRESS")
+	defer os.Unsetenv("HSM_LOG_ERROR_TO_STDOUT")
 	defer os.Unsetenv("HSM_LOG_AUDIT_TO_STDOUT")
 	defer os.Unsetenv("HSM_LOG_ACCESS_TO_STDOUT")
-	defer os.Unsetenv("HSM_LOG_AUDIT_MIRROR_TO_ERROR_ON_DEBUG")
 
 	configContent := `
 server:
@@ -262,14 +262,14 @@ logging:
 	if cfg.Logging.Compress == nil || *cfg.Logging.Compress {
 		t.Errorf("expected compress=false from env")
 	}
+	if cfg.Logging.ErrorToStdout == nil || *cfg.Logging.ErrorToStdout {
+		t.Errorf("expected error_to_stdout=false from env")
+	}
 	if cfg.Logging.AuditToStdout == nil || *cfg.Logging.AuditToStdout {
 		t.Errorf("expected audit_to_stdout=false from env")
 	}
 	if cfg.Logging.AccessToStdout == nil || *cfg.Logging.AccessToStdout {
 		t.Errorf("expected access_to_stdout=false from env")
-	}
-	if cfg.Logging.AuditMirrorToErrorOnDebug == nil || *cfg.Logging.AuditMirrorToErrorOnDebug {
-		t.Errorf("expected audit_mirror_to_error_on_debug=false from env")
 	}
 }
 
@@ -333,14 +333,14 @@ rate_limit:
 	if cfg.Logging.Compress == nil || !*cfg.Logging.Compress {
 		t.Errorf("expected default compress=true")
 	}
+	if cfg.Logging.ErrorToStdout == nil || !*cfg.Logging.ErrorToStdout {
+		t.Errorf("expected default error_to_stdout=true")
+	}
 	if cfg.Logging.AuditToStdout == nil || !*cfg.Logging.AuditToStdout {
 		t.Errorf("expected default audit_to_stdout=true")
 	}
 	if cfg.Logging.AccessToStdout == nil || !*cfg.Logging.AccessToStdout {
 		t.Errorf("expected default access_to_stdout=true")
-	}
-	if cfg.Logging.AuditMirrorToErrorOnDebug == nil || !*cfg.Logging.AuditMirrorToErrorOnDebug {
-		t.Errorf("expected default audit_mirror_to_error_on_debug=true")
 	}
 }
 
