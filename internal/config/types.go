@@ -73,6 +73,8 @@ type LimitsConfig struct {
 func parsePort(v any) (int, error) {
 	maxInt := int(^uint(0) >> 1)
 	minInt := -maxInt - 1
+	const maxInt32Uint64 = uint64(2147483647)
+	const maxInt64Uint64 = uint64(9223372036854775807)
 
 	switch port := v.(type) {
 	case nil:
@@ -85,10 +87,14 @@ func parsePort(v any) (int, error) {
 		}
 		return int(port), nil
 	case uint64:
-		if port > uint64(maxInt) {
+		if (strconv.IntSize == 32 && port > maxInt32Uint64) || (strconv.IntSize == 64 && port > maxInt64Uint64) {
 			return 0, fmt.Errorf("port %d is out of int range", port)
 		}
-		return int(port), nil
+		parsed, err := strconv.ParseInt(strconv.FormatUint(port, 10), 10, strconv.IntSize)
+		if err != nil {
+			return 0, fmt.Errorf("port %d is out of int range", port)
+		}
+		return int(parsed), nil
 	case float64:
 		if math.IsNaN(port) || math.IsInf(port, 0) {
 			return 0, fmt.Errorf("port %v is not a finite number", port)
@@ -196,16 +202,16 @@ type RateLimitConfig struct {
 
 // LoggingConfig defines logging configuration
 type LoggingConfig struct {
-	Level                     string `yaml:"level"`                          // debug, info, warn, error
-	Format                    string `yaml:"format"`                         // json, text
-	ErrorPath                 string `yaml:"error_path"`                     // /var/log/hsm-service/error.log
-	AuditPath                 string `yaml:"audit_path"`                     // /var/log/hsm-service/audit.log
-	AccessPath                string `yaml:"access_path"`                    // /var/log/hsm-service/access.log
-	MaxSizeMB                 int    `yaml:"max_size_mb"`                    // MB
-	MaxBackups                int    `yaml:"max_backups"`                    // count
-	MaxAgeDays                int    `yaml:"max_age_days"`                   // days
-	Compress                  *bool  `yaml:"compress"`                       // default true
-	ErrorToStdout             *bool  `yaml:"error_to_stdout"`                // default true
-	AuditToStdout             *bool  `yaml:"audit_to_stdout"`                // default true
-	AccessToStdout            *bool  `yaml:"access_to_stdout"`               // default true
+	Level          string `yaml:"level"`            // debug, info, warn, error
+	Format         string `yaml:"format"`           // json, text
+	ErrorPath      string `yaml:"error_path"`       // /var/log/hsm-service/error.log
+	AuditPath      string `yaml:"audit_path"`       // /var/log/hsm-service/audit.log
+	AccessPath     string `yaml:"access_path"`      // /var/log/hsm-service/access.log
+	MaxSizeMB      int    `yaml:"max_size_mb"`      // MB
+	MaxBackups     int    `yaml:"max_backups"`      // count
+	MaxAgeDays     int    `yaml:"max_age_days"`     // days
+	Compress       *bool  `yaml:"compress"`         // default true
+	ErrorToStdout  *bool  `yaml:"error_to_stdout"`  // default true
+	AuditToStdout  *bool  `yaml:"audit_to_stdout"`  // default true
+	AccessToStdout *bool  `yaml:"access_to_stdout"` // default true
 }
