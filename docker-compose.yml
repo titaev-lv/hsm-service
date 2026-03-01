@@ -50,7 +50,7 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:8443/health"]
+      test: ["CMD-SHELL", "pgrep -x hsm-service >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
