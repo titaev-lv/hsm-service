@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -70,16 +71,34 @@ type LimitsConfig struct {
 }
 
 func parsePort(v any) (int, error) {
+	maxInt := int(^uint(0) >> 1)
+	minInt := -maxInt - 1
+
 	switch port := v.(type) {
 	case nil:
 		return 0, nil
 	case int:
 		return port, nil
 	case int64:
+		if port < int64(minInt) || port > int64(maxInt) {
+			return 0, fmt.Errorf("port %d is out of int range", port)
+		}
 		return int(port), nil
 	case uint64:
+		if port > uint64(maxInt) {
+			return 0, fmt.Errorf("port %d is out of int range", port)
+		}
 		return int(port), nil
 	case float64:
+		if math.IsNaN(port) || math.IsInf(port, 0) {
+			return 0, fmt.Errorf("port %v is not a finite number", port)
+		}
+		if math.Trunc(port) != port {
+			return 0, fmt.Errorf("port %v must be an integer", port)
+		}
+		if port < float64(minInt) || port > float64(maxInt) {
+			return 0, fmt.Errorf("port %v is out of int range", port)
+		}
 		return int(port), nil
 	case string:
 		trimmed := strings.TrimSpace(port)
