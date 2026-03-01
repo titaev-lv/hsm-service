@@ -1,5 +1,27 @@
 # Changelog 
 
+## v2.0.1 - 2026-03-02
+
+### Features
+- Unify service configuration into a single `config.yaml` flow across server/config loading
+- Add explicit server timeout and limit settings (`read`, `write`, `idle`, `read_header`, `shutdown_grace`, `max_header_bytes`)
+- Add logging stdout controls and related configuration wiring
+
+### Security Fixes
+- Fix integer overflow risks in `server.port` parsing (`G115/CWE-190`) by removing unsafe `uint64 -> int` and `int -> uint64` conversions
+- Add strict numeric validation for port parsing (finite values, integer-only for float input, and architecture-aware int range checks)
+
+### Reliability
+- Simplify access log stream handling while preserving precise `duration_ms` reporting
+- Update `docker-compose.yml` service settings for `hsm-service`
+
+### Tests
+- Add regression tests for `parsePort` overflow and invalid numeric inputs
+
+### Documentation
+- Update architecture, production, troubleshooting, monitoring, and README docs to match unified config and logging behavior
+- Update development/roadmap planning docs and version metadata
+
 ## v2.0.0 - 2026-02-18
 
 ### Breaking Changes
