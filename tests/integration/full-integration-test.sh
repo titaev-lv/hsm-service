@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Test counters
 CURRENT_TEST=0
-TOTAL_TESTS=76
+TOTAL_TESTS=0
 
 # Helper functions
 print_header() {
@@ -50,6 +50,31 @@ print_error() {
 
 print_info() {
     echo -e "${BLUE}ℹ${NC} $1"
+}
+
+# Auto-calculate total test count from print_test calls.
+# This keeps numbering accurate after script edits.
+TOTAL_TESTS=$(grep -cE '^[[:space:]]*print_test "' "$0" || true)
+if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" -le 0 ]; then
+    TOTAL_TESTS=1
+fi
+
+# Returns 0 if a TCP port is in LISTEN state on host, 1 otherwise.
+is_port_in_use() {
+    local port="$1"
+
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)${port}$"
+        return $?
+    fi
+
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -iTCP:"$port" -sTCP:LISTEN -n -P >/dev/null 2>&1
+        return $?
+    fi
+
+    # If neither tool exists, do not block test run; caller can decide.
+    return 1
 }
 
 # Safe curl wrapper - logs response even on errors
@@ -507,7 +532,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-        image: hsm-service:test
+    image: hsm-service:test
     container_name: hsm-service-test
     hostname: hsm-service-test
     
@@ -595,6 +620,13 @@ print_test "Start services with docker-compose (test mode)"
 print_info "Starting container with docker-compose..."
 print_info "TEST_COMPOSE_FILE=$TEST_COMPOSE_FILE"
 print_info "PROJECT_ROOT=$PROJECT_ROOT"
+
+print_test "Preflight: verify host test port 8444 is free"
+if is_port_in_use 8444; then
+    print_error "Host port 8444 is already in use. Stop conflicting process/container before running integration tests"
+fi
+print_success "Host port 8444 is free"
+
 cd "$PROJECT_ROOT"
 # Use test compose file - force recreate test container
 print_info "Running: docker compose -f '$TEST_COMPOSE_FILE' up -d --force-recreate"
@@ -1197,6 +1229,82 @@ print_info "Cleaned up test comment from metadata.yaml"
 sleep 35
 
 # ==========================================
+# PHASE 9.6: CHECKSUM MISMATCH PROTECTION
+# ==========================================
+print_header "PHASE 9.6: Checksum Mismatch Protection"
+
+print_test "Test 9.6.1: Backup metadata before checksum tamper"
+D2_BACKUP="$PROJECT_ROOT/metadata-test.yaml.d2-backup"
+cp "$PROJECT_ROOT/metadata-test.yaml" "$D2_BACKUP"
+print_success "Metadata backup created: $D2_BACKUP"
+
+print_test "Test 9.6.2: Tamper checksum for current exchange-key version"
+python3 << PYTHON_EOF
+import sys
+import yaml
+
+metadata_file = "$PROJECT_ROOT/metadata-test.yaml"
+
+try:
+    with open(metadata_file, 'r') as f:
+        data = yaml.safe_load(f)
+
+    current = data['rotation']['exchange-key']['current']
+    changed = False
+    for v in data['rotation']['exchange-key']['versions']:
+        if v.get('label') == current:
+            v['checksum'] = '0000000000000000000000000000000000000000000000000000000000000000'
+            changed = True
+            break
+
+    if not changed:
+        print('current exchange-key version not found', file=sys.stderr)
+        sys.exit(1)
+
+    with open(metadata_file, 'r+') as f:
+        f.seek(0)
+        f.truncate()
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        f.flush()
+        import os
+        os.fsync(f.fileno())
+
+    sys.exit(0)
+except Exception as e:
+    print(f'failed to tamper checksum: {e}', file=sys.stderr)
+    sys.exit(1)
+PYTHON_EOF
+touch "$PROJECT_ROOT/metadata-test.yaml"
+print_success "Checksum tampered for current exchange-key version"
+
+print_test "Test 9.6.3: Verify checksum mismatch blocks metadata reload"
+sleep 35
+if docker logs hsm-service-test --since 50s 2>&1 | grep -Ei "checksum mismatch|integrity verification failed|failed to load keys from new metadata" >/dev/null; then
+    print_success "Checksum mismatch detected and bad metadata reload blocked"
+else
+    docker logs hsm-service-test --since 60s 2>&1 | tail -50
+    print_error "Expected checksum mismatch/reload-block signal not found in logs"
+fi
+
+print_test "Test 9.6.4: Restore metadata after checksum tamper"
+mv "$D2_BACKUP" "$PROJECT_ROOT/metadata-test.yaml"
+touch "$PROJECT_ROOT/metadata-test.yaml"
+sleep 35
+RECOVER_ENCRYPT=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
+    --cert "$CLIENT_CERT" \
+    --key "$CLIENT_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"context":"exchange-key","plaintext":"Q2hlY2tzdW1SZWNvdmVy"}' \
+    "$BASE_URL/encrypt" 2>&1)
+if echo "$RECOVER_ENCRYPT" | grep -q "ciphertext"; then
+    print_success "Service recovered after metadata restore"
+else
+    echo "Response: $RECOVER_ENCRYPT"
+    print_error "Service did not recover after metadata restore"
+fi
+
+# ==========================================
 # PHASE 10: CLEANUP OLD VERSIONS
 # ==========================================
 print_header "PHASE 10: Key Lifecycle Management (PCI DSS)"
@@ -1402,6 +1510,11 @@ fi
 print_test "Test 10.5: Execute cleanup (delete excess versions - max_versions test)"
 echo ""
 echo "=== Executing cleanup with --force ==="
+# Capture current label before cleanup (must remain decryptable after cleanup)
+CURRENT_LABEL_BEFORE_CLEANUP=$(grep -A 3 "exchange-key:" "$PROJECT_ROOT/metadata-test.yaml" | grep "current:" | head -1 | awk '{print $2}')
+if [ -z "$CURRENT_LABEL_BEFORE_CLEANUP" ]; then
+    print_error "Failed to capture current label before cleanup"
+fi
 # Cleanup reads metadata directly from file system, not from running service
 docker exec -e HSM_PIN=1234 hsm-service-test /app/hsm-admin cleanup-old-versions --force > /tmp/cleanup.log 2>&1
 CLEANUP_EXIT_CODE=$?
@@ -1451,6 +1564,19 @@ else
     print_error "Cleanup failed to enforce max_versions limit"
 fi
 
+print_test "Test 10.6b: Verify cleanup preserved current label"
+CURRENT_LABEL_AFTER_CLEANUP=$(grep -A 3 "exchange-key:" "$PROJECT_ROOT/metadata-test.yaml" | grep "current:" | head -1 | awk '{print $2}')
+if [ -z "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
+    print_error "Current label missing after cleanup"
+fi
+if [ "$CURRENT_LABEL_BEFORE_CLEANUP" = "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
+    print_success "Current label preserved after cleanup ($CURRENT_LABEL_AFTER_CLEANUP)"
+else
+    echo "Before: $CURRENT_LABEL_BEFORE_CLEANUP"
+    echo "After:  $CURRENT_LABEL_AFTER_CLEANUP"
+    print_error "Cleanup changed current label unexpectedly"
+fi
+
 print_test "Test 10.7: Current version still works after cleanup"
 ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
     --cacert "$CA_CERT" \
@@ -1463,6 +1589,12 @@ ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
 if ! echo "$ENCRYPT_AFTER_CLEANUP" | grep -q "ciphertext"; then
     echo "Response: $ENCRYPT_AFTER_CLEANUP"
     print_error "Encryption failed after cleanup"
+fi
+ENCRYPT_KEY_AFTER_CLEANUP=$(echo "$ENCRYPT_AFTER_CLEANUP" | grep -o '"key_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ -n "$CURRENT_LABEL_AFTER_CLEANUP" ] && [ -n "$ENCRYPT_KEY_AFTER_CLEANUP" ] && [ "$ENCRYPT_KEY_AFTER_CLEANUP" != "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
+    echo "Expected key_id: $CURRENT_LABEL_AFTER_CLEANUP"
+    echo "Actual key_id:   $ENCRYPT_KEY_AFTER_CLEANUP"
+    print_error "Encryption did not use current label after cleanup"
 fi
 print_success "Encryption still works after cleanup"
 
@@ -1879,6 +2011,78 @@ else
     print_error "Service not operational"
 fi
 
+print_test "Test 12.10: Backup/restore round-trip (metadata) with decrypt verification"
+# Step A: Create control ciphertext before destructive change
+ROUNDTRIP_ENCRYPT=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
+    --cert "$CLIENT_CERT" \
+    --key "$CLIENT_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"context":"exchange-key","plaintext":"Um91bmRUcmlwRGF0YQ=="}' \
+    "$BASE_URL/encrypt" 2>&1)
+
+ROUNDTRIP_CIPHERTEXT=$(echo "$ROUNDTRIP_ENCRYPT" | grep -o '"ciphertext":"[^"]*"' | head -1 | cut -d'"' -f4)
+ROUNDTRIP_KEY_ID=$(echo "$ROUNDTRIP_ENCRYPT" | grep -o '"key_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+if [ -z "$ROUNDTRIP_CIPHERTEXT" ] || [ -z "$ROUNDTRIP_KEY_ID" ]; then
+    echo "Response: $ROUNDTRIP_ENCRYPT"
+    print_error "Failed to capture control ciphertext/key_id for round-trip test"
+fi
+
+# Step B: Backup metadata and revoke files
+D4_META_BACKUP="$PROJECT_ROOT/metadata-test.yaml.d4-backup"
+D4_REVOKED_BACKUP="$PROJECT_ROOT/revoked-test.yaml.d4-backup"
+cp "$PROJECT_ROOT/metadata-test.yaml" "$D4_META_BACKUP"
+cp "$PROJECT_ROOT/revoked-test.yaml" "$D4_REVOKED_BACKUP"
+
+# Step C: Corrupt metadata current pointer (simulate broken state)
+python3 << PYTHON_EOF
+import sys
+import yaml
+
+metadata_file = "$PROJECT_ROOT/metadata-test.yaml"
+try:
+    with open(metadata_file, 'r') as f:
+        data = yaml.safe_load(f)
+    data['rotation']['exchange-key']['current'] = 'kek-exchange-key-broken'
+    with open(metadata_file, 'r+') as f:
+        f.seek(0)
+        f.truncate()
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        f.flush()
+        import os
+        os.fsync(f.fileno())
+    sys.exit(0)
+except Exception as e:
+    print(f'failed to corrupt metadata: {e}', file=sys.stderr)
+    sys.exit(1)
+PYTHON_EOF
+touch "$PROJECT_ROOT/metadata-test.yaml"
+sleep 35
+
+# Step D: Restore backups
+mv "$D4_META_BACKUP" "$PROJECT_ROOT/metadata-test.yaml"
+mv "$D4_REVOKED_BACKUP" "$PROJECT_ROOT/revoked-test.yaml"
+touch "$PROJECT_ROOT/metadata-test.yaml" "$PROJECT_ROOT/revoked-test.yaml"
+sleep 35
+
+# Step E: Verify decrypt of control ciphertext after restore
+ROUNDTRIP_DECRYPT=$(curl -s --connect-timeout 10 --max-time 15 \
+    --cacert "$CA_CERT" \
+    --cert "$CLIENT_CERT" \
+    --key "$CLIENT_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"context\":\"exchange-key\",\"ciphertext\":\"$ROUNDTRIP_CIPHERTEXT\",\"key_id\":\"$ROUNDTRIP_KEY_ID\"}" \
+    "$BASE_URL/decrypt" 2>&1)
+
+ROUNDTRIP_PLAINTEXT=$(echo "$ROUNDTRIP_DECRYPT" | grep -o '"plaintext":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ "$ROUNDTRIP_PLAINTEXT" = "Um91bmRUcmlwRGF0YQ==" ]; then
+    print_success "Backup/restore round-trip successful (decrypt after restore verified)"
+else
+    echo "Decrypt response: $ROUNDTRIP_DECRYPT"
+    print_error "Backup/restore round-trip failed: decrypt after restore mismatch"
+fi
+
 # ==========================================
 # PHASE 13: ENVIRONMENT VARIABLES OVERRIDE
 # ==========================================
@@ -1894,8 +2098,8 @@ print_test "Test 13.2: Start with custom environment variables"
 # Note: Keep HSM_PIN same as existing token (1234), just test that env vars work
 cat > docker-compose-test.yml << 'EOF'
 services:
-  hsm-service:
-        image: hsm-service:test
+  hsm-service-test:
+    image: hsm-service:test
     container_name: hsm-service-test
     environment:
       - HSM_PIN=1234
@@ -1994,7 +2198,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-        image: hsm-service:test
+    image: hsm-service:test
     container_name: hsm-service-test
     hostname: hsm-service-test
     
