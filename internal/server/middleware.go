@@ -330,11 +330,20 @@ func (rl *RateLimiter) GetLimiter(clientCN string) *rate.Limiter {
 
 // cleanupLoop removes rate limiters that haven't been used in 24 hours
 func (rl *RateLimiter) cleanupLoop() {
-	ticker := time.NewTicker(1 * time.Hour)
+	rl.cleanupLoopWithStop(1*time.Hour, 24*time.Hour, nil)
+}
+
+func (rl *RateLimiter) cleanupLoopWithStop(interval, maxAge time.Duration, stop <-chan struct{}) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rl.cleanupStale(24 * time.Hour)
+	for {
+		select {
+		case <-ticker.C:
+			rl.cleanupStale(maxAge)
+		case <-stop:
+			return
+		}
 	}
 }
 

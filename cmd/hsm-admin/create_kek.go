@@ -48,8 +48,17 @@ func createKEKCommand(args []string) error {
 	return createKEKWithConfig(cfg, pin, *label, *contextName, *version, *keySize)
 }
 
-func createKEKWithConfig(cfg *config.Config, pin, label, contextName string, version, keySize int) error {
+func createKEKWithConfig(cfg *config.Config, pin, label, contextName string, version, keySize int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("pkcs11 initialize panic: %v", r)
+		}
+	}()
+
 	p := pkcs11.New(cfg.HSM.PKCS11Lib)
+	if p == nil {
+		return fmt.Errorf("pkcs11 initialize: failed to create PKCS#11 context")
+	}
 	if err := p.Initialize(); err != nil {
 		return fmt.Errorf("pkcs11 initialize: %w", err)
 	}

@@ -23,6 +23,28 @@ var (
 	accessLogFile *lumberjack.Logger
 )
 
+type tempLogFile interface {
+	Name() string
+	WriteString(s string) (n int, err error)
+	Close() error
+}
+
+type validateLogPathOps struct {
+	mkdirAll   func(path string, perm os.FileMode) error
+	createTemp func(dir, pattern string) (tempLogFile, error)
+	rename     func(oldpath, newpath string) error
+	remove     func(name string) error
+}
+
+var defaultValidateLogPathOps = validateLogPathOps{
+	mkdirAll: os.MkdirAll,
+	createTemp: func(dir, pattern string) (tempLogFile, error) {
+		return os.CreateTemp(dir, pattern)
+	},
+	rename: os.Rename,
+	remove: os.Remove,
+}
+
 // InitLogger initializes the global slog logger based on configuration
 func InitLogger(cfg *config.LoggingConfig) error {
 	var level slog.Level
@@ -210,37 +232,41 @@ func ValidateLogPaths(cfg *config.LoggingConfig) error {
 }
 
 func validateLogPath(path string) error {
+	return validateLogPathWithOps(path, defaultValidateLogPathOps)
+}
+
+func validateLogPathWithOps(path string, ops validateLogPathOps) error {
 	if path == "" {
 		return fmt.Errorf("log path is empty")
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0750); err != nil {
+	if err := ops.mkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("create log dir %s: %w", dir, err)
 	}
 
 	// Create, write, and rename a temp file to validate write and rotation rights.
-	f, err := os.CreateTemp(dir, ".write-test-*")
+	f, err := ops.createTemp(dir, ".write-test-*")
 	if err != nil {
 		return fmt.Errorf("create write test in %s: %w", dir, err)
 	}
 	name := f.Name()
 	if _, err := f.WriteString("test"); err != nil {
 		_ = f.Close()
-		_ = os.Remove(name)
+		_ = ops.remove(name)
 		return fmt.Errorf("write test in %s: %w", dir, err)
 	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(name)
+		_ = ops.remove(name)
 		return fmt.Errorf("close write test in %s: %w", dir, err)
 	}
 
 	rotated := name + ".rotate"
-	if err := os.Rename(name, rotated); err != nil {
-		_ = os.Remove(name)
+	if err := ops.rename(name, rotated); err != nil {
+		_ = ops.remove(name)
 		return fmt.Errorf("rename write test in %s: %w", dir, err)
 	}
-	if err := os.Remove(rotated); err != nil {
+	if err := ops.remove(rotated); err != nil {
 		return fmt.Errorf("cleanup write test in %s: %w", dir, err)
 	}
 

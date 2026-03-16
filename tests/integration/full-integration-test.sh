@@ -241,6 +241,7 @@ cleanup_test_volumes() {
 # ==========================================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TEST_IMAGE_TAG="hsm-service:test"
 TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
 mkdir -p "$TEST_LOGS_DIR"
 TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
@@ -280,15 +281,6 @@ cleanup_on_exit() {
         cleanup_test_volumes "$PROJECT_ROOT"
     fi
     
-    # Restart production container if it was stopped
-    print_test "Restart production container (if it exists)"
-    if docker ps -a 2>/dev/null | grep -q "hsm-service[^-]"; then
-        docker start hsm-service > /dev/null 2>&1 || true
-        print_success "Production container restarted"
-    else
-        print_info "Production container not found (will be created on next run)"
-    fi
-    
     print_success "Test cleanup complete"
 }
 
@@ -308,10 +300,9 @@ print_info "Date: $(date)"
 # ==========================================
 print_header "PHASE 1: Docker Cleanup"
 
-print_test "Stop production container (if running)"
-# Only stop, don't remove - preserve volumes and HSM keys
-docker stop hsm-service 2>/dev/null || true
-print_success "Production container stopped (preserved for restart)"
+print_test "Leave production container untouched"
+print_info "Integration tests run in isolated test container and isolated Docker volume"
+print_success "Production container was not modified"
 
 print_test "Create test data directory"
 mkdir -p "$PROJECT_ROOT/data"
@@ -349,7 +340,7 @@ echo ""
 echo "=== Docker Build Output (--no-cache) ==="
 echo "This will take a few minutes on first run..."
 echo ""
-if ! docker build --no-cache -t hsm-service:latest . 2>&1 | tee /tmp/docker-build.log; then
+if ! docker build --no-cache -t "$TEST_IMAGE_TAG" . 2>&1 | tee /tmp/docker-build.log; then
     echo ""
     print_error "Docker build failed (full log saved to /tmp/docker-build.log)"
 fi
@@ -357,8 +348,8 @@ echo ""
 print_success "Image built successfully"
 
 print_test "Verify image exists"
-if ! docker images | grep -q hsm-service; then
-    print_error "Image hsm-service:latest not found"
+if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${TEST_IMAGE_TAG}$"; then
+    print_error "Image $TEST_IMAGE_TAG not found"
 fi
 print_success "Image verified"
 
@@ -516,7 +507,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: hsm-service:latest
+        image: hsm-service:test
     container_name: hsm-service-test
     hostname: hsm-service-test
     
@@ -1904,7 +1895,7 @@ print_test "Test 13.2: Start with custom environment variables"
 cat > docker-compose-test.yml << 'EOF'
 services:
   hsm-service:
-    image: hsm-service:latest
+        image: hsm-service:test
     container_name: hsm-service-test
     environment:
       - HSM_PIN=1234
@@ -2003,7 +1994,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: hsm-service:latest
+        image: hsm-service:test
     container_name: hsm-service-test
     hostname: hsm-service-test
     

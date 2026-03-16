@@ -89,7 +89,7 @@ func EncryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		SetAuditContext(w, req.Context)
 
 		// 2. Extract client certificate
-		if len(r.TLS.PeerCertificates) == 0 {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 			SetAuditErrorCode(w, "no_client_cert")
 			respondError(w, http.StatusUnauthorized, "no client certificate")
 			return
@@ -199,7 +199,7 @@ func DecryptHandler(keyManager hsm.CryptoProvider, aclChecker *ACLChecker) http.
 		SetAuditKeyID(w, req.KeyID)
 
 		// 2. Extract client certificate
-		if len(r.TLS.PeerCertificates) == 0 {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 			SetAuditErrorCode(w, "no_client_cert")
 			respondError(w, http.StatusUnauthorized, "no client certificate")
 			return
