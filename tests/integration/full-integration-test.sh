@@ -267,6 +267,7 @@ cleanup_test_volumes() {
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_IMAGE_TAG="hsm-service:test"
+TEST_COMPOSE_PROJECT="hsm-test"
 TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
 mkdir -p "$TEST_LOGS_DIR"
 TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
@@ -289,7 +290,7 @@ cleanup_on_exit() {
     if [ -n "${TEST_COMPOSE_FILE:-}" ] && [ -f "$TEST_COMPOSE_FILE" ]; then
         print_test "Stop test containers"
         cd "$PROJECT_ROOT"
-        docker compose -f "$TEST_COMPOSE_FILE" down -v > /dev/null 2>&1
+        docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" down -v > /dev/null 2>&1
         print_success "Test containers stopped and volumes removed"
         
         # Remove test compose file
@@ -337,7 +338,7 @@ print_test "Stop and remove existing test containers"
 cd "$PROJECT_ROOT"
 # Use isolated test compose file if it exists
 if [ -f "$PROJECT_ROOT/docker-compose-test.yml" ]; then
-    docker compose -f "$PROJECT_ROOT/docker-compose-test.yml" down -v > /dev/null 2>&1 || true
+    docker compose -p "$TEST_COMPOSE_PROJECT" -f "$PROJECT_ROOT/docker-compose-test.yml" down -v > /dev/null 2>&1 || true
     rm -f "$PROJECT_ROOT/docker-compose-test.yml"
 fi
 print_success "Test containers stopped"
@@ -629,8 +630,8 @@ print_success "Host port 8444 is free"
 
 cd "$PROJECT_ROOT"
 # Use test compose file - force recreate test container
-print_info "Running: docker compose -f '$TEST_COMPOSE_FILE' up -d --force-recreate"
-if ! docker compose -f "$TEST_COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
+print_info "Running: docker compose -p '$TEST_COMPOSE_PROJECT' -f '$TEST_COMPOSE_FILE' up -d --force-recreate"
+if ! docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
     cat /tmp/docker-compose-up.log
     print_error "docker-compose up failed (see /tmp/docker-compose-up.log)"
 fi
@@ -640,7 +641,7 @@ print_success "Test services started"
 print_test "Verify test container is running"
 if ! docker ps | grep -q hsm-service-test; then
     cd "$PROJECT_ROOT"
-    docker compose -f "$TEST_COMPOSE_FILE" logs
+    docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" logs
     print_error "Container not running"
 fi
 print_success "Test container is running (hsm-service-test)"
@@ -648,8 +649,8 @@ print_success "Test container is running (hsm-service-test)"
 print_test "Check container logs for errors"
 sleep 2
 cd "$PROJECT_ROOT"
-if docker compose -f "$TEST_COMPOSE_FILE" logs | grep -i "fatal\|panic"; then
-    docker compose -f "$TEST_COMPOSE_FILE" logs
+if docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" logs | grep -i "fatal\|panic"; then
+    docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" logs
     print_error "Fatal errors found in logs"
 fi
 print_success "No fatal errors in logs"
@@ -689,13 +690,13 @@ fi
 print_success "No fatal/panic after shutdown"
 
 print_info "Restarting container after shutdown test..."
-if ! docker compose -f "$TEST_COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
+if ! docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" up -d --force-recreate > /tmp/docker-compose-up.log 2>&1; then
     cat /tmp/docker-compose-up.log
     print_error "docker-compose up failed after shutdown test"
 fi
 sleep 3
 if ! docker ps | grep -q hsm-service-test; then
-    docker compose -f "$TEST_COMPOSE_FILE" logs
+    docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" logs
     print_error "Container not running after restart"
 fi
 print_success "Container restarted"
@@ -1152,9 +1153,9 @@ print_info "Service monitors metadata.yaml every 30 seconds"
 sleep 35
 
 # Check logs for reload event
-if docker compose -f "$TEST_COMPOSE_FILE" logs --since 40s 2>&1 | grep -q "KEK hot reload successful\|metadata file changed"; then
+if docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" logs --since 40s 2>&1 | grep -q "KEK hot reload successful\|metadata file changed"; then
     print_success "Hot reload detected in logs"
-    docker compose -f "$TEST_COMPOSE_FILE" logs --since 40s 2>&1 | grep -E "KEK hot reload|metadata file changed" | tail -3
+    docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" logs --since 40s 2>&1 | grep -E "KEK hot reload|metadata file changed" | tail -3
 else
     print_info "No hot reload event (file change may not have triggered reload)"
 fi
@@ -2000,7 +2001,7 @@ fi
 
 print_test "Test 12.7: Full compose down/up cycle"
 echo "Stopping all services (docker compose down)..."
-docker compose -f "$TEST_COMPOSE_FILE" down -v > /dev/null 2>&1
+docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" down -v > /dev/null 2>&1
 sleep 3
 
 # Verify containers stopped
@@ -2011,7 +2012,7 @@ else
 fi
 
 echo "Starting services (docker compose up -d)..."
-docker compose -f "$TEST_COMPOSE_FILE" up -d > /dev/null 2>&1
+docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" up -d > /dev/null 2>&1
 sleep 15
 
 # Check if service is running
@@ -2128,7 +2129,7 @@ fi
 print_header "PHASE 13: Environment Variables Override"
 
 print_test "Test 13.1: Stop container to test env override"
-docker compose -f "$TEST_COMPOSE_FILE" down -v > /dev/null 2>&1
+docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" down -v > /dev/null 2>&1
 sleep 2
 print_success "Container stopped"
 
@@ -2170,7 +2171,7 @@ networks:
     driver: bridge
 EOF
 
-if ! docker compose -f docker-compose-test.yml up -d > /tmp/compose-custom-env.log 2>&1; then
+if ! docker compose -p "$TEST_COMPOSE_PROJECT" -f docker-compose-test.yml up -d > /tmp/compose-custom-env.log 2>&1; then
     echo "Docker compose failed:"
     cat /tmp/compose-custom-env.log
     print_error "Failed to start compose with custom env"
@@ -2228,7 +2229,7 @@ else
 fi
 
 print_test "Test 13.6: Restore original compose configuration"
-docker compose -f docker-compose-test.yml down -v > /dev/null 2>&1 || true
+docker compose -p "$TEST_COMPOSE_PROJECT" -f docker-compose-test.yml down -v > /dev/null 2>&1 || true
 rm -f docker-compose-test.yml
 # Restart original test container with standard docker-compose-test.yml
 cat > docker-compose-test.yml << 'COMPOSE_EOF'
@@ -2278,7 +2279,7 @@ networks:
     name: test-net
 COMPOSE_EOF
 
-docker compose -f docker-compose-test.yml up -d > /dev/null 2>&1
+docker compose -p "$TEST_COMPOSE_PROJECT" -f docker-compose-test.yml up -d > /dev/null 2>&1
 sleep 15
 
 if docker ps | grep -q hsm-service-test; then
