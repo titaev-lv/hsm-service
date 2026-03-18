@@ -194,25 +194,31 @@ print_header "8. Dockerfile Security Check"
 if [ -f "Dockerfile" ]; then
     echo "Checking Dockerfile..."
     
-    # Check for USER directive
+    # For HSM services, running as root is acceptable (privileges needed)
+    # but check if it's intentional
     if grep -q "^USER" Dockerfile; then
         print_success "Non-root user specified"
     else
-        print_warning "No USER directive (may run as root)"
+        print_warning "No USER directive (normal for HSM services that need privileges)"
     fi
     
-    # Check for COPY --chown
-    if grep -q "COPY --chown" Dockerfile; then
-        print_success "Proper file ownership set"
+    # COPY --chown only matters if using USER directive
+    if grep -q "^USER" Dockerfile; then
+        if grep -q "COPY --chown" Dockerfile; then
+            print_success "Proper file ownership set"
+        else
+            print_warning "Consider using COPY --chown with USER"
+        fi
     else
-        print_warning "Consider using COPY --chown"
+        print_success "COPY --chown not needed (running as root)"
     fi
     
-    # Check for latest tag
+    # Check for latest tag - should use pinned versions
     if grep -q "FROM.*:latest" Dockerfile; then
-        print_warning "Using :latest tag (pin specific versions)"
+        print_error "Using :latest tag (pin specific versions for reproducibility)"
+        FAILED=1
     else
-        print_success "Using pinned versions"
+        print_success "Using pinned base image versions"
     fi
 fi
 

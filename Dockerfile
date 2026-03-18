@@ -25,7 +25,7 @@ RUN cd cmd/hsm-admin && CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo 
 
 
 # Runtime image
-FROM alpine:latest
+FROM alpine:3.23
 
 # Install runtime dependencies
 RUN apk add --no-cache \
