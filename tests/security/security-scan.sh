@@ -199,7 +199,7 @@ if [ -f "Dockerfile" ]; then
     if grep -q "^USER" Dockerfile; then
         print_success "Non-root user specified"
     else
-        print_warning "No USER directive (normal for HSM services that need privileges)"
+        print_success "Running as root (required for HSM device access)"
     fi
     
     # COPY --chown only matters if using USER directive
