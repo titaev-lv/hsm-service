@@ -1589,6 +1589,12 @@ else
 fi
 
 print_test "Test 10.7: Current version still works after cleanup"
+# After cleanup metadata changes, service may need up to one reload cycle
+# to switch in-memory current key pointer.
+print_info "Triggering metadata mtime update and waiting for reload cycle..."
+touch "$PROJECT_ROOT/metadata-test.yaml"
+sleep 35
+
 ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
     --cacert "$CA_CERT" \
     --cert "$CLIENT_CERT" \
@@ -1602,9 +1608,31 @@ if ! echo "$ENCRYPT_AFTER_CLEANUP" | grep -q "ciphertext"; then
     print_error "Encryption failed after cleanup"
 fi
 ENCRYPT_KEY_AFTER_CLEANUP=$(echo "$ENCRYPT_AFTER_CLEANUP" | grep -o '"key_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+# Retry for one more short window if key manager has not reloaded metadata yet.
+if [ -n "$CURRENT_LABEL_AFTER_CLEANUP" ] && [ "$ENCRYPT_KEY_AFTER_CLEANUP" != "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
+    print_info "Current key mismatch after first check; polling for reload convergence (max 30s)..."
+    for _ in {1..6}; do
+        sleep 5
+        ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
+            --cacert "$CA_CERT" \
+            --cert "$CLIENT_CERT" \
+            --key "$CLIENT_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"context\":\"exchange-key\",\"plaintext\":\"$PLAINTEXT_NEW\"}" \
+            "$BASE_URL/encrypt" 2>&1)
+        ENCRYPT_KEY_AFTER_CLEANUP=$(echo "$ENCRYPT_AFTER_CLEANUP" | grep -o '"key_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+        if [ "$ENCRYPT_KEY_AFTER_CLEANUP" = "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
+            break
+        fi
+    done
+fi
+
 if [ -n "$CURRENT_LABEL_AFTER_CLEANUP" ] && [ -n "$ENCRYPT_KEY_AFTER_CLEANUP" ] && [ "$ENCRYPT_KEY_AFTER_CLEANUP" != "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
     echo "Expected key_id: $CURRENT_LABEL_AFTER_CLEANUP"
     echo "Actual key_id:   $ENCRYPT_KEY_AFTER_CLEANUP"
+    echo "Recent logs:"
+    docker logs hsm-service-test --since 90s 2>&1 | tail -40
     print_error "Encryption did not use current label after cleanup"
 fi
 print_success "Encryption still works after cleanup"
