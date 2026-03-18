@@ -1522,8 +1522,8 @@ fi
 print_test "Test 10.5: Execute cleanup (delete excess versions - max_versions test)"
 echo ""
 echo "=== Executing cleanup with --force ==="
-# Capture current label before cleanup (must remain decryptable after cleanup)
-CURRENT_LABEL_BEFORE_CLEANUP=$(grep -A 3 "exchange-key:" "$PROJECT_ROOT/metadata-test.yaml" | grep "current:" | head -1 | awk '{print $2}')
+# Capture current label from container metadata (source of truth for running service)
+CURRENT_LABEL_BEFORE_CLEANUP=$(docker exec hsm-service-test sh -c "awk '/exchange-key:/{flag=1; next} flag && /current:/{print \$2; exit}' /app/metadata.yaml")
 if [ -z "$CURRENT_LABEL_BEFORE_CLEANUP" ]; then
     print_error "Failed to capture current label before cleanup"
 fi
@@ -1555,11 +1555,19 @@ fi
 
 print_test "Test 10.6: Verify cleanup behavior"
 
-echo "Updated metadata.yaml content:"
-cat "$PROJECT_ROOT/metadata-test.yaml" | grep -A 15 "exchange-key:"
+echo "Updated container metadata.yaml content:"
+docker exec hsm-service-test sh -c "grep -A 15 'exchange-key:' /app/metadata.yaml"
 echo ""
 
-VERSION_COUNT_AFTER=$(grep -c "label: kek-exchange-key-v" "$PROJECT_ROOT/metadata-test.yaml" || echo "0")
+HOST_CURRENT_LABEL_AFTER_CLEANUP=$(grep -A 3 "exchange-key:" "$PROJECT_ROOT/metadata-test.yaml" | grep "current:" | head -1 | awk '{print $2}')
+CONTAINER_CURRENT_LABEL_AFTER_CLEANUP=$(docker exec hsm-service-test sh -c "awk '/exchange-key:/{flag=1; next} flag && /current:/{print \$2; exit}' /app/metadata.yaml")
+if [ -n "$HOST_CURRENT_LABEL_AFTER_CLEANUP" ] && [ -n "$CONTAINER_CURRENT_LABEL_AFTER_CLEANUP" ] && [ "$HOST_CURRENT_LABEL_AFTER_CLEANUP" != "$CONTAINER_CURRENT_LABEL_AFTER_CLEANUP" ]; then
+    echo "WARNING: Host/container metadata current labels differ after cleanup"
+    echo "Host current:      $HOST_CURRENT_LABEL_AFTER_CLEANUP"
+    echo "Container current: $CONTAINER_CURRENT_LABEL_AFTER_CLEANUP"
+fi
+
+VERSION_COUNT_AFTER=$(docker exec hsm-service-test grep -c "label: kek-exchange-key-v" /app/metadata.yaml || echo "0")
 echo "Version count after cleanup: $VERSION_COUNT_AFTER"
 echo ""
 
@@ -1577,7 +1585,7 @@ else
 fi
 
 print_test "Test 10.6b: Verify cleanup preserved current label"
-CURRENT_LABEL_AFTER_CLEANUP=$(grep -A 3 "exchange-key:" "$PROJECT_ROOT/metadata-test.yaml" | grep "current:" | head -1 | awk '{print $2}')
+CURRENT_LABEL_AFTER_CLEANUP="$CONTAINER_CURRENT_LABEL_AFTER_CLEANUP"
 if [ -z "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
     print_error "Current label missing after cleanup"
 fi
@@ -1590,11 +1598,8 @@ else
 fi
 
 print_test "Test 10.7: Current version still works after cleanup"
-# After cleanup metadata changes, service may need up to one reload cycle
-# to switch in-memory current key pointer.
-print_info "Triggering metadata mtime update and waiting for reload cycle..."
-touch "$PROJECT_ROOT/metadata-test.yaml"
-sleep 35
+print_info "Waiting for metadata hot reload after cleanup..."
+sleep 5
 
 ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
     --cacert "$CA_CERT" \
@@ -1608,35 +1613,16 @@ if ! echo "$ENCRYPT_AFTER_CLEANUP" | grep -q "ciphertext"; then
     echo "Response: $ENCRYPT_AFTER_CLEANUP"
     print_error "Encryption failed after cleanup"
 fi
+
 ENCRYPT_KEY_AFTER_CLEANUP=$(echo "$ENCRYPT_AFTER_CLEANUP" | grep -o '"key_id":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-# Retry for one more short window if key manager has not reloaded metadata yet.
-if [ -n "$CURRENT_LABEL_AFTER_CLEANUP" ] && [ "$ENCRYPT_KEY_AFTER_CLEANUP" != "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
-    print_info "Current key mismatch after first check; polling for reload convergence (max 30s)..."
-    for _ in {1..6}; do
-        sleep 5
-        ENCRYPT_AFTER_CLEANUP=$(curl -s --connect-timeout 10 --max-time 15 \
-            --cacert "$CA_CERT" \
-            --cert "$CLIENT_CERT" \
-            --key "$CLIENT_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"context\":\"exchange-key\",\"plaintext\":\"$PLAINTEXT_NEW\"}" \
-            "$BASE_URL/encrypt" 2>&1)
-        ENCRYPT_KEY_AFTER_CLEANUP=$(echo "$ENCRYPT_AFTER_CLEANUP" | grep -o '"key_id":"[^"]*"' | head -1 | cut -d'"' -f4)
-        if [ "$ENCRYPT_KEY_AFTER_CLEANUP" = "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
-            break
-        fi
-    done
-fi
-
 if [ -n "$CURRENT_LABEL_AFTER_CLEANUP" ] && [ -n "$ENCRYPT_KEY_AFTER_CLEANUP" ] && [ "$ENCRYPT_KEY_AFTER_CLEANUP" != "$CURRENT_LABEL_AFTER_CLEANUP" ]; then
     echo "Expected key_id: $CURRENT_LABEL_AFTER_CLEANUP"
     echo "Actual key_id:   $ENCRYPT_KEY_AFTER_CLEANUP"
     echo "Recent logs:"
-    docker logs hsm-service-test --since 90s 2>&1 | tail -40
-    print_error "Encryption did not use current label after cleanup"
+    docker logs hsm-service-test --since 120s 2>&1 | tail -60
+    print_error "Encryption did not use current label after cleanup hot reload"
 fi
-print_success "Encryption still works after cleanup"
+print_success "Encryption still works after cleanup and uses current label"
 
 print_test "Test 10.8: Reset to clean state after cleanup tests"
 echo "Resetting metadata and HSM to clean state for remaining tests..."
