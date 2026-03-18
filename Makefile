@@ -4,6 +4,10 @@ VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS := -s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)
 
+# Coverage thresholds (from IMPROVEMENT_PLAN_2026.md §220-221)
+COV_MIN_HSM  := 80
+COV_MIN_CMD  := 50
+
 # Directories
 BUILD_DIR := build
 RELEASE_DIR := release
@@ -12,7 +16,7 @@ RELEASE_DIR := release
 BINARY_SERVICE := $(BUILD_DIR)/hsm-service
 BINARY_ADMIN := $(BUILD_DIR)/hsm-admin
 
-.PHONY: all build clean test release install help check-clean
+.PHONY: all build clean test test-race test-cover test-coverage-check ci release install help check-clean
 
 ALLOW_DIRTY ?= 0
 
@@ -22,15 +26,17 @@ all: build
 help:
 	@echo "HSM Service Build Commands:"
 	@echo ""
-	@echo "  make build          - Build all binaries"
-	@echo "  make clean          - Clean build artifacts"
-	@echo "  make test           - Run tests"
-	@echo "  make test-race      - Run tests with race detector"
-	@echo "  make test-cover     - Run tests with coverage"
-	@echo "  make release        - Create release package"
-	@echo "  make check-clean    - Fail if git working tree is dirty"
-	@echo "  make install        - Install binaries to /usr/local/bin"
-	@echo "  make docker-build   - Build Docker image"
+	@echo "  make build                - Build all binaries"
+	@echo "  make clean                - Clean build artifacts"
+	@echo "  make test                 - Run tests"
+	@echo "  make test-race            - Run tests with race detector"
+	@echo "  make test-cover           - Run tests with coverage report"
+	@echo "  make test-coverage-check  - Enforce per-package coverage gates"
+	@echo "  make ci                   - Full CI gate (test + coverage check + build)"
+	@echo "  make release              - Create release package"
+	@echo "  make check-clean          - Fail if git working tree is dirty"
+	@echo "  make install              - Install binaries to /usr/local/bin/"
+	@echo "  make docker-build         - Build Docker image"
 	@echo ""
 	@echo "Release options:"
 	@echo "  make ALLOW_DIRTY=1 release  - Allow release from a dirty git tree"
@@ -82,6 +88,39 @@ test-cover:
 	@go test -cover -coverprofile=coverage.out ./cmd/... ./internal/...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Coverage report: coverage.html"
+
+# Enforce per-package coverage gates (CI gate, from IMPROVEMENT_PLAN_2026.md)
+# Thresholds: internal/hsm >80%, cmd/hsm-admin >50%
+test-coverage-check:
+	@echo "=== Coverage gate: internal/hsm (min >$(COV_MIN_HSM)%) ==="
+	@go test -count=1 -coverprofile=/tmp/hsm.cover.out ./internal/hsm/... \
+		>/dev/null 2>&1 || (echo "✗ Tests failed in internal/hsm"; exit 1)
+	@go tool cover -func=/tmp/hsm.cover.out \
+		| awk -v min=$(COV_MIN_HSM) '/^total:/ { \
+			gsub(/%/,"",$$3); \
+			if ($$3+0 <= min+0) { \
+				printf "✗ internal/hsm %.1f%% does not exceed %d%%\n", $$3+0, min; exit 1 \
+			} else { \
+				printf "✓ internal/hsm %.1f%% (>%d%%)\n", $$3+0, min \
+			} \
+		}'
+	@echo "=== Coverage gate: cmd/hsm-admin (min >$(COV_MIN_CMD)%) ==="
+	@go test -count=1 -coverprofile=/tmp/hsm-admin.cover.out ./cmd/hsm-admin/... \
+		>/dev/null 2>&1 || (echo "✗ Tests failed in cmd/hsm-admin"; exit 1)
+	@go tool cover -func=/tmp/hsm-admin.cover.out \
+		| awk -v min=$(COV_MIN_CMD) '/^total:/ { \
+			gsub(/%/,"",$$3); \
+			if ($$3+0 <= min+0) { \
+				printf "✗ cmd/hsm-admin %.1f%% does not exceed %d%%\n", $$3+0, min; exit 1 \
+			} else { \
+				printf "✓ cmd/hsm-admin %.1f%% (>%d%%)\n", $$3+0, min \
+			} \
+		}'
+	@echo "✓ All coverage gates passed"
+
+# Full CI gate: run all tests, enforce coverage, then build
+ci: test test-coverage-check build
+	@echo "✓ CI gate passed"
 
 # Ensure release is built from a clean git tree
 check-clean:

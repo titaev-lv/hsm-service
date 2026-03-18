@@ -48,16 +48,20 @@ func updateChecksumsCommand(args []string) error {
 		return fmt.Errorf("failed to load metadata: %w", err)
 	}
 
-	// Initialize PKCS#11 context
-	p11ctx, err := crypto11.Configure(&crypto11.Config{
-		Path:       cfg.HSM.PKCS11Lib,
-		TokenLabel: cfg.HSM.SlotID,
-		Pin:        pin,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to configure PKCS#11: %w", err)
+	// Initialize PKCS#11 context (only needed in non-dry-run mode; checksums are label-based)
+	var p11ctx *crypto11.Context
+	if !*dryRun {
+		var err2 error
+		p11ctx, err2 = crypto11.Configure(&crypto11.Config{
+			Path:       cfg.HSM.PKCS11Lib,
+			TokenLabel: cfg.HSM.SlotID,
+			Pin:        pin,
+		})
+		if err2 != nil {
+			return fmt.Errorf("failed to configure PKCS#11: %w", err2)
+		}
+		defer p11ctx.Close()
 	}
-	defer p11ctx.Close()
 
 	fmt.Println("Computing KEK checksums...")
 	fmt.Println()
@@ -67,16 +71,19 @@ func updateChecksumsCommand(args []string) error {
 		fmt.Printf("Context: %s\n", context)
 
 		for i, version := range meta.Versions {
-			// Find key in HSM
-			secretKey, err := p11ctx.FindKey(nil, []byte(version.Label))
-			if err != nil {
-				log.Printf("  Warning: failed to find key %s: %v", version.Label, err)
-				continue
-			}
-
-			if secretKey == nil {
-				log.Printf("  Warning: key %s not found in HSM", version.Label)
-				continue
+			// In non-dry-run mode, verify the key actually exists in the HSM before
+			// computing its checksum.  In dry-run mode the checksum is purely
+			// label-based so no HSM access is required.
+			if !*dryRun {
+				secretKey, err := p11ctx.FindKey(nil, []byte(version.Label))
+				if err != nil {
+					log.Printf("  Warning: failed to find key %s: %v", version.Label, err)
+					continue
+				}
+				if secretKey == nil {
+					log.Printf("  Warning: key %s not found in HSM", version.Label)
+					continue
+				}
 			}
 
 			// Initialize CreatedAt if missing (for legacy keys)
