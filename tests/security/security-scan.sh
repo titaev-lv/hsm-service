@@ -101,11 +101,11 @@ if command -v trivy &> /dev/null; then
         docker build -t hsm-service:latest . > /dev/null
     fi
     
-    echo "Scanning hsm-service:latest..."
-    if trivy image --severity HIGH,CRITICAL hsm-service:latest 2>&1 | tee /tmp/trivy-report.txt; then
-        print_success "trivy: No HIGH/CRITICAL vulnerabilities"
+    echo "Scanning hsm-service:latest (UNFIXED HIGH/CRITICAL)..."
+    if trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-status fixed --exit-code 1 hsm-service:latest 2>&1 | tee /tmp/trivy-report.txt; then
+        print_success "trivy: No UNFIXED HIGH/CRITICAL vulnerabilities"
     else
-        print_error "trivy: Vulnerabilities found!"
+        print_error "trivy: UNFIXED HIGH/CRITICAL vulnerabilities found!"
         FAILED=1
     fi
 else
@@ -117,23 +117,40 @@ fi
 # ==========================================
 print_header "6. TLS Configuration Validation"
 
-if [ -f "pki/server/hsm-service.local.crt" ]; then
-    echo "Checking server certificate..."
+SERVER_CERT=""
+for candidate in \
+    "pki/test/server/hsm-service.crt" \
+    "pki/server/hsm-service.local.crt" \
+    "pki/server/hsm-service.crt"
+do
+    if [ -f "$candidate" ]; then
+        SERVER_CERT="$candidate"
+        break
+    fi
+done
+
+if [ -n "$SERVER_CERT" ]; then
+    echo "Checking server certificate: $SERVER_CERT"
     
     # Check expiration
-    EXPIRY=$(openssl x509 -in pki/server/hsm-service.local.crt -noout -enddate | cut -d= -f2)
+    EXPIRY=$(openssl x509 -in "$SERVER_CERT" -noout -enddate | cut -d= -f2)
     EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$EXPIRY" +%s 2>/dev/null)
     NOW_EPOCH=$(date +%s)
-    DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
-    
-    if [ "$DAYS_LEFT" -lt 30 ]; then
-        print_warning "Certificate expires in $DAYS_LEFT days (renew soon!)"
+    if [ -z "$EXPIRY_EPOCH" ]; then
+        print_warning "Unable to parse certificate expiry date: $EXPIRY"
+        DAYS_LEFT=0
     else
+        DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
+    fi
+    
+    if [ -n "$EXPIRY_EPOCH" ] && [ "$DAYS_LEFT" -lt 30 ]; then
+        print_warning "Certificate expires in $DAYS_LEFT days (renew soon!)"
+    elif [ -n "$EXPIRY_EPOCH" ]; then
         print_success "Certificate valid for $DAYS_LEFT days"
     fi
     
     # Check key size
-    KEY_SIZE=$(openssl x509 -in pki/server/hsm-service.local.crt -noout -text | grep "Public-Key:" | grep -o "[0-9]*")
+    KEY_SIZE=$(openssl x509 -in "$SERVER_CERT" -noout -text | grep "Public-Key:" | grep -o "[0-9]*" | head -1)
     if [ "$KEY_SIZE" -ge 2048 ]; then
         print_success "Key size: $KEY_SIZE bits (secure)"
     else
@@ -141,7 +158,7 @@ if [ -f "pki/server/hsm-service.local.crt" ]; then
         FAILED=1
     fi
 else
-    print_warning "Server certificate not found"
+    print_warning "Server certificate not found (checked: pki/test/server/hsm-service.crt, pki/server/hsm-service.local.crt, pki/server/hsm-service.crt)"
 fi
 
 # ==========================================
