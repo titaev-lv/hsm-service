@@ -21,6 +21,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Compliance prerequisites (can be overridden by env to match compliance scripts)
+HSM_URL_FROM_ENV="${HSM_URL:-}"
+HSM_URL="${HSM_URL:-https://localhost:8443}"
+CLIENT_CERT="${CLIENT_CERT:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt}"
+CLIENT_KEY="${CLIENT_KEY:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.key}"
+
 print_header "HSM Service - Master Test Suite"
 echo "Project: $PROJECT_ROOT"
 echo "Date: $(date)"
@@ -92,7 +98,27 @@ run_phase "Security Scans" "./tests/security/security-scan.sh" false
 # ==========================================
 # PHASE 5: Compliance
 # ==========================================
-run_phase "Compliance (PCI DSS + OWASP)" "./tests/compliance/pci-dss.sh && ./tests/compliance/owasp-top10.sh"
+if [ ! -f "$CLIENT_CERT" ] || [ ! -f "$CLIENT_KEY" ]; then
+    print_warning "Compliance skipped: client cert/key not found"
+    echo "  Expected cert: $CLIENT_CERT"
+    echo "  Expected key:  $CLIENT_KEY"
+    PHASE_SKIPPED=$((PHASE_SKIPPED + 1))
+elif [ -z "$HSM_URL_FROM_ENV" ]; then
+    if timeout 5 curl -sk --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "https://localhost:8443/health" >/dev/null 2>&1; then
+        HSM_URL="https://localhost:8443"
+    elif timeout 5 curl -sk --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "https://localhost:8444/health" >/dev/null 2>&1; then
+        HSM_URL="https://localhost:8444"
+        print_warning "Compliance auto-detected test endpoint: $HSM_URL"
+    fi
+fi
+
+if ! timeout 5 curl -sk --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "$HSM_URL/health" >/dev/null 2>&1; then
+    print_warning "Compliance skipped: HSM service is not reachable at $HSM_URL"
+    print_warning "Run on dedicated runner/staging where HSM stack is up"
+    PHASE_SKIPPED=$((PHASE_SKIPPED + 1))
+else
+    run_phase "Compliance (PCI DSS + OWASP)" "./tests/compliance/pci-dss.sh && ./tests/compliance/owasp-top10.sh"
+fi
 
 # ==========================================
 # Summary

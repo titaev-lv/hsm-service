@@ -20,6 +20,10 @@ TOTAL=0
 HSM_URL="${HSM_URL:-https://localhost:8443}"
 CLIENT_CERT="${CLIENT_CERT:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt}"
 CLIENT_KEY="${CLIENT_KEY:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.key}"
+HSM_CONNECT="$(echo "$HSM_URL" | sed -E 's#^https?://##; s#/.*$##')"
+if ! echo "$HSM_CONNECT" | grep -q ':'; then
+    HSM_CONNECT="${HSM_CONNECT}:443"
+fi
 
 print_header() {
     echo ""
@@ -127,7 +131,7 @@ test_a02_no_weak_crypto() {
     print_test "A02: No weak cryptographic protocols (TLS 1.3)"
     
     # Check TLS version (output format: "New, TLSv1.3, Cipher is...")
-    TLS_OUTPUT=$(echo | timeout 3 openssl s_client -connect localhost:8443 -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 | grep -E "New, TLS")
+    TLS_OUTPUT=$(echo | timeout 3 openssl s_client -connect "$HSM_CONNECT" -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 | grep -E "New, TLS")
     
     if echo "$TLS_OUTPUT" | grep -q "TLSv1.3"; then
         pass

@@ -1,5 +1,6 @@
 # Binaries (in root and cmd directories, not source files)
 /hsm-service
+/hsm-admin
 /cmd/hsm-admin/hsm-admin
 *.exe
 *.dll

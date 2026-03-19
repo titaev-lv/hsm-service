@@ -21,6 +21,10 @@ TOTAL=0
 HSM_URL="${HSM_URL:-https://localhost:8443}"
 CLIENT_CERT="${CLIENT_CERT:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt}"
 CLIENT_KEY="${CLIENT_KEY:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.key}"
+HSM_CONNECT="$(echo "$HSM_URL" | sed -E 's#^https?://##; s#/.*$##')"
+if ! echo "$HSM_CONNECT" | grep -q ':'; then
+    HSM_CONNECT="${HSM_CONNECT}:443"
+fi
 
 print_header() {
     echo ""
@@ -128,7 +132,7 @@ test_tls_version() {
     print_test "PCI DSS 4.2.1: TLS 1.2+ only (no SSLv3, TLS 1.0, TLS 1.1)"
     
     # Test TLS connection (output format: "New, TLSv1.3, Cipher is...")
-    TLS_OUTPUT=$(echo | timeout 3 openssl s_client -connect localhost:8443 -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 | grep -E "New, TLS")
+    TLS_OUTPUT=$(echo | timeout 3 openssl s_client -connect "$HSM_CONNECT" -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 | grep -E "New, TLS")
     
     if echo "$TLS_OUTPUT" | grep -qE "TLSv1\.(3|2)"; then
         pass
@@ -141,7 +145,7 @@ test_strong_ciphers() {
     print_test "PCI DSS 4.2.1: Strong cipher suites only"
     
     # Get cipher suite (output format: "New, TLSv1.3, Cipher is TLS_AES_128_GCM_SHA256")
-    CIPHER=$(echo | timeout 3 openssl s_client -connect localhost:8443 -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 | grep -E "Cipher is" | head -1 | sed 's/.*Cipher is //')
+    CIPHER=$(echo | timeout 3 openssl s_client -connect "$HSM_CONNECT" -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 | grep -E "Cipher is" | head -1 | sed 's/.*Cipher is //')
     
     # Check if cipher is strong (AES-GCM, ChaCha20)
     if [[ "$CIPHER" =~ (AES.*GCM|CHACHA20) ]]; then
