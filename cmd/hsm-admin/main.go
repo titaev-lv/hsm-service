@@ -40,7 +40,9 @@ func (a *crypto11ContextAdapter) FindKey(id []byte, label []byte) (hsmKey, error
 }
 
 func (a *crypto11ContextAdapter) Close() {
-	a.ctx.Close()
+	if err := a.ctx.Close(); err != nil {
+		log.Printf("Warning: failed to close PKCS#11 context: %v", err)
+	}
 }
 
 func defaultNewHSMCtx(cfg *config.Config, pin string) (hsmContext, error) {

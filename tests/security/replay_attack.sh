@@ -7,6 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+HSM_URL_FROM_ENV="${HSM_URL:-}"
 HSM_URL="${HSM_URL:-https://localhost:8443}"
 
 find_client_cert() {
@@ -43,14 +44,20 @@ extract_ciphertext() {
 CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
 CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 
+if [ -z "$HSM_URL_FROM_ENV" ] && ! curl -sk --max-time 3 "$HSM_URL/health" >/dev/null 2>&1; then
+    if curl -sk --max-time 3 "https://localhost:8444/health" >/dev/null 2>&1; then
+        HSM_URL="https://localhost:8444"
+    fi
+fi
+
 if ! curl -sk --max-time 3 "$HSM_URL/health" >/dev/null 2>&1; then
     echo "SKIP: service unreachable at $HSM_URL"
-    exit 0
+    exit 2
 fi
 
 if [ -z "$CLIENT_CERT" ] || [ -z "$CLIENT_KEY" ]; then
     echo "SKIP: client cert/key not found for mTLS requests"
-    exit 0
+    exit 2
 fi
 
 body='{"context":"exchange-key","plaintext":"cmVwbGF5LXRlc3Q="}'

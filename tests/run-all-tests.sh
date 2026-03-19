@@ -98,11 +98,14 @@ run_phase "Security Scans" "./tests/security/security-scan.sh" false
 # ==========================================
 # PHASE 5: Compliance
 # ==========================================
+COMPLIANCE_READY=true
+
 if [ ! -f "$CLIENT_CERT" ] || [ ! -f "$CLIENT_KEY" ]; then
     print_warning "Compliance skipped: client cert/key not found"
     echo "  Expected cert: $CLIENT_CERT"
     echo "  Expected key:  $CLIENT_KEY"
     PHASE_SKIPPED=$((PHASE_SKIPPED + 1))
+    COMPLIANCE_READY=false
 elif [ -z "$HSM_URL_FROM_ENV" ]; then
     if timeout 5 curl -sk --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "https://localhost:8443/health" >/dev/null 2>&1; then
         HSM_URL="https://localhost:8443"
@@ -112,11 +115,14 @@ elif [ -z "$HSM_URL_FROM_ENV" ]; then
     fi
 fi
 
-if ! timeout 5 curl -sk --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "$HSM_URL/health" >/dev/null 2>&1; then
+if [ "$COMPLIANCE_READY" = true ] && ! timeout 5 curl -sk --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "$HSM_URL/health" >/dev/null 2>&1; then
     print_warning "Compliance skipped: HSM service is not reachable at $HSM_URL"
     print_warning "Run on dedicated runner/staging where HSM stack is up"
     PHASE_SKIPPED=$((PHASE_SKIPPED + 1))
-else
+    COMPLIANCE_READY=false
+fi
+
+if [ "$COMPLIANCE_READY" = true ]; then
     run_phase "Compliance (PCI DSS + OWASP)" "./tests/compliance/pci-dss.sh && ./tests/compliance/owasp-top10.sh"
 fi
 

@@ -40,6 +40,19 @@ find_client_key() {
 CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
 CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 
+accepts_weak_tls() {
+    local output="$1"
+    local proto_regex="$2"
+
+    # Accepted weak TLS should negotiate protocol and a non-NONE cipher.
+    if echo "$output" | grep -qiE "$proto_regex" && \
+       ! echo "$output" | grep -qiE "Cipher is \(NONE\)|no peer certificate|handshake failure|alert protocol version"; then
+        return 0
+    fi
+
+    return 1
+}
+
 sclient_probe() {
     local proto_flag="$1"
     local cert_args=()
@@ -52,19 +65,19 @@ sclient_probe() {
 # quick reachability check
 if ! timeout 3 bash -lc "echo >/dev/tcp/$TLS_HOST/$TLS_PORT" 2>/dev/null; then
     echo "SKIP: TLS target unreachable at $TARGET"
-    exit 0
+    exit 2
 fi
 
 weak10=$(sclient_probe "-tls1")
 weak11=$(sclient_probe "-tls1_1")
 strong12=$(sclient_probe "-tls1_2")
 
-if echo "$weak10" | grep -qiE "Protocol[[:space:]]*:[[:space:]]*TLSv1(\.|$)|Cipher is"; then
+if accepts_weak_tls "$weak10" "Protocol[[:space:]]*:[[:space:]]*TLSv1(\.|$)"; then
     echo "FAIL: server appears to accept TLS 1.0"
     exit 1
 fi
 
-if echo "$weak11" | grep -qiE "Protocol[[:space:]]*:[[:space:]]*TLSv1\.1|Cipher is"; then
+if accepts_weak_tls "$weak11" "Protocol[[:space:]]*:[[:space:]]*TLSv1\.1"; then
     echo "FAIL: server appears to accept TLS 1.1"
     exit 1
 fi

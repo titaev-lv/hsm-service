@@ -4,6 +4,7 @@
 # Runs multiple security checks: gosec, trivy, docker-bench
 
 set -e
+set -o pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -21,12 +22,32 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+HSM_URL_FROM_ENV="${HSM_URL:-}"
+HSM_URL="${HSM_URL:-https://localhost:8443}"
+
+if [ -z "$HSM_URL_FROM_ENV" ] && ! curl -sk --max-time 3 "$HSM_URL/health" >/dev/null 2>&1; then
+    if curl -sk --max-time 3 "https://localhost:8444/health" >/dev/null 2>&1; then
+        HSM_URL="https://localhost:8444"
+        print_warning "Security scan auto-detected test endpoint: $HSM_URL"
+    fi
+fi
+
+HSM_CONNECT="$(echo "$HSM_URL" | sed -E 's#^https?://##; s#/.*$##')"
+if ! echo "$HSM_CONNECT" | grep -q ':'; then
+    HSM_CONNECT="${HSM_CONNECT}:443"
+fi
+
+TLS_HOST="${HSM_CONNECT%%:*}"
+TLS_PORT="${HSM_CONNECT##*:}"
+export HSM_URL TLS_HOST TLS_PORT
+
 print_header "Security Scan - HSM Service"
 echo "Project: $PROJECT_ROOT"
 echo "Date: $(date)"
 echo ""
 
 FAILED=0
+SKIPPED=0
 
 # ==========================================
 # 1. Go Security Check (gosec)
@@ -240,8 +261,16 @@ do
     fi
 
     echo "Running $name..."
-    if "$attack_test" 2>&1 | tee "/tmp/${name%.sh}-report.txt"; then
+    set +e
+    "$attack_test" 2>&1 | tee "/tmp/${name%.sh}-report.txt"
+    exit_code=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$exit_code" -eq 0 ]; then
         print_success "$name: PASS"
+    elif [ "$exit_code" -eq 2 ]; then
+        print_warning "$name: SKIP"
+        SKIPPED=$((SKIPPED + 1))
     else
         print_error "$name: FAIL"
         FAILED=1
@@ -263,9 +292,15 @@ echo "  - /tmp/timing_attack-report.txt"
 echo "  - /tmp/replay_attack-report.txt"
 echo "  - /tmp/tls_downgrade-report.txt"
 echo ""
+echo "Attack simulation skips: $SKIPPED"
+echo ""
 
 if [ "$FAILED" -eq 0 ]; then
-    print_success "✓ All security checks passed!"
+    if [ "$SKIPPED" -gt 0 ]; then
+        print_warning "✓ Security checks passed with $SKIPPED skipped attack simulation(s)"
+    else
+        print_success "✓ All security checks passed!"
+    fi
     exit 0
 else
     print_error "✗ Some security checks failed. Review reports above."
