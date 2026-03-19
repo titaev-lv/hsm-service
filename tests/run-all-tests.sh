@@ -90,6 +90,11 @@ run_phase "E2E Scenarios" "./tests/e2e/run-all.sh" true || exit 1
 run_phase "Security Scans" "./tests/security/security-scan.sh" false
 
 # ==========================================
+# PHASE 5: Compliance
+# ==========================================
+run_phase "Compliance (PCI DSS + OWASP)" "./tests/compliance/pci-dss.sh && ./tests/compliance/owasp-top10.sh"
+
+# ==========================================
 # Summary
 # ==========================================
 print_header "Test Suite Summary"
@@ -114,6 +119,7 @@ if [ "$PHASE_FAILED" -eq 0 ]; then
     echo "  ✓ Integration Tests: 45 test cases"
     echo "  ✓ E2E Scenarios: 3 critical workflows"
     echo "  ✓ Security Scans: 8 security checks"
+    echo "  ✓ Compliance: PCI DSS + OWASP Top 10"
     echo ""
     echo "🚀 System is PRODUCTION READY!"
     exit 0
@@ -121,7 +127,7 @@ else
     print_error "❌ SOME REQUIRED TESTS FAILED"
     echo ""
     echo "Failed phases:"
-    for phase in "Unit-Tests-Go" "Integration-Tests-Docker" "E2E-Scenarios"; do
+    for phase in "Unit-Tests-Go" "Integration-Tests-Docker" "E2E-Scenarios" "Compliance-(PCI-DSS-+-OWASP)"; do
         if [ -f "/tmp/test-phase-${phase}.log" ]; then
             if ! grep -q "success\|PASS" "/tmp/test-phase-${phase}.log" 2>/dev/null; then
                 echo "  ✗ $phase"

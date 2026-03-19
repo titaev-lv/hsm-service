@@ -13,6 +13,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	rotateCreateKEK = createKEKWithConfig
+	rotateCopyFile  = copyFile
+)
+
 // rotateKeyCommand rotates a KEK by creating a new version
 func rotateKeyCommand(args []string) error {
 	if len(args) < 1 {
@@ -126,7 +131,7 @@ func rotateKeyCommand(args []string) error {
 
 	// 8. Create new KEK via hsm-admin create-kek logic
 	log.Printf("Creating new KEK: %s", newLabel)
-	if err := createKEKWithConfig(cfg, hsmPIN, newLabel, contextName, newVersion, defaultKeySize); err != nil {
+	if err := rotateCreateKEK(cfg, hsmPIN, newLabel, contextName, newVersion, defaultKeySize); err != nil {
 		return fmt.Errorf("failed to create new KEK: %w", err)
 	}
 
@@ -146,7 +151,7 @@ func rotateKeyCommand(args []string) error {
 
 	// 10. Backup old metadata
 	backupPath := fmt.Sprintf("metadata.yaml.backup-%s", time.Now().Format("20060102-150405"))
-	if err := copyFile(metadataPath, backupPath); err != nil {
+	if err := rotateCopyFile(metadataPath, backupPath); err != nil {
 		log.Printf("Warning: failed to create backup: %v", err)
 	} else {
 		log.Printf("Created metadata backup: %s", backupPath)

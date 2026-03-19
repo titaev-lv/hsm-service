@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ThalesGroup/crypto11"
 	"github.com/titaev-lv/hsm-service/internal/config"
 	"gopkg.in/yaml.v3"
 )
@@ -49,14 +48,10 @@ func updateChecksumsCommand(args []string) error {
 	}
 
 	// Initialize PKCS#11 context (only needed in non-dry-run mode; checksums are label-based)
-	var p11ctx *crypto11.Context
+	var p11ctx hsmContext
 	if !*dryRun {
 		var err2 error
-		p11ctx, err2 = crypto11.Configure(&crypto11.Config{
-			Path:       cfg.HSM.PKCS11Lib,
-			TokenLabel: cfg.HSM.SlotID,
-			Pin:        pin,
-		})
+		p11ctx, err2 = newHSMCtx(cfg, pin)
 		if err2 != nil {
 			return fmt.Errorf("failed to configure PKCS#11: %w", err2)
 		}

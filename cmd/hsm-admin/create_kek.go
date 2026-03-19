@@ -15,6 +15,23 @@ import (
 
 const defaultKeySize = 256
 
+type pkcs11Context interface {
+	Initialize() error
+	Destroy()
+	Finalize() error
+	GetSlotList(tokenPresent bool) ([]uint, error)
+	GetTokenInfo(slotID uint) (pkcs11.TokenInfo, error)
+	OpenSession(slotID uint, flags uint) (pkcs11.SessionHandle, error)
+	CloseSession(sh pkcs11.SessionHandle) error
+	Login(sh pkcs11.SessionHandle, userType uint, pin string) error
+	Logout(sh pkcs11.SessionHandle) error
+	GenerateKey(sh pkcs11.SessionHandle, m []*pkcs11.Mechanism, temp []*pkcs11.Attribute) (pkcs11.ObjectHandle, error)
+}
+
+var newPKCS11Ctx = func(lib string) pkcs11Context {
+	return pkcs11.New(lib)
+}
+
 func createKEKCommand(args []string) error {
 	fs := flag.NewFlagSet("create-kek", flag.ContinueOnError)
 	label := fs.String("label", "", "KEK label (required)")
@@ -55,7 +72,7 @@ func createKEKWithConfig(cfg *config.Config, pin, label, contextName string, ver
 		}
 	}()
 
-	p := pkcs11.New(cfg.HSM.PKCS11Lib)
+	p := newPKCS11Ctx(cfg.HSM.PKCS11Lib)
 	if p == nil {
 		return fmt.Errorf("pkcs11 initialize: failed to create PKCS#11 context")
 	}
@@ -123,7 +140,7 @@ func generateKeyID() ([]byte, string) {
 	return id, hex.EncodeToString(id)
 }
 
-func findSlotByLabel(p *pkcs11.Ctx, tokenLabel string) (uint, error) {
+func findSlotByLabel(p pkcs11Context, tokenLabel string) (uint, error) {
 	slots, err := p.GetSlotList(true)
 	if err != nil {
 		return 0, fmt.Errorf("get slot list: %w", err)

@@ -15,10 +15,50 @@ const (
 	defaultConfigPath = "config.yaml"
 )
 
+var (
+	exitFunc   = os.Exit
+	fatalfFunc = log.Fatalf
+	fatalFunc  = log.Fatal
+	newHSMCtx  = defaultNewHSMCtx
+)
+
+type hsmKey interface {
+	Delete() error
+}
+
+type hsmContext interface {
+	FindKey(id []byte, label []byte) (hsmKey, error)
+	Close()
+}
+
+type crypto11ContextAdapter struct {
+	ctx *crypto11.Context
+}
+
+func (a *crypto11ContextAdapter) FindKey(id []byte, label []byte) (hsmKey, error) {
+	return a.ctx.FindKey(id, label)
+}
+
+func (a *crypto11ContextAdapter) Close() {
+	a.ctx.Close()
+}
+
+func defaultNewHSMCtx(cfg *config.Config, pin string) (hsmContext, error) {
+	p11ctx, err := crypto11.Configure(&crypto11.Config{
+		Path:       cfg.HSM.PKCS11Lib,
+		TokenLabel: cfg.HSM.SlotID,
+		Pin:        pin,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &crypto11ContextAdapter{ctx: p11ctx}, nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Parse global flags
@@ -41,7 +81,7 @@ func main() {
 	args := flag.Args()
 	if len(args) == 0 {
 		printUsage()
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	command := args[0]
@@ -49,7 +89,7 @@ func main() {
 	switch command {
 	case "create-kek":
 		if err := createKEKCommand(args[1:]); err != nil {
-			log.Fatalf("Create KEK failed: %v", err)
+			fatalfFunc("Create KEK failed: %v", err)
 		}
 	case "list-kek":
 		listKEK(args[1:])
@@ -59,24 +99,24 @@ func main() {
 		exportMetadata(args[1:])
 	case "rotate":
 		if err := rotateKeyCommand(args[1:]); err != nil {
-			log.Fatalf("Rotation failed: %v", err)
+			fatalfFunc("Rotation failed: %v", err)
 		}
 	case "rotation-status":
 		if err := checkRotationStatusCommand(); err != nil {
-			log.Fatalf("Failed to check rotation status: %v", err)
+			fatalfFunc("Failed to check rotation status: %v", err)
 		}
 	case "cleanup-old-versions":
 		if err := cleanupOldVersionsCommand(args[1:]); err != nil {
-			log.Fatalf("Failed to cleanup old versions: %v", err)
+			fatalfFunc("Failed to cleanup old versions: %v", err)
 		}
 	case "update-checksums":
 		if err := updateChecksumsCommand(args[1:]); err != nil {
-			log.Fatalf("Failed to update checksums: %v", err)
+			fatalfFunc("Failed to update checksums: %v", err)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
-		os.Exit(1)
+		exitFunc(1)
 	}
 }
 
@@ -124,29 +164,25 @@ func listKEK(args []string) {
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Get HSM PIN from environment
 	pin := os.Getenv("HSM_PIN")
 	if pin == "" {
-		log.Fatal("HSM_PIN environment variable not set")
+		fatalFunc("HSM_PIN environment variable not set")
 	}
 
 	// Load configuration
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		fatalfFunc("Failed to load config: %v", err)
 	}
 
 	// Initialize PKCS#11 context
-	p11ctx, err := crypto11.Configure(&crypto11.Config{
-		Path:       cfg.HSM.PKCS11Lib,
-		TokenLabel: cfg.HSM.SlotID,
-		Pin:        pin,
-	})
+	p11ctx, err := newHSMCtx(cfg, pin)
 	if err != nil {
-		log.Fatalf("Failed to configure PKCS#11: %v", err)
+		fatalfFunc("Failed to configure PKCS#11: %v", err)
 	}
 	defer p11ctx.Close()
 
@@ -218,41 +254,37 @@ func deleteKEK(args []string) {
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	if *label == "" {
 		fmt.Println("Error: --label is required")
 		fs.Usage()
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	if !*confirm {
 		fmt.Println("Error: --confirm flag is required to delete KEK")
 		fmt.Println("This operation is irreversible!")
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Get HSM PIN from environment
 	pin := os.Getenv("HSM_PIN")
 	if pin == "" {
-		log.Fatal("HSM_PIN environment variable not set")
+		fatalFunc("HSM_PIN environment variable not set")
 	}
 
 	// Load configuration
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		fatalfFunc("Failed to load config: %v", err)
 	}
 
 	// Initialize PKCS#11 context
-	p11ctx, err := crypto11.Configure(&crypto11.Config{
-		Path:       cfg.HSM.PKCS11Lib,
-		TokenLabel: cfg.HSM.SlotID,
-		Pin:        pin,
-	})
+	p11ctx, err := newHSMCtx(cfg, pin)
 	if err != nil {
-		log.Fatalf("Failed to configure PKCS#11: %v", err)
+		fatalfFunc("Failed to configure PKCS#11: %v", err)
 	}
 	defer p11ctx.Close()
 
@@ -261,17 +293,17 @@ func deleteKEK(args []string) {
 	// Find key by label
 	key, err := p11ctx.FindKey(nil, []byte(*label))
 	if err != nil {
-		log.Fatalf("Failed to find KEK: %v", err)
+		fatalfFunc("Failed to find KEK: %v", err)
 	}
 
 	if key == nil {
-		log.Fatalf("KEK not found: %s", *label)
+		fatalfFunc("KEK not found: %s", *label)
 	}
 
 	// Delete the key
 	err = key.Delete()
 	if err != nil {
-		log.Fatalf("Failed to delete KEK: %v", err)
+		fatalfFunc("Failed to delete KEK: %v", err)
 	}
 
 	fmt.Printf("✓ KEK deleted successfully: %s\n", *label)
@@ -290,13 +322,13 @@ func exportMetadata(args []string) {
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Load configuration (no HSM access needed)
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		fatalfFunc("Failed to load config: %v", err)
 	}
 
 	type KEKMetadata struct {
@@ -347,14 +379,14 @@ func exportMetadata(args []string) {
 	// Write to file
 	file, err := os.Create(*output)
 	if err != nil {
-		log.Fatalf("Failed to create output file: %v", err)
+		fatalfFunc("Failed to create output file: %v", err)
 	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(metadata); err != nil {
-		log.Fatalf("Failed to encode metadata: %v", err)
+		fatalfFunc("Failed to encode metadata: %v", err)
 	}
 
 	fmt.Printf("✓ Metadata exported to: %s\n", *output)

@@ -2,6 +2,7 @@ package hsm
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -33,6 +34,29 @@ func TestKeyManagerStartAutoReload_StopsGracefully(t *testing.T) {
 	defer cancel()
 	if err := km.StopAutoReload(ctx); err != nil {
 		t.Fatalf("StopAutoReload() after StartAutoReload error: %v", err)
+	}
+}
+
+func TestKeyManagerStartAutoReload_ReloadPathTriggered(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata.yaml")
+	// Invalid YAML is enough here: we only need to exercise the reload attempt path.
+	if err := os.WriteFile(path, []byte("rotation: ["), 0o600); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+
+	km := &KeyManager{
+		metadataFile: path,
+		hsmConfig:    &config.HSMConfig{Keys: map[string]config.KeyConfig{}},
+		stopReload:   make(chan struct{}),
+	}
+
+	km.StartAutoReload(5 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := km.StopAutoReload(ctx); err != nil {
+		t.Fatalf("StopAutoReload() after reload-path test error: %v", err)
 	}
 }
 

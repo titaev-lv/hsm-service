@@ -223,6 +223,32 @@ if [ -f "Dockerfile" ]; then
 fi
 
 # ==========================================
+# 9. Active Security Attack Simulations
+# ==========================================
+print_header "9. Active Security Attack Simulations"
+
+for attack_test in \
+    "tests/security/timing_attack.sh" \
+    "tests/security/replay_attack.sh" \
+    "tests/security/tls_downgrade.sh"
+do
+    name="$(basename "$attack_test")"
+    if [ ! -x "$attack_test" ]; then
+        print_warning "$name: not executable or missing"
+        FAILED=1
+        continue
+    fi
+
+    echo "Running $name..."
+    if "$attack_test" 2>&1 | tee "/tmp/${name%.sh}-report.txt"; then
+        print_success "$name: PASS"
+    else
+        print_error "$name: FAIL"
+        FAILED=1
+    fi
+done
+
+# ==========================================
 # Summary
 # ==========================================
 print_header "Security Scan Summary"
@@ -233,6 +259,9 @@ echo "  - /tmp/govet-report.txt"
 echo "  - /tmp/staticcheck-report.txt"
 echo "  - /tmp/govulncheck-report.txt"
 echo "  - /tmp/trivy-report.txt"
+echo "  - /tmp/timing_attack-report.txt"
+echo "  - /tmp/replay_attack-report.txt"
+echo "  - /tmp/tls_downgrade-report.txt"
 echo ""
 
 if [ "$FAILED" -eq 0 ]; then

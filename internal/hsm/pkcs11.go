@@ -37,9 +37,37 @@ type HSMContext struct {
 	metadata       map[string]*KeyMetadata // label -> metadata
 }
 
+type pkcs11Handle interface {
+	FindKey(id, label []byte) (gcmFactory, error)
+	Close() error
+	Raw() *crypto11.Context
+}
+
+type crypto11Handle struct {
+	ctx *crypto11.Context
+}
+
+func (h *crypto11Handle) FindKey(id, label []byte) (gcmFactory, error) {
+	if h == nil || h.ctx == nil {
+		return nil, fmt.Errorf("crypto11 handle context is nil")
+	}
+	return h.ctx.FindKey(id, label)
+}
+
+func (h *crypto11Handle) Close() error {
+	if h == nil || h.ctx == nil {
+		return nil
+	}
+	return h.ctx.Close()
+}
+
+func (h *crypto11Handle) Raw() *crypto11.Context {
+	return h.ctx
+}
+
 // computeKeyChecksum computes SHA-256 hash of key attributes for integrity verification
 // Uses label + key handle pointer as unique identifier (best we can do without extracting key material)
-func computeKeyChecksum(label string, secretKey *crypto11.SecretKey) string {
+func computeKeyChecksum(label string, _ any) string {
 	// We can't extract actual key material from HSM (by design)
 	// Instead, compute hash of: label + object handle address
 	// This detects label tampering and key substitution
@@ -65,6 +93,11 @@ func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSM
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure crypto11: %w", err)
 	}
+
+	return initHSMWithHandle(&crypto11Handle{ctx: ctx}, cfg, metadata)
+}
+
+func initHSMWithHandle(ctx pkcs11Handle, cfg *config.HSMConfig, metadata *config.Metadata) (*HSMContext, error) {
 
 	// 3. Find and cache all configured KEKs
 	keys := make(map[string]cipher.AEAD)
@@ -160,7 +193,7 @@ func InitHSM(cfg *config.HSMConfig, metadata *config.Metadata, pin string) (*HSM
 	}
 
 	return &HSMContext{
-		ctx:            ctx,
+		ctx:            ctx.Raw(),
 		keys:           keys,
 		contextToLabel: contextToLabel,
 		metadata:       keyMetadata,

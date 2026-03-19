@@ -95,3 +95,21 @@ func TestHSMContextGettersAndRotationList(t *testing.T) {
 		t.Fatalf("GetKeysNeedingRotation() = %v, want [kek-exchange-v1]", needs)
 	}
 }
+
+func TestHSMContextGetKeyLabels_NonEmpty(t *testing.T) {
+	obj := &HSMContext{
+		keys: map[string]cipher.AEAD{
+			"kek-a": mustNewGCM(t),
+			"kek-b": mustNewGCM(t),
+		},
+	}
+
+	labels := obj.GetKeyLabels()
+	sort.Strings(labels)
+	if len(labels) != 2 {
+		t.Fatalf("GetKeyLabels() len = %d, want 2", len(labels))
+	}
+	if labels[0] != "kek-a" || labels[1] != "kek-b" {
+		t.Fatalf("GetKeyLabels() = %v, want [kek-a kek-b]", labels)
+	}
+}

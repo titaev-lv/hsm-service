@@ -70,130 +70,33 @@
 
 ## 🎯 Стратегические цели
 
-### 2026 Roadmap
-
-```mermaid
-gantt
-    title HSM Service Development 2026
-    dateFormat YYYY-MM-DD
-    section Q1 2026
-    Test Coverage Improvement    :crit, 2026-02-08, 21d
-    CLI Consolidation            :2026-02-15, 14d
-    Backup Automation            :2026-03-01, 10d
-    section Q2 2026
-    Multi-Slot Architecture      :active, 2026-04-01, 21d
-    Hardware HSM Support         :2026-04-15, 30d
-    Audit API v1                 :2026-05-01, 15d
-    Metrics Listener Separation  :2026-05-20, 7d
-    section Q3 2026
-    High Availability            :2026-07-01, 45d
-    Split Knowledge (Shamir)     :2026-08-01, 21d
-    PCI DSS Full Compliance      :2026-08-15, 30d
-    section Q4 2026
-    Web Admin UI                 :2026-10-01, 30d
-    Performance Optimization     :2026-11-01, 20d
-    v2.0.0 Release               :milestone, 2026-12-01, 1d
-```
-
----
-
 ## 📋 Детальный план по приоритетам
 
 ## PHASE 1: Foundation & Testing (Q1 2026)
 
 ### 1.1 Test Coverage Improvement 🔴 CRITICAL
 
-**Проблема:**
-- internal/hsm: 6.9% coverage (должно быть >80%)
-- cmd/hsm-admin: 0% coverage
-- Нет unit-тестов для критических криптографических операций
+**Статус на 2026-03-18:** 🟢 Выполнено с превышением целевых метрик
+
+**Фактические результаты:**
+- ✅ `internal/hsm`: **93.5%** (целевой порог >80% превышен)
+- ✅ `cmd/hsm-admin`: **91.5%** (целевой порог >50% существенно превышен)
+- ✅ Добавлены hermetic unit-тесты без зависимости от реального HSM для dry-run, error-path и edge-case веток
+- ✅ Покрыты сложные ветвления (reload, nil-guards, multi-version, hot reload, checksum mismatch, error handling)
+- ✅ Добавлены coverage-gates в CI (`make test-coverage-check`, `make ci`)
+
+**Что еще остается в рамках 1.1:**
+- ⏳ Регулярный прогон полного интеграционного набора в целевой CI-среде
+- ⏳ Декомпозиция compliance-проверок в отдельные скрипты по PCI DSS подпунктам (сейчас частично покрыто агрегированным `tests/compliance/pci-dss.sh`)
 
 **Метрики качества:**
 ```bash
-$ go test ./... -cover
-✅ internal/config:  78.2%  # Good
-❌ internal/hsm:     6.9%   # CRITICAL GAP
-✅ internal/server:  56.8%  # Acceptable
-❌ cmd/hsm-admin:    0.0%   # No tests
+# Актуальные метрики (март 2026)
+internal/hsm:     93.5%  ✅
+cmd/hsm-admin:    91.5%  ✅
 ```
 
-**План действий:**
-
-#### 1.1.1 HSM Package Tests (Priority: 🔴 CRITICAL)
-
-**internal/hsm/pkcs11_test.go** - Unit tests with mocking
-```go
-// Test cases needed:
-// ✅ KEK checksum verification (happy path)
-// ✅ KEK checksum mismatch detection
-// ✅ Key rotation hot reload
-// ✅ Multi-version key support
-// ✅ Memory zeroing after decrypt
-// ✅ Error handling for PKCS#11 failures
-
-// Example test structure:
-func TestKeychainChecksum(t *testing.T) {
-    tests := []struct {
-        name      string
-        checksum  string
-        wantError bool
-    }{
-        {"valid_checksum", "abc123...", false},
-        {"invalid_checksum", "wrong", true},
-        {"empty_checksum", "", false}, // Should skip verification
-    }
-    // ... test implementation
-}
-```
-
-**internal/hsm/integration_test.go** - SoftHSM integration
-```go
-// Requires SoftHSM2 installed
-// Tests full PKCS#11 lifecycle:
-// - Initialize slot
-// - Create KEK
-// - Load KeyManager
-// - Encrypt/Decrypt
-// - Hot reload after rotation
-// - Cleanup
-
-func TestSoftHSMIntegration(t *testing.T) {
-    if testing.Short() {
-        t.Skip("skipping integration test")
-    }
-    // ... full integration test
-}
-```
-
-**Цель:** internal/hsm coverage >80% к 1 марта 2026
-
-#### 1.1.2 CLI Tools Tests (Priority: 🟠 HIGH)
-
-**cmd/hsm-admin/rotate_test.go**
-```go
-// Test rotation logic without PKCS#11
-// Mock file operations
-// Test:
-// - metadata.yaml updates
-// - version incrementing
-// - checksum computation
-// - error handling
-
-func TestRotateMetadataUpdate(t *testing.T) {
-    // Test metadata file operations in isolation
-}
-```
-
-**cmd/hsm-admin/cleanup_test.go**
-```go
-// Test old version cleanup logic
-// Mock PKCS#11 operations
-// Test PCI DSS compliance (keep only current + N-1)
-```
-
-**Effort:** 5 дней разработки + 2 дня review
-
-#### 1.1.3 Integration Test Suite Expansion
+#### 1.1.3 Integration Test Suite Expansion (актуальный оставшийся блок)
 
 **tests/security/** - Add missing security tests:
 ```bash
@@ -202,25 +105,46 @@ tests/
     sql_injection.sh        # ✅ Done (N/A - no SQL)
     command_injection.sh    # ✅ Done (fixed G204)
     path_traversal.sh       # ✅ Done (fixed G304)
-    timing_attack.sh        # ❌ TODO
-    replay_attack.sh        # ❌ TODO
-    tls_downgrade.sh        # ❌ TODO
+    timing_attack.sh        # ✅ Done
+    replay_attack.sh        # ✅ Done
+    tls_downgrade.sh        # ✅ Done
 ```
+
+**Примечание:** новые security-сценарии подключены в `tests/security/security-scan.sh` (раздел active attack simulations).
+
+**Статус:** 🟡 Частично завершено
+- ✅ Security attack simulations реализованы и подключены
+- ⏳ PCI DSS проверки еще частично агрегированы и требуют декомпозиции
 
 **tests/compliance/** - PCI DSS validation:
 ```bash
 tests/
   compliance/
-    pci-dss-3.6.4.sh       # Key rotation (90 days)
-    pci-dss-3.6.6.sh       # Split knowledge (TODO Phase 3)
-    pci-dss-10.2.sh        # Audit logging
+    pci-dss.sh             # ✅ Exists (aggregated checks)
+    owasp-top10.sh         # ✅ Exists
+    pci-dss-3.6.4.sh       # ⏳ TODO (split from pci-dss.sh)
+    pci-dss-3.6.6.sh       # ⏳ TODO (Phase 3)
+    pci-dss-10.2.sh        # ⏳ TODO (split from pci-dss.sh)
 ```
 
+**Где запускать 1.1.3:**
+- Рекомендуется отдельная машина/runner (staging или dedicated CI host), а не dev-ноутбук
+- Причина: интеграционные security/compliance тесты требуют стабильного сетевого окружения, Docker Compose стенда и PKCS#11/SoftHSM окружения
+- Минимум окружения: Linux, Docker/Compose, SoftHSM2/PKCS#11 libs, тестовые сертификаты и изолированная сеть
+
+**Операционный план запуска 1.1.3:**
+1. Поднять отдельный стенд `docker-compose up -d` в staging-профиле.
+2. Прогнать `tests/security/security-scan.sh` как обязательный pre-release gate.
+3. Прогнать `tests/compliance/pci-dss.sh` и `tests/compliance/owasp-top10.sh`.
+4. Декомпозировать `pci-dss.sh` на подпункты (`3.6.4`, `10.2`) и сделать их отдельными CI jobs.
+5. Зафиксировать результаты в артефактах CI и в release checklist.
+
 **Критерии успеха:**
-- [ ] internal/hsm coverage >80%
-- [ ] cmd/* coverage >50%
+- [x] internal/hsm coverage >80%
+- [x] internal/hsm coverage >90%
+- [x] cmd/* coverage >50%
 - [ ] All integration tests passing
-- [ ] CI/CD pipeline with coverage gates
+- [x] CI/CD pipeline with coverage gates
 
 ---
 
@@ -239,65 +163,6 @@ tests/
 # - Документация разбита
 # - Deployment complexity
 ```
-
-**Решение:**
-
-```go
-// cmd/hsm-admin/main.go
-func main() {
-    commands := []struct {
-        name string
-        fn   func()
-    }{
-        {"list", listCommand},
-        {"rotate", rotateCommand},
-        {"cleanup-old-versions", cleanupCommand},
-        {"update-checksums", updateChecksumsCommand},
-        {"create-kek", createKEKCommand},  // NEW: merged from create-kek
-    }
-    // ... dispatch logic
-}
-
-// cmd/hsm-admin/create_kek.go (new file)
-func createKEKCommand() {
-    fs := flag.NewFlagSet("create-kek", flag.ExitOnError)
-    label := fs.String("label", "", "KEK label (e.g., kek-exchange-key-v1)")
-    context := fs.String("context", "", "Context name (e.g., exchange-key)")
-    version := fs.Int("version", 1, "Version number")
-    size := fs.Int("size", 256, "Key size in bits (256 or 512)")
-    
-    fs.Parse(os.Args[2:])
-    
-    // Validation
-    if *label == "" || *context == "" {
-        fmt.Fprintf(os.Stderr, "Error: --label and --context are required\n")
-        fs.Usage()
-        os.Exit(1)
-    }
-    
-    // Call shared KEK creation logic
-    if err := createKEK(*label, *context, *version, *size); err != nil {
-        log.Fatalf("Failed to create KEK: %v", err)
-    }
-    
-    fmt.Printf("✅ KEK created: %s (context: %s, version: %d)\n", *label, *context, *version)
-}
-```
-
-**Migration strategy:**
-
-1. **Phase 1.2.0**: Add `hsm-admin create-kek` (keep old binary)
-   ```bash
-   # New way (preferred)
-   hsm-admin create-kek --label kek-exchange-v1 --context exchange-key
-   ```
-   - cmd/create-kek/  Deprecated
-
-2. **Phase 2.0.0**: Remove old binary (DONE)
-  - Delete cmd/create-kek/ (DONE)
-  - Update Dockerfile
-
----
 
 ### 1.3 Backup & Restore Automation 🟠 HIGH
 

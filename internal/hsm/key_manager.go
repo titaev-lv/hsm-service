@@ -16,7 +16,8 @@ import (
 // KeyManager manages HSM keys with hot reload capability
 type KeyManager struct {
 	// PKCS#11 context (persistent, never closed during reload)
-	ctx *crypto11.Context
+	ctx    *crypto11.Context
+	finder keyFinder
 
 	// Current state (protected by mutex)
 	keys           map[string]cipher.AEAD  // label -> GCM cipher
@@ -40,8 +41,34 @@ type KeyManager struct {
 	stopOnce   sync.Once
 }
 
+type keyFinder interface {
+	FindKey(id, label []byte) (gcmFactory, error)
+}
+
+type gcmFactory interface {
+	NewGCM() (cipher.AEAD, error)
+}
+
+type crypto11Finder struct {
+	ctx *crypto11.Context
+}
+
+func (f *crypto11Finder) FindKey(id, label []byte) (gcmFactory, error) {
+	if f == nil || f.ctx == nil {
+		return nil, fmt.Errorf("crypto11 finder context is nil")
+	}
+	return f.ctx.FindKey(id, label)
+}
+
 // NewKeyManager creates a new KeyManager with initial state
 func NewKeyManager(ctx *crypto11.Context, cfg *config.Config, metadata *config.Metadata) (*KeyManager, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("pkcs11 context is nil")
+	}
+	return newKeyManagerWithFinder(ctx, &crypto11Finder{ctx: ctx}, cfg, metadata)
+}
+
+func newKeyManagerWithFinder(ctx *crypto11.Context, finder keyFinder, cfg *config.Config, metadata *config.Metadata) (*KeyManager, error) {
 	maxVersions := cfg.HSM.MaxVersions
 	if maxVersions == 0 {
 		maxVersions = 3 // Default
@@ -53,6 +80,7 @@ func NewKeyManager(ctx *crypto11.Context, cfg *config.Config, metadata *config.M
 
 	km := &KeyManager{
 		ctx:              ctx,
+		finder:           finder,
 		metadataFile:     cfg.HSM.MetadataFile,
 		hsmConfig:        &cfg.HSM,
 		config:           cfg, // Store full config
@@ -97,7 +125,11 @@ func (km *KeyManager) loadKeys(metadata *config.Metadata) error {
 		// Load all versions of the key
 		for _, version := range meta.Versions {
 			// Find key by label
-			secretKey, err := km.ctx.FindKey(nil, []byte(version.Label))
+			if km.finder == nil {
+				return fmt.Errorf("pkcs11 key finder is not configured")
+			}
+
+			secretKey, err := km.finder.FindKey(nil, []byte(version.Label))
 			if err != nil {
 				slog.Warn("KEK not found in HSM",
 					"label", version.Label,
