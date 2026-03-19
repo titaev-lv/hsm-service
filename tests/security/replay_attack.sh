@@ -12,6 +12,7 @@ HSM_URL="${HSM_URL:-https://localhost:8443}"
 
 find_client_cert() {
     for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.crt" \
         "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.crt" \
         "$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt" \
         "$PROJECT_ROOT/pki/client/client.crt"; do
@@ -25,6 +26,7 @@ find_client_cert() {
 
 find_client_key() {
     for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.key" \
         "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.key" \
         "$PROJECT_ROOT/pki/client/hsm-trading-client-1.key" \
         "$PROJECT_ROOT/pki/client/client.key"; do
@@ -44,19 +46,28 @@ extract_ciphertext() {
 CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
 CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 
-if [ -z "$HSM_URL_FROM_ENV" ] && ! curl -sk --max-time 3 "$HSM_URL/health" >/dev/null 2>&1; then
-    if curl -sk --max-time 3 "https://localhost:8444/health" >/dev/null 2>&1; then
+health_ok() {
+    local url="$1"
+    if [ -n "$CLIENT_CERT" ] && [ -n "$CLIENT_KEY" ]; then
+        curl -sk --max-time 3 --cert "$CLIENT_CERT" --key "$CLIENT_KEY" "$url/health" >/dev/null 2>&1
+    else
+        curl -sk --max-time 3 "$url/health" >/dev/null 2>&1
+    fi
+}
+
+if [ -z "$CLIENT_CERT" ] || [ -z "$CLIENT_KEY" ]; then
+    echo "SKIP: client cert/key not found for mTLS requests"
+    exit 2
+fi
+
+if [ -z "$HSM_URL_FROM_ENV" ] && ! health_ok "$HSM_URL"; then
+    if health_ok "https://localhost:8444"; then
         HSM_URL="https://localhost:8444"
     fi
 fi
 
-if ! curl -sk --max-time 3 "$HSM_URL/health" >/dev/null 2>&1; then
+if ! health_ok "$HSM_URL"; then
     echo "SKIP: service unreachable at $HSM_URL"
-    exit 2
-fi
-
-if [ -z "$CLIENT_CERT" ] || [ -z "$CLIENT_KEY" ]; then
-    echo "SKIP: client cert/key not found for mTLS requests"
     exit 2
 fi
 

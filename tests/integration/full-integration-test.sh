@@ -272,9 +272,17 @@ TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
 mkdir -p "$TEST_LOGS_DIR"
 TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
 mkdir -p "$TEST_LOGS_DIR"
+KEEP_TEST_ENV="${KEEP_TEST_ENV:-0}"
 
 # Cleanup function to restore config and PKI on exit
 cleanup_on_exit() {
+    if [ "$KEEP_TEST_ENV" = "1" ]; then
+        echo ""
+        print_header "CLEANUP: Skipped (KEEP_TEST_ENV=1)"
+        print_warning "Preserving test containers, test PKI, and test data for subsequent phases"
+        return
+    fi
+
     echo ""
     print_header "CLEANUP: Restoring original state"
     

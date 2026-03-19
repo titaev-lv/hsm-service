@@ -13,6 +13,7 @@ TARGET="$TLS_HOST:$TLS_PORT"
 
 find_client_cert() {
     for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.crt" \
         "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.crt" \
         "$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt" \
         "$PROJECT_ROOT/pki/client/client.crt"; do
@@ -26,6 +27,7 @@ find_client_cert() {
 
 find_client_key() {
     for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.key" \
         "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.key" \
         "$PROJECT_ROOT/pki/client/hsm-trading-client-1.key" \
         "$PROJECT_ROOT/pki/client/client.key"; do

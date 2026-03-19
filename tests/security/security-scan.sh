@@ -22,11 +22,53 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+find_client_cert() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/client/client.crt"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_client_key() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.key" \
+        "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.key" \
+        "$PROJECT_ROOT/pki/client/hsm-trading-client-1.key" \
+        "$PROJECT_ROOT/pki/client/client.key"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+probe_health() {
+    local url="$1"
+    local cert="$2"
+    local key="$3"
+
+    if [ -n "$cert" ] && [ -n "$key" ]; then
+        curl -sk --max-time 3 --cert "$cert" --key "$key" "$url/health" >/dev/null 2>&1
+    else
+        curl -sk --max-time 3 "$url/health" >/dev/null 2>&1
+    fi
+}
+
 HSM_URL_FROM_ENV="${HSM_URL:-}"
 HSM_URL="${HSM_URL:-https://localhost:8443}"
+CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
+CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 
-if [ -z "$HSM_URL_FROM_ENV" ] && ! curl -sk --max-time 3 "$HSM_URL/health" >/dev/null 2>&1; then
-    if curl -sk --max-time 3 "https://localhost:8444/health" >/dev/null 2>&1; then
+if [ -z "$HSM_URL_FROM_ENV" ] && ! probe_health "$HSM_URL" "$CLIENT_CERT" "$CLIENT_KEY"; then
+    if probe_health "https://localhost:8444" "$CLIENT_CERT" "$CLIENT_KEY"; then
         HSM_URL="https://localhost:8444"
         print_warning "Security scan auto-detected test endpoint: $HSM_URL"
     fi
@@ -39,7 +81,7 @@ fi
 
 TLS_HOST="${HSM_CONNECT%%:*}"
 TLS_PORT="${HSM_CONNECT##*:}"
-export HSM_URL TLS_HOST TLS_PORT
+export HSM_URL CLIENT_CERT CLIENT_KEY TLS_HOST TLS_PORT
 
 print_header "Security Scan - HSM Service"
 echo "Project: $PROJECT_ROOT"
@@ -84,8 +126,15 @@ fi
 print_header "3. Staticcheck (advanced analysis)"
 
 if command -v staticcheck &> /dev/null; then
-    if staticcheck ./... 2>&1 | tee /tmp/staticcheck-report.txt; then
+    set +e
+    staticcheck ./... 2>&1 | tee /tmp/staticcheck-report.txt
+    staticcheck_exit=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$staticcheck_exit" -eq 0 ]; then
         print_success "staticcheck: PASS"
+    elif grep -qiE "file requires newer Go version|application uses version go[0-9.]+ of the source-processing packages" /tmp/staticcheck-report.txt; then
+        print_warning "staticcheck: skipped due to local Go toolchain mismatch"
     else
         print_warning "staticcheck: Issues found"
         FAILED=1
@@ -100,8 +149,15 @@ fi
 print_header "4. Dependency Vulnerability Scan (govulncheck)"
 
 if command -v govulncheck &> /dev/null; then
-    if govulncheck ./... 2>&1 | tee /tmp/govulncheck-report.txt; then
+    set +e
+    govulncheck ./... 2>&1 | tee /tmp/govulncheck-report.txt
+    govulncheck_exit=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$govulncheck_exit" -eq 0 ]; then
         print_success "govulncheck: No vulnerabilities found"
+    elif grep -qiE "mismatch between the Go version|file requires newer Go version|application uses version go[0-9.]+ of the source-processing packages" /tmp/govulncheck-report.txt; then
+        print_warning "govulncheck: skipped due to local Go toolchain mismatch"
     else
         print_error "govulncheck: Vulnerabilities detected!"
         FAILED=1

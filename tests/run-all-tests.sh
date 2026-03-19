@@ -21,11 +21,76 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+RUN_ALL_KEEP_TEST_ENV="${RUN_ALL_KEEP_TEST_ENV:-0}"
+TEST_COMPOSE_PROJECT="hsm-test"
+TEST_COMPOSE_FILE="$PROJECT_ROOT/docker-compose-test.yml"
+
+cleanup_test_env_on_exit() {
+    # Do not run cleanup if explicitly requested by user.
+    if [ "$RUN_ALL_KEEP_TEST_ENV" = "1" ]; then
+        print_warning "Final cleanup skipped (RUN_ALL_KEEP_TEST_ENV=1)"
+        return
+    fi
+
+    print_header "FINAL CLEANUP"
+
+    if [ -f "$TEST_COMPOSE_FILE" ]; then
+        print_test "Stop preserved test containers"
+        docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" down -v >/dev/null 2>&1 || true
+        rm -f "$TEST_COMPOSE_FILE" || true
+        print_success "Test containers and volumes removed"
+    else
+        print_warning "No docker-compose-test.yml found, nothing to stop"
+    fi
+
+    if [ -d "$PROJECT_ROOT/pki/test" ]; then
+        print_test "Remove test PKI"
+        rm -rf "$PROJECT_ROOT/pki/test" || true
+        print_success "Test PKI removed"
+    fi
+
+    for f in "$PROJECT_ROOT/config-test.yaml" "$PROJECT_ROOT/metadata-test.yaml" "$PROJECT_ROOT/revoked-test.yaml"; do
+        if [ -f "$f" ]; then
+            rm -f "$f" || true
+        fi
+    done
+}
+
+trap cleanup_test_env_on_exit EXIT
+
+find_client_cert() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/client/client.crt"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_client_key() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.key" \
+        "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.key" \
+        "$PROJECT_ROOT/pki/client/hsm-trading-client-1.key" \
+        "$PROJECT_ROOT/pki/client/client.key"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Compliance prerequisites (can be overridden by env to match compliance scripts)
 HSM_URL_FROM_ENV="${HSM_URL:-}"
 HSM_URL="${HSM_URL:-https://localhost:8443}"
-CLIENT_CERT="${CLIENT_CERT:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt}"
-CLIENT_KEY="${CLIENT_KEY:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.key}"
+CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
+CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 
 print_header "HSM Service - Master Test Suite"
 echo "Project: $PROJECT_ROOT"
@@ -83,7 +148,7 @@ run_phase "Unit Tests (Go)" "go test -v -race ./cmd/... ./internal/..." true || 
 # ==========================================
 # PHASE 2: Integration Tests
 # ==========================================
-run_phase "Integration Tests (Docker)" "./tests/integration/full-integration-test.sh" true || exit 1
+run_phase "Integration Tests (Docker)" "KEEP_TEST_ENV=1 ./tests/integration/full-integration-test.sh" true || exit 1
 
 # ==========================================
 # PHASE 3: E2E Scenario Tests

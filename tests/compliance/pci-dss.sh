@@ -19,8 +19,37 @@ TOTAL=0
 
 # HSM Service URL
 HSM_URL="${HSM_URL:-https://localhost:8443}"
-CLIENT_CERT="${CLIENT_CERT:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt}"
-CLIENT_KEY="${CLIENT_KEY:-$PROJECT_ROOT/pki/client/hsm-trading-client-1.key}"
+
+find_client_cert() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/client/hsm-trading-client-1.crt" \
+        "$PROJECT_ROOT/pki/client/client.crt"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_client_key() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/client/trading-client-1.key" \
+        "$PROJECT_ROOT/pki/test/client/hsm-trading-client-1.key" \
+        "$PROJECT_ROOT/pki/client/hsm-trading-client-1.key" \
+        "$PROJECT_ROOT/pki/client/client.key"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
+CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 HSM_CONNECT="$(echo "$HSM_URL" | sed -E 's#^https?://##; s#/.*$##')"
 if ! echo "$HSM_CONNECT" | grep -q ':'; then
     HSM_CONNECT="${HSM_CONNECT}:443"
