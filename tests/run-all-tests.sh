@@ -35,7 +35,7 @@ cleanup_test_env_on_exit() {
     print_header "FINAL CLEANUP"
 
     if [ -f "$TEST_COMPOSE_FILE" ]; then
-        print_test "Stop preserved test containers"
+        print_warning "Stopping preserved test containers"
         docker compose -p "$TEST_COMPOSE_PROJECT" -f "$TEST_COMPOSE_FILE" down -v >/dev/null 2>&1 || true
         rm -f "$TEST_COMPOSE_FILE" || true
         print_success "Test containers and volumes removed"
@@ -44,7 +44,7 @@ cleanup_test_env_on_exit() {
     fi
 
     if [ -d "$PROJECT_ROOT/pki/test" ]; then
-        print_test "Remove test PKI"
+        print_warning "Removing test PKI"
         rm -rf "$PROJECT_ROOT/pki/test" || true
         print_success "Test PKI removed"
     fi
@@ -86,11 +86,11 @@ find_client_key() {
     return 1
 }
 
-# Compliance prerequisites (can be overridden by env to match compliance scripts)
+# Compliance prerequisites (may be materialized by Integration phase)
 HSM_URL_FROM_ENV="${HSM_URL:-}"
 HSM_URL="${HSM_URL:-https://localhost:8443}"
-CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
-CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
+CLIENT_CERT="${CLIENT_CERT:-}"
+CLIENT_KEY="${CLIENT_KEY:-}"
 
 print_header "HSM Service - Master Test Suite"
 echo "Project: $PROJECT_ROOT"
@@ -165,6 +165,14 @@ run_phase "Security Scans" "./tests/security/security-scan.sh" false
 # ==========================================
 COMPLIANCE_READY=true
 
+# Resolve cert/key after Integration phase because test PKI may be generated there.
+if [ -z "$CLIENT_CERT" ]; then
+    CLIENT_CERT="$(find_client_cert || true)"
+fi
+if [ -z "$CLIENT_KEY" ]; then
+    CLIENT_KEY="$(find_client_key || true)"
+fi
+
 if [ ! -f "$CLIENT_CERT" ] || [ ! -f "$CLIENT_KEY" ]; then
     print_warning "Compliance skipped: client cert/key not found"
     echo "  Expected cert: $CLIENT_CERT"
@@ -188,7 +196,7 @@ if [ "$COMPLIANCE_READY" = true ] && ! timeout 5 curl -sk --cert "$CLIENT_CERT" 
 fi
 
 if [ "$COMPLIANCE_READY" = true ]; then
-    run_phase "Compliance (PCI DSS + OWASP)" "./tests/compliance/pci-dss.sh && ./tests/compliance/owasp-top10.sh"
+    run_phase "Compliance (PCI DSS + OWASP)" "HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/pci-dss.sh && HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/owasp-top10.sh"
 fi
 
 # ==========================================
@@ -216,9 +224,17 @@ if [ "$PHASE_FAILED" -eq 0 ]; then
     echo "  ✓ Integration Tests: 45 test cases"
     echo "  ✓ E2E Scenarios: 3 critical workflows"
     echo "  ✓ Security Scans: 8 security checks"
-    echo "  ✓ Compliance: PCI DSS + OWASP Top 10"
+    if [ "$COMPLIANCE_READY" = true ]; then
+        echo "  ✓ Compliance: PCI DSS + OWASP Top 10"
+    else
+        echo "  ⚠ Compliance: skipped"
+    fi
     echo ""
-    echo "🚀 System is PRODUCTION READY!"
+    if [ "$PHASE_SKIPPED" -eq 0 ]; then
+        echo "🚀 System is PRODUCTION READY!"
+    else
+        echo "⚠ Required phases passed, but some optional phases were skipped"
+    fi
     exit 0
 else
     print_error "❌ SOME REQUIRED TESTS FAILED"

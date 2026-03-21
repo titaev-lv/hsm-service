@@ -48,8 +48,38 @@ find_client_key() {
     return 1
 }
 
+find_revoked_file() {
+    # Prefer explicit test override, then common test/prod locations.
+    for p in \
+        "$PROJECT_ROOT/revoked-test.yaml" \
+        "$PROJECT_ROOT/pki/test/revoked.yaml" \
+        "$PROJECT_ROOT/pki/revoked.yaml"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+
+    # Fallback to path declared in config if present.
+    local configured
+    configured=$(grep -E '^\s*revoked_file:\s*' "$PROJECT_ROOT/config.yaml" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    if [ -n "$configured" ]; then
+        if [ -f "$configured" ]; then
+            echo "$configured"
+            return 0
+        fi
+        if [ -f "$PROJECT_ROOT/$configured" ]; then
+            echo "$PROJECT_ROOT/$configured"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
 CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
+REVOKED_FILE="${REVOKED_FILE:-$(find_revoked_file || true)}"
 HSM_CONNECT="$(echo "$HSM_URL" | sed -E 's#^https?://##; s#/.*$##')"
 if ! echo "$HSM_CONNECT" | grep -q ':'; then
     HSM_CONNECT="${HSM_CONNECT}:443"
@@ -287,12 +317,12 @@ test_acl_denies_unauthorized() {
 
 test_certificate_revocation() {
     print_test "PCI DSS 8.3: Certificate revocation checking"
-    
-    # Check if revoked.yaml exists
-    if [ -f "$PROJECT_ROOT/pki/revoked.yaml" ]; then
+
+    # Check if revocation list file exists (test or prod layout).
+    if [ -n "$REVOKED_FILE" ] && [ -f "$REVOKED_FILE" ]; then
         pass
     else
-        fail "revoked.yaml not found"
+        fail "revocation list not found (tried revoked-test.yaml, pki/test/revoked.yaml, pki/revoked.yaml, config revoked_file)"
     fi
 }
 

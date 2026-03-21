@@ -279,7 +279,7 @@ cleanup_on_exit() {
     if [ "$KEEP_TEST_ENV" = "1" ]; then
         echo ""
         print_header "CLEANUP: Skipped (KEEP_TEST_ENV=1)"
-        print_warning "Preserving test containers, test PKI, and test data for subsequent phases"
+        print_info "Preserving test containers, test PKI, and test data for subsequent phases"
         return
     fi
 
