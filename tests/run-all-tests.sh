@@ -158,7 +158,7 @@ run_phase "E2E Scenarios" "./tests/e2e/run-all.sh" true || exit 1
 # ==========================================
 # PHASE 4: Security Scans
 # ==========================================
-run_phase "Security Scans" "./tests/security/security-scan.sh" false
+run_phase "Security Scans" "bash -o pipefail -c './tests/security/security-scan.sh 2>&1 | sed -E \"/human readability/dI; /please use --format/dI\"'" false
 
 # ==========================================
 # PHASE 5: Compliance

@@ -190,11 +190,34 @@ if command -v trivy &> /dev/null; then
     
     echo "Scanning hsm-service:latest (UNFIXED HIGH/CRITICAL)..."
     set +e
-    trivy image --quiet --format table --scanners vuln --severity HIGH,CRITICAL --ignore-status fixed --exit-code 1 hsm-service:latest > /tmp/trivy-raw-report.txt 2>&1
+    trivy image --quiet --format json --scanners vuln --severity HIGH,CRITICAL --ignore-status fixed --exit-code 1 hsm-service:latest > /tmp/trivy-report.json 2>/tmp/trivy-stderr.txt
     trivy_exit=$?
     set -e
 
-    grep -v "This output is designed for human readability" /tmp/trivy-raw-report.txt | tee /tmp/trivy-report.txt
+    # Keep logs clean from non-actionable banner text while preserving real errors.
+    if [ -s /tmp/trivy-stderr.txt ]; then
+        sed -E '/human readability/dI; /please use --format/dI' /tmp/trivy-stderr.txt > /tmp/trivy-stderr-filtered.txt
+        if [ -s /tmp/trivy-stderr-filtered.txt ]; then
+            cat /tmp/trivy-stderr-filtered.txt
+        fi
+    fi
+
+    if command -v jq >/dev/null 2>&1 && [ -s /tmp/trivy-report.json ]; then
+        jq -r '
+            ["Report Summary", ""],
+            ["Target\tType\tVulnerabilities"],
+            (.Results // [] | map([.Target, (.Type // "-"), ((.Vulnerabilities // []) | length | tostring)] | @tsv)),
+            [""],
+            ["Legend:"],
+            ["- '-': Not scanned"],
+            ["- '0': Clean (no security findings detected)"]
+            | flatten | .[]
+        ' /tmp/trivy-report.json > /tmp/trivy-report.txt
+        cat /tmp/trivy-report.txt
+    else
+        echo "Trivy report saved to /tmp/trivy-report.json"
+        cp /tmp/trivy-report.json /tmp/trivy-report.txt
+    fi
 
     if [ "$trivy_exit" -eq 0 ]; then
         print_success "trivy: No UNFIXED HIGH/CRITICAL vulnerabilities"
