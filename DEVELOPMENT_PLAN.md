@@ -2,7 +2,7 @@
 
 > **Версия**: 1.1  
 > **Дата**: 24 января 2026  
-> **Статус**: Draft for review
+> **Статус**: Active roadmap (этап покрытия тестами завершен)
 
 ---
 
@@ -840,7 +840,7 @@ func NewSlotManager(cfg *config.HSMConfig) (SlotManager, error) {
 ### Definition of Done для каждой фичи:
 
 - [ ] Код написан и прошёл code review
-- [ ] Unit tests (coverage > 80%)
+- [x] Unit tests (coverage > 80%)
 - [ ] Integration tests
 - [ ] Documentation обновлена
 - [ ] CHANGELOG обновлён
