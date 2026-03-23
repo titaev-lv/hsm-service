@@ -10,6 +10,11 @@ Automated compliance testing for HSM Service against industry standards.
 
 **Script**: `pci-dss.sh`
 
+**Decomposed scripts**:
+- `pci-dss-3.6.4.sh` — key rotation lifecycle controls
+- `pci-dss-3.6.6.sh` — split knowledge and dual control readiness
+- `pci-dss-10.2.sh` — audit logging and monitoring controls
+
 **Coverage**:
 - ✅ Requirement 3: Protect Stored Data
   - Key rotation ≤ 90 days
@@ -116,8 +121,12 @@ Failed: 0
 ### Quick Test
 
 ```bash
-# Run both PCI DSS and OWASP tests
-./tests/compliance/pci-dss.sh && ./tests/compliance/owasp-top10.sh
+# Run decomposed PCI checks + aggregated PCI + OWASP
+./tests/compliance/pci-dss-3.6.4.sh && \
+./tests/compliance/pci-dss-3.6.6.sh && \
+./tests/compliance/pci-dss-10.2.sh && \
+./tests/compliance/pci-dss.sh && \
+./tests/compliance/owasp-top10.sh
 ```
 
 ### With Custom Configuration
@@ -135,6 +144,9 @@ CLIENT_KEY=/path/to/key.key \
 ```bash
 # Exit on first failure
 set -e
+./tests/compliance/pci-dss-3.6.4.sh
+./tests/compliance/pci-dss-3.6.6.sh
+./tests/compliance/pci-dss-10.2.sh
 ./tests/compliance/pci-dss.sh
 ./tests/compliance/owasp-top10.sh
 ```

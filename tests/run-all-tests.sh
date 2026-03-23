@@ -196,7 +196,7 @@ if [ "$COMPLIANCE_READY" = true ] && ! timeout 5 curl -sk --cert "$CLIENT_CERT" 
 fi
 
 if [ "$COMPLIANCE_READY" = true ]; then
-    run_phase "Compliance (PCI DSS + OWASP)" "HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/pci-dss.sh && HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/owasp-top10.sh"
+    run_phase "Compliance (PCI DSS + OWASP)" "HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/pci-dss-3.6.4.sh && HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/pci-dss-3.6.6.sh && HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/pci-dss-10.2.sh && HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/pci-dss.sh && HSM_URL='$HSM_URL' CLIENT_CERT='$CLIENT_CERT' CLIENT_KEY='$CLIENT_KEY' ./tests/compliance/owasp-top10.sh"
 fi
 
 # ==========================================

@@ -113,7 +113,8 @@ tests/
 **Статус:** 🟢 Базовый этап завершен
 - ✅ Security attack simulations реализованы и подключены
 - ✅ Compliance phase интегрирована в общий `run-all-tests.sh`
-- ⏳ Следующий шаг: декомпозиция PCI DSS сценариев на подпункты
+- ✅ Декомпозиция PCI DSS сценариев на подпункты выполнена (`3.6.4`, `3.6.6`, `10.2`)
+- ✅ Отдельный сценарий `3.6.6` добавлен в compliance pipeline
 
 **tests/compliance/** - PCI DSS validation:
 ```bash
@@ -121,9 +122,9 @@ tests/
   compliance/
     pci-dss.sh             # ✅ Exists (aggregated checks)
     owasp-top10.sh         # ✅ Exists
-    pci-dss-3.6.4.sh       # ⏳ TODO (split from pci-dss.sh)
-    pci-dss-3.6.6.sh       # ⏳ TODO (Phase 3)
-    pci-dss-10.2.sh        # ⏳ TODO (split from pci-dss.sh)
+    pci-dss-3.6.4.sh       # ✅ Done (split from pci-dss.sh)
+    pci-dss-3.6.6.sh       # ✅ Done (split from pci-dss.sh)
+    pci-dss-10.2.sh        # ✅ Done (split from pci-dss.sh)
 ```
 
 **Где запускать 1.1.3:**
@@ -135,7 +136,7 @@ tests/
 1. Поднять отдельный стенд `docker-compose up -d` в staging-профиле.
 2. Прогнать `tests/security/security-scan.sh` как обязательный pre-release gate.
 3. Прогнать `tests/compliance/pci-dss.sh` и `tests/compliance/owasp-top10.sh`.
-4. Декомпозировать `pci-dss.sh` на подпункты (`3.6.4`, `10.2`) и сделать их отдельными CI jobs.
+4. Декомпозировать `pci-dss.sh` на подпункты (`3.6.4`, `3.6.6`, `10.2`) и сделать их отдельными CI jobs.
 5. Зафиксировать результаты в артефактах CI и в release checklist.
 
 **Критерии успеха:**
