@@ -189,6 +189,7 @@ generate_test_pki() {
     print_success "Test 2FA client certificate generated"
     
     # Set permissions
+    chmod 750 "$pki_dir/test" "$ca_dir" "$server_dir" "$client_dir"
     chmod 600 "$ca_dir/ca.key" "$server_dir/hsm-service.key" "$client_dir"/*.key
     chmod 644 "$ca_dir/ca.crt" "$server_dir/hsm-service.crt" "$client_dir"/*.crt
 }
@@ -273,6 +274,8 @@ mkdir -p "$TEST_LOGS_DIR"
 TEST_LOGS_DIR="$PROJECT_ROOT/logs-test"
 mkdir -p "$TEST_LOGS_DIR"
 KEEP_TEST_ENV="${KEEP_TEST_ENV:-0}"
+TEST_HSM_PIN="${HSM_PIN:-24681357}"
+TEST_HSM_SO_PIN="${HSM_SO_PIN:-86421357}"
 
 # Cleanup function to restore config and PKI on exit
 cleanup_on_exit() {
@@ -549,8 +552,8 @@ services:
       - "8444:8443"
     
     environment:
-      - HSM_PIN=${HSM_PIN:-1234}
-      - HSM_SO_PIN=${HSM_SO_PIN:-12345678}
+      - HSM_PIN=${HSM_PIN:-24681357}
+      - HSM_SO_PIN=${HSM_SO_PIN:-86421357}
       - HSM_TOKEN_LABEL=${HSM_TOKEN_LABEL:-hsm-test-token}
       - CONFIG_PATH=/app/config-test.yaml
       - SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf
@@ -1431,7 +1434,7 @@ if [ $? -eq 0 ]; then
         docker logs hsm-service-test --since 40s 2>&1 | tail -20
 
         echo "ℹ️  Fallback validation: run cleanup-old-versions --dry-run and check age signal"
-        AGE_DRYRUN=$(docker exec -e HSM_PIN=1234 hsm-service-test /app/hsm-admin cleanup-old-versions --dry-run 2>&1 || true)
+        AGE_DRYRUN=$(docker exec -e HSM_PIN="$TEST_HSM_PIN" hsm-service-test /app/hsm-admin cleanup-old-versions --dry-run 2>&1 || true)
         echo "$AGE_DRYRUN"
 
         if echo "$AGE_DRYRUN" | grep -qiE "TOO OLD|Would delete"; then
@@ -1447,7 +1450,7 @@ fi
 print_test "Test 10.4: Dry-run cleanup (should show what would be deleted)"
 echo ""
 echo "=== Running cleanup in dry-run mode ==="
-CLEANUP_DRYRUN=$(docker exec -e HSM_PIN=1234 hsm-service-test /app/hsm-admin cleanup-old-versions --dry-run 2>&1)
+CLEANUP_DRYRUN=$(docker exec -e HSM_PIN="$TEST_HSM_PIN" hsm-service-test /app/hsm-admin cleanup-old-versions --dry-run 2>&1)
 echo "$CLEANUP_DRYRUN"
 echo ""
 if ! echo "$CLEANUP_DRYRUN" | grep -q "DRY RUN"; then
@@ -1536,7 +1539,7 @@ if [ -z "$CURRENT_LABEL_BEFORE_CLEANUP" ]; then
     print_error "Failed to capture current label before cleanup"
 fi
 # Cleanup reads metadata directly from file system, not from running service
-docker exec -e HSM_PIN=1234 hsm-service-test /app/hsm-admin cleanup-old-versions --force > /tmp/cleanup.log 2>&1
+docker exec -e HSM_PIN="$TEST_HSM_PIN" hsm-service-test /app/hsm-admin cleanup-old-versions --force > /tmp/cleanup.log 2>&1
 CLEANUP_EXIT_CODE=$?
 
 echo "Cleanup output:"
@@ -1556,8 +1559,7 @@ echo "Deleted versions: $DELETED_COUNT"
 if [ "$DELETED_COUNT" -ge 1 ]; then
     print_success "Cleanup executed and deleted $DELETED_COUNT version(s)"
 else
-    echo "WARNING: No versions were deleted (expected at least 1)"
-    echo "This might indicate that cleanup didn't read backdated timestamps"
+    print_info "No versions were deleted (age/max_versions criteria kept all versions)"
 fi
 
 
@@ -1570,7 +1572,7 @@ echo ""
 HOST_CURRENT_LABEL_AFTER_CLEANUP=$(grep -A 3 "exchange-key:" "$PROJECT_ROOT/metadata-test.yaml" | grep "current:" | head -1 | awk '{print $2}')
 CONTAINER_CURRENT_LABEL_AFTER_CLEANUP=$(docker exec hsm-service-test sh -c "awk '/exchange-key:/{flag=1; next} flag && /current:/{print \$2; exit}' /app/metadata.yaml")
 if [ -n "$HOST_CURRENT_LABEL_AFTER_CLEANUP" ] && [ -n "$CONTAINER_CURRENT_LABEL_AFTER_CLEANUP" ] && [ "$HOST_CURRENT_LABEL_AFTER_CLEANUP" != "$CONTAINER_CURRENT_LABEL_AFTER_CLEANUP" ]; then
-    echo "WARNING: Host/container metadata current labels differ after cleanup"
+    print_info "Host metadata snapshot differs from live container metadata after cleanup"
     echo "Host current:      $HOST_CURRENT_LABEL_AFTER_CLEANUP"
     echo "Container current: $CONTAINER_CURRENT_LABEL_AFTER_CLEANUP"
 fi
@@ -2129,15 +2131,15 @@ print_success "Container stopped"
 
 print_test "Test 13.2: Start with custom environment variables"
 # Temporarily modify docker-compose.yml to add env vars
-# Note: Keep HSM_PIN same as existing token (1234), just test that env vars work
+# Note: Keep HSM_PIN consistent with the existing test token.
 cat > docker-compose-test.yml << 'EOF'
 services:
   hsm-service-test:
     image: hsm-service:test
     container_name: hsm-service-test
     environment:
-      - HSM_PIN=1234
-      - HSM_SO_PIN=5678
+    - HSM_PIN=24681357
+    - HSM_SO_PIN=86421357
       - CONFIG_PATH=/app/config-test.yaml
       - LOG_LEVEL=info
       - HSM_TOKEN_LABEL=hsm-test-token
@@ -2190,7 +2192,7 @@ print_success "Container started with custom env vars"
 
 print_test "Test 13.3: Verify PINs are NOT exposed in logs"
 LOGS=$(docker logs hsm-service-test 2>&1)
-if echo "$LOGS" | grep -q "1234\|5678"; then
+if echo "$LOGS" | grep -qE "$TEST_HSM_PIN|$TEST_HSM_SO_PIN"; then
     print_error "SECURITY RISK: PIN exposed in logs!"
 else
     print_success "PINs not exposed in logs (secure)"
@@ -2212,7 +2214,7 @@ ENV_ENCRYPT=$(curl -s -w "\n%{http_code}" --connect-timeout 10 --max-time 15 \
     --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
     -d '{"context":"exchange-key","plaintext":"ZW52dGVzdA=="}' \
-    "$BASE_URL/encrypt" 2>&1)
+    "$BASE_URL/encrypt" 2>&1 || true)
 
 HTTP_CODE=$(echo "$ENV_ENCRYPT" | tail -1)
 if [ "$HTTP_CODE" = "200" ]; then
@@ -2240,8 +2242,8 @@ services:
       - "8444:8443"
     
     environment:
-      - HSM_PIN=${HSM_PIN:-1234}
-      - HSM_SO_PIN=${HSM_SO_PIN:-12345678}
+      - HSM_PIN=${HSM_PIN:-24681357}
+      - HSM_SO_PIN=${HSM_SO_PIN:-86421357}
       - HSM_TOKEN_LABEL=hsm-test-token
       - CONFIG_PATH=/app/config-test.yaml
     

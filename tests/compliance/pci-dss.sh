@@ -77,9 +77,36 @@ find_revoked_file() {
     return 1
 }
 
+find_server_cert() {
+    for p in \
+        "$PROJECT_ROOT/pki/test/server/hsm-service.crt" \
+        "$PROJECT_ROOT/pki/server/hsm-service.local.crt" \
+        "$PROJECT_ROOT/pki/server/hsm-service.crt"; do
+        if [ -f "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_service_container() {
+    if docker ps --format '{{.Names}}' | grep -qx 'hsm-service-test'; then
+        echo "hsm-service-test"
+        return 0
+    fi
+    if docker ps --format '{{.Names}}' | grep -qx 'hsm-service'; then
+        echo "hsm-service"
+        return 0
+    fi
+    return 1
+}
+
 CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
 CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 REVOKED_FILE="${REVOKED_FILE:-$(find_revoked_file || true)}"
+SERVER_CERT="${SERVER_CERT:-$(find_server_cert || true)}"
+SERVICE_CONTAINER="${SERVICE_CONTAINER:-$(find_service_container || true)}"
 HSM_CONNECT="$(echo "$HSM_URL" | sed -E 's#^https?://##; s#/.*$##')"
 if ! echo "$HSM_CONNECT" | grep -q ':'; then
     HSM_CONNECT="${HSM_CONNECT}:443"
@@ -228,6 +255,54 @@ test_certificate_validation() {
     fi
 }
 
+test_legacy_tls_rejected() {
+    print_test "PCI DSS 4.2.1: Legacy TLS 1.0/1.1 explicitly rejected"
+
+    local tls10_out tls11_out
+    tls10_out=$(echo | timeout 4 openssl s_client -tls1 -connect "$HSM_CONNECT" -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 || true)
+    tls11_out=$(echo | timeout 4 openssl s_client -tls1_1 -connect "$HSM_CONNECT" -cert "$CLIENT_CERT" -key "$CLIENT_KEY" 2>&1 || true)
+
+    if echo "$tls10_out $tls11_out" | grep -qiE "handshake failure|alert protocol version|wrong version number|unsupported protocol|no protocols available"; then
+        pass
+    else
+        fail "Legacy TLS may still be accepted (no explicit reject signal for TLS1.0/1.1)"
+    fi
+}
+
+test_server_certificate_strength() {
+    print_test "PCI DSS 4.2.1: Server certificate validity and key strength"
+
+    if [ -z "$SERVER_CERT" ] || [ ! -f "$SERVER_CERT" ]; then
+        fail "Server certificate file not found"
+        return
+    fi
+
+    local expiry expiry_epoch now_epoch days_left key_size
+    expiry=$(openssl x509 -in "$SERVER_CERT" -noout -enddate 2>/dev/null | cut -d= -f2)
+    if [ -z "$expiry" ]; then
+        fail "Cannot read certificate expiry"
+        return
+    fi
+
+    expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null || true)
+    now_epoch=$(date +%s)
+    if [ -z "$expiry_epoch" ]; then
+        fail "Cannot parse certificate expiry date"
+        return
+    fi
+
+    days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+    key_size=$(openssl x509 -in "$SERVER_CERT" -noout -text 2>/dev/null | grep "Public-Key:" | grep -o "[0-9]\+" | head -1)
+
+    if [ "$days_left" -lt 30 ]; then
+        fail "Certificate expires too soon ($days_left days left)"
+    elif [ -z "$key_size" ] || [ "$key_size" -lt 2048 ]; then
+        fail "Server certificate key size too small (${key_size:-unknown})"
+    else
+        pass
+    fi
+}
+
 # ============================================================
 # Requirement 10: Logging and Monitoring
 # ============================================================
@@ -272,7 +347,7 @@ test_no_plaintext_in_logs() {
     
     # Check Docker logs for plaintext
     sleep 1
-    if docker logs hsm-service 2>&1 | tail -10 | grep -q "U2VjcmV0RGF0YQ=="; then
+    if [ -n "$SERVICE_CONTAINER" ] && docker logs "$SERVICE_CONTAINER" 2>&1 | tail -50 | grep -q "U2VjcmV0RGF0YQ=="; then
         fail "Plaintext found in logs!"
     else
         pass
@@ -367,33 +442,48 @@ test_metrics_available() {
 
 test_no_default_pins() {
     print_test "Security: No default HSM PINs (not 1234)"
-    
-    # Check softhsm2.conf for default PINs
-    if [ -f "$PROJECT_ROOT/softhsm2.conf" ]; then
-        warn "Cannot verify HSM PINs from config, manual check required"
+
+    if [ -z "$SERVICE_CONTAINER" ]; then
+        warn "Cannot determine active service container to inspect PIN env"
         pass
+        return
+    fi
+
+    local pin so_pin
+    pin=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$SERVICE_CONTAINER" 2>/dev/null | grep '^HSM_PIN=' | head -1 | cut -d= -f2-)
+    so_pin=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$SERVICE_CONTAINER" 2>/dev/null | grep '^HSM_SO_PIN=' | head -1 | cut -d= -f2-)
+
+    if [ -z "$pin" ] || [ -z "$so_pin" ]; then
+        warn "HSM_PIN/HSM_SO_PIN env not found in container"
+        pass
+    elif [ "$pin" = "1234" ] || [ "$so_pin" = "12345678" ]; then
+        fail "Default HSM PIN values detected in container env"
     else
-        warn "softhsm2.conf not found in project root"
         pass
     fi
 }
 
 test_secure_permissions() {
     print_test "Security: Secure file permissions on keys/certs"
-    
-    # Check PKI directory permissions
-    if [ -d "$PROJECT_ROOT/pki/server" ]; then
-        PERMS=$(stat -c %a "$PROJECT_ROOT/pki/server" 2>/dev/null || stat -f %A "$PROJECT_ROOT/pki/server" 2>/dev/null)
-        
-        # Should be 700 or 750
-        if [[ "$PERMS" == "700" || "$PERMS" == "750" ]]; then
-            pass
-        else
-            warn "PKI directory has permissive permissions: $PERMS"
-            pass
-        fi
+
+    local pki_dir perms
+    if [ -d "$PROJECT_ROOT/pki/test/server" ]; then
+        pki_dir="$PROJECT_ROOT/pki/test/server"
+    elif [ -d "$PROJECT_ROOT/pki/server" ]; then
+        pki_dir="$PROJECT_ROOT/pki/server"
     else
         warn "PKI directory not found"
+        pass
+        return
+    fi
+
+    perms=$(stat -c %a "$pki_dir" 2>/dev/null || stat -f %A "$pki_dir" 2>/dev/null)
+
+    # Should be 700 or 750
+    if [[ "$perms" == "700" || "$perms" == "750" ]]; then
+        pass
+    else
+        warn "PKI directory has permissive permissions: $perms"
         pass
     fi
 }
@@ -427,6 +517,8 @@ main() {
     test_tls_version
     test_strong_ciphers
     test_certificate_validation
+    test_legacy_tls_rejected
+    test_server_certificate_strength
     
     echo ""
     echo "=== PCI DSS Requirement 8: Access Control ==="

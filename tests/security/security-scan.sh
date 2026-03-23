@@ -189,7 +189,14 @@ if command -v trivy &> /dev/null; then
     fi
     
     echo "Scanning hsm-service:latest (UNFIXED HIGH/CRITICAL)..."
-    if trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-status fixed --exit-code 1 hsm-service:latest 2>&1 | tee /tmp/trivy-report.txt; then
+    set +e
+    trivy image --quiet --format table --scanners vuln --severity HIGH,CRITICAL --ignore-status fixed --exit-code 1 hsm-service:latest > /tmp/trivy-raw-report.txt 2>&1
+    trivy_exit=$?
+    set -e
+
+    grep -v "This output is designed for human readability" /tmp/trivy-raw-report.txt | tee /tmp/trivy-report.txt
+
+    if [ "$trivy_exit" -eq 0 ]; then
         print_success "trivy: No UNFIXED HIGH/CRITICAL vulnerabilities"
     else
         print_error "trivy: UNFIXED HIGH/CRITICAL vulnerabilities found!"
