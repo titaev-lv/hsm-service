@@ -52,10 +52,11 @@
 ### Критические пробелы
 
 🔴 **High Priority**
-1. **High Availability**: Single point of failure
-2. **Hardware HSM**: Only SoftHSM support
-3. **Backup/Restore**: Manual, no automation
-4. **PCI DSS Split Knowledge**: Single PIN для всех ключей
+1. **PCI DSS 3.6.6 Runtime Implementation (TOP-1)**: Split knowledge is only compliance-declared in config/tests, real enforcement not implemented yet
+2. **High Availability**: Single point of failure
+3. **Hardware HSM**: Only SoftHSM support
+4. **Backup/Restore**: Manual, no automation
+5. **PCI DSS Split Knowledge**: Single PIN для всех ключей
 
 🟠 **Medium Priority**
 6. **Audit API**: No structured audit queries
@@ -462,7 +463,7 @@ hsm-admin list --verbose
 - ✅ **Isolation**: Compromise of trading PIN ≠ access to 2FA keys
 - ✅ **Separation of Duties**: Different teams manage different slots
 - ✅ **Audit trail**: Per-slot logging
-- ✅ **PCI DSS 3.6.6**: Split knowledge compliance
+- ⏳ **PCI DSS 3.6.6**: Split knowledge runtime implementation pending (current checks are declarative)
 - ✅ **Principle of Least Privilege**: Services only get PINs they need
 
 **Effort:** 7 дней разработки + 3 дня тестирования
@@ -1113,6 +1114,8 @@ volumes:
 
 ### 3.2 Split Knowledge (Shamir Secret Sharing) 🟠 HIGH
 
+**Статус на 2026-03-24:** 🔴 TOP-1 в backlog, runtime enforcement еще не реализован (текущая проверка 3.6.6 носит декларативный характер)
+
 **PCI DSS 3.6.6 Requirement:**
 > "Cryptographic keys shall be stored in the fewest possible locations and forms.
 > Key-encryption keys shall be protected by using at least one of the following:
@@ -1314,7 +1317,7 @@ hsm-admin reconstruct-pin \
 ```
 
 **PCI DSS Compliance:**
-- ✅ Requirement 3.6.6: Split knowledge implemented
+- ⏳ Requirement 3.6.6: Split knowledge runtime implementation pending (Phase 3.2)
 - ✅ Requirement 12.3.8: Security awareness (key ceremony training)
 - ✅ Dual control: Multiple people required for critical operations
 

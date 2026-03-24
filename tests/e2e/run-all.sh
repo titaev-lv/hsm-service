@@ -33,6 +33,30 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 
+reset_revocations() {
+    # Ensure deterministic baseline between repeated local runs.
+    if [ -f "$PROJECT_ROOT/revoked-test.yaml" ]; then
+        cat > "$PROJECT_ROOT/revoked-test.yaml" << EOF
+revoked_certificates: []
+EOF
+    fi
+
+    local container=""
+    if docker ps --format '{{.Names}}' | grep -qx 'hsm-service-test'; then
+        container="hsm-service-test"
+    elif docker ps --format '{{.Names}}' | grep -qx 'hsm-service'; then
+        container="hsm-service"
+    fi
+
+    if [ -n "$container" ]; then
+        printf 'revoked_certificates: []\n' | docker exec -i "$container" sh -lc 'cat > /app/revoked.yaml' >/dev/null 2>&1 || true
+    fi
+
+    # ACL checker reloads revoked.yaml every 30s; wait a bit to guarantee fresh state.
+    echo "Refreshing ACL revocation cache (35s)..."
+    sleep 35
+}
+
 # Function to run a test
 run_test() {
     local test_name="$1"
@@ -47,12 +71,15 @@ run_test() {
         return 1
     fi
     
-    if bash "$test_script" 2>&1 | tee "/tmp/e2e-${test_name}.log"; then
+    bash "$test_script" 2>&1 | tee "/tmp/e2e-${test_name}.log"
+    local exit_code=${PIPESTATUS[0]}
+
+    if [ "$exit_code" -eq 0 ]; then
         print_success "$test_name PASSED"
         PASSED=$((PASSED + 1))
         return 0
     else
-        print_error "$test_name FAILED (see /tmp/e2e-${test_name}.log)"
+        print_error "$test_name FAILED (exit code: $exit_code, see /tmp/e2e-${test_name}.log)"
         FAILED=$((FAILED + 1))
         return 1
     fi
@@ -61,6 +88,8 @@ run_test() {
 # ==========================================
 # Run E2E Tests
 # ==========================================
+
+reset_revocations
 
 # Test 1: Key Rotation Workflow
 run_test "Key Rotation" "scenarios/key-rotation-e2e.sh"

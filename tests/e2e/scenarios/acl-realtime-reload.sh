@@ -63,6 +63,7 @@ find_ca_cert() {
 
 find_revoked_file() {
     for p in \
+        "$PROJECT_ROOT/revoked-test.yaml" \
         "$PROJECT_ROOT/pki/test/revoked.yaml" \
         "$PROJECT_ROOT/pki/revoked.yaml"; do
         if [ -f "$p" ]; then
@@ -70,6 +71,33 @@ find_revoked_file() {
             return 0
         fi
     done
+
+    # Fallback to path declared in config if present.
+    local configured
+    configured=$(grep -E '^\s*revoked_file:\s*' "$PROJECT_ROOT/config.yaml" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    if [ -n "$configured" ]; then
+        if [ -f "$configured" ]; then
+            echo "$configured"
+            return 0
+        fi
+        if [ -f "$PROJECT_ROOT/$configured" ]; then
+            echo "$PROJECT_ROOT/$configured"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+find_service_container() {
+    if docker ps --format '{{.Names}}' | grep -qx 'hsm-service-test'; then
+        echo "hsm-service-test"
+        return 0
+    fi
+    if docker ps --format '{{.Names}}' | grep -qx 'hsm-service'; then
+        echo "hsm-service"
+        return 0
+    fi
     return 1
 }
 
@@ -84,6 +112,7 @@ CA_CERT="${CA_CERT:-$(find_ca_cert || true)}"
 CLIENT_CERT="${CLIENT_CERT:-$(find_client_cert || true)}"
 CLIENT_KEY="${CLIENT_KEY:-$(find_client_key || true)}"
 REVOKED_FILE="${REVOKED_FILE:-$(find_revoked_file || true)}"
+SERVICE_CONTAINER="${SERVICE_CONTAINER:-$(find_service_container || true)}"
 
 if [ -z "$CA_CERT" ] || [ ! -f "$CA_CERT" ]; then
     print_error "CA cert not found"
@@ -117,29 +146,48 @@ echo "Client CN: $CLIENT_CN"
 echo ""
 
 # Backup original revoked.yaml
-cp "$REVOKED_FILE" "${REVOKED_FILE}.backup"
+if [ -n "$SERVICE_CONTAINER" ]; then
+    docker cp "$SERVICE_CONTAINER":/app/revoked.yaml "${REVOKED_FILE}.backup"
+else
+    cp "$REVOKED_FILE" "${REVOKED_FILE}.backup"
+fi
 
-# Step 1: Verify client can connect initially
-print_test "Step 1: Verify client can connect (baseline)"
+# Step 1: Verify client can access protected operation initially
+print_test "Step 1: Verify client can encrypt (baseline)"
+BASELINE_PAYLOAD='{"context":"exchange-key","plaintext":"QUNMIC1iYXNlbGluZQ=="}'
 RESPONSE=$(curl -s -w "\n%{http_code}" --cacert "$CA_CERT" --cert "$CLIENT_CERT" --key "$CLIENT_KEY" \
-    "$BASE_URL/health" 2>&1)
+    -H "Content-Type: application/json" -d "$BASELINE_PAYLOAD" "$BASE_URL/encrypt" 2>&1)
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-if [ "$HTTP_CODE" != "200" ]; then
+HTTP_BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" != "200" ] || ! echo "$HTTP_BODY" | grep -q "ciphertext"; then
     echo "HTTP Code: $HTTP_CODE"
-    print_error "Client cannot connect initially"
+    echo "Response: $HTTP_BODY"
+    print_error "Client cannot perform baseline encrypt"
 fi
-print_success "Client successfully connected (baseline)"
+print_success "Client successfully encrypted (baseline)"
 
 # Step 2: Add client to revoked list
 print_test "Step 2: Add client to revocation list"
-cat >> "$REVOKED_FILE" << EOF
-
-revocations:
-  - cn: "$CLIENT_CN"
-    reason: "E2E test revocation"
-    revoked_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+REVOCATION_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [ -n "$SERVICE_CONTAINER" ]; then
+        printf 'revoked_certificates:\n  - cn: "%s"\n    reason: "E2E test revocation"\n    date: "%s"\n' \
+                "$CLIENT_CN" "$REVOCATION_DATE" | docker exec -i "$SERVICE_CONTAINER" sh -lc 'cat > /app/revoked.yaml'
+else
+        cat > "$REVOKED_FILE" << EOF
+revoked_certificates:
+    - cn: "$CLIENT_CN"
+        reason: "E2E test revocation"
+        date: "$REVOCATION_DATE"
 EOF
+fi
+# Some filesystems expose coarse timestamp precision; force mtime bump for reload watcher.
+sleep 1
+if [ -n "$SERVICE_CONTAINER" ]; then
+    docker exec "$SERVICE_CONTAINER" sh -lc 'touch /app/revoked.yaml'
+else
+    touch "$REVOKED_FILE"
+fi
 print_success "Added $CLIENT_CN to revoked.yaml"
 
 # Step 3: Wait for auto-reload (30 seconds + buffer)
@@ -151,10 +199,11 @@ done
 echo ""
 print_success "Auto-reload period elapsed"
 
-# Step 4: Verify client is now blocked
+# Step 4: Verify client is now blocked on protected endpoint
 print_test "Step 4: Verify client is blocked"
+BLOCKED_PAYLOAD='{"context":"exchange-key","plaintext":"QUNMIC1ibG9ja2Vk"}'
 BLOCKED_RESPONSE=$(curl -s -w "\n%{http_code}" --cacert "$CA_CERT" --cert "$CLIENT_CERT" --key "$CLIENT_KEY" \
-    "$BASE_URL/health" 2>&1)
+    -H "Content-Type: application/json" -d "$BLOCKED_PAYLOAD" "$BASE_URL/encrypt" 2>&1)
 
 BLOCKED_CODE=$(echo "$BLOCKED_RESPONSE" | tail -1)
 BLOCKED_BODY=$(echo "$BLOCKED_RESPONSE" | head -n -1)
@@ -164,14 +213,29 @@ if [ "$BLOCKED_CODE" = "403" ] || echo "$BLOCKED_BODY" | grep -qi "revoked\|forb
 else
     echo "HTTP Code: $BLOCKED_CODE"
     echo "Response: $BLOCKED_BODY"
-    # Restore original file before failing
-    mv "${REVOKED_FILE}.backup" "$REVOKED_FILE"
+    # Restore original content without inode swap (important for bind-mounted files)
+    if [ -n "$SERVICE_CONTAINER" ]; then
+        cat "${REVOKED_FILE}.backup" | docker exec -i "$SERVICE_CONTAINER" sh -lc 'cat > /app/revoked.yaml'
+    else
+        cp "${REVOKED_FILE}.backup" "$REVOKED_FILE"
+    fi
     print_error "Client was NOT blocked (ACL reload failed)"
 fi
 
 # Step 5: Remove from revoked list
 print_test "Step 5: Restore client (remove from revocation list)"
-mv "${REVOKED_FILE}.backup" "$REVOKED_FILE"
+if [ -n "$SERVICE_CONTAINER" ]; then
+    cat "${REVOKED_FILE}.backup" | docker exec -i "$SERVICE_CONTAINER" sh -lc 'cat > /app/revoked.yaml'
+else
+    cp "${REVOKED_FILE}.backup" "$REVOKED_FILE"
+fi
+sleep 1
+if [ -n "$SERVICE_CONTAINER" ]; then
+    docker exec "$SERVICE_CONTAINER" sh -lc 'touch /app/revoked.yaml'
+else
+    touch "$REVOKED_FILE"
+fi
+rm -f "${REVOKED_FILE}.backup"
 print_success "Removed $CLIENT_CN from revoked.yaml"
 
 # Step 6: Wait for auto-reload again
@@ -183,20 +247,8 @@ done
 echo ""
 print_success "Auto-reload period elapsed"
 
-# Step 7: Verify client can connect again
-print_test "Step 7: Verify client can connect again"
-RESTORED_RESPONSE=$(curl -s -w "\n%{http_code}" --cacert "$CA_CERT" --cert "$CLIENT_CERT" --key "$CLIENT_KEY" \
-    "$BASE_URL/health" 2>&1)
-
-RESTORED_CODE=$(echo "$RESTORED_RESPONSE" | tail -1)
-if [ "$RESTORED_CODE" != "200" ]; then
-    echo "HTTP Code: $RESTORED_CODE"
-    print_error "Client still blocked after restoration"
-fi
-print_success "Client successfully restored (HTTP $RESTORED_CODE)"
-
-# Step 8: Test encryption to ensure full functionality
-print_test "Step 8: Verify full functionality (encrypt/decrypt)"
+# Step 7: Verify client can encrypt again
+print_test "Step 7: Verify client can encrypt again"
 PLAINTEXT="QUNMIFJlbG9hZCBUZXN0"
 ENC_RESPONSE=$(curl -s --cacert "$CA_CERT" --cert "$CLIENT_CERT" --key "$CLIENT_KEY" \
     -H "Content-Type: application/json" \
@@ -207,7 +259,7 @@ if ! echo "$ENC_RESPONSE" | grep -q "ciphertext"; then
     echo "Response: $ENC_RESPONSE"
     print_error "Encryption failed after restoration"
 fi
-print_success "Full functionality verified"
+print_success "Client successfully restored"
 
 echo ""
 echo "=========================================="
@@ -215,11 +267,10 @@ print_success "✓ ACL Real-time Reload E2E Test PASSED"
 echo "=========================================="
 echo ""
 echo "Summary:"
-echo "  1. ✓ Client connected successfully (baseline)"
+echo "  1. ✓ Client encrypted successfully (baseline)"
 echo "  2. ✓ Client added to revocation list"
 echo "  3. ✓ Auto-reload detected changes (30s)"
-echo "  4. ✓ Client correctly blocked (403 Forbidden)"
+echo "  4. ✓ Client correctly blocked on encrypt endpoint"
 echo "  5. ✓ Client removed from revocation list"
 echo "  6. ✓ Auto-reload detected restoration (30s)"
 echo "  7. ✓ Client successfully restored"
-echo "  8. ✓ Full functionality verified"
