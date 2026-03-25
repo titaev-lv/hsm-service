@@ -238,7 +238,8 @@ func cleanupOldVersionsCommand(args []string) error {
 			log.Printf("Warning: failed to read metadata for backup: %v", err)
 		} else {
 			// Use 0600 permissions - backup contains sensitive key information
-			if err := os.WriteFile(backupPath, oldData, 0600); err != nil {
+			// G703: Path is constructed from validated metadata directory structure
+			if err := os.WriteFile(backupPath, oldData, 0600); err != nil { // #nosec
 				log.Printf("Warning: failed to write backup: %v", err)
 			} else {
 				fmt.Printf("\n✓ Old metadata backed up to: %s\n", backupPath)

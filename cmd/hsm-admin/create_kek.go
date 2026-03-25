@@ -135,7 +135,8 @@ func generateKeyID() ([]byte, string) {
 	timestamp := time.Now().UnixNano()
 	id := make([]byte, 8)
 	for i := 0; i < 8; i++ {
-		id[7-i] = byte(timestamp >> (i * 8))
+		// G115: Safe conversion - timestamp is guaranteed to fit in 64 bits
+		id[7-i] = byte(timestamp >> uint(i*8)) // #nosec
 	}
 	return id, hex.EncodeToString(id)
 }

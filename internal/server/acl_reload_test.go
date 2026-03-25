@@ -349,6 +349,6 @@ func TestACLStopAutoReload(t *testing.T) {
 	// Calling stop again should be safe
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel2()
-	err = checker.StopAutoReload(ctx2)
+	_ = checker.StopAutoReload(ctx2)
 	// Should not hang or panic
 }
