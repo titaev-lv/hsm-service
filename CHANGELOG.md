@@ -1,5 +1,35 @@
 # Changelog 
 
+## v2.1.0 - 2026-03-25
+
+### Features
+- Add startup reconciliation of KEK versions from `metadata.yaml` to HSM token state in `init-hsm.sh`
+- Improve token initialization portability by switching SoftHSM init from fixed `--slot 0` to `--free`
+- Expand PCI DSS test structure by decomposing compliance checks into dedicated scripts
+
+### Security Fixes
+- Resolve additional static analysis findings in admin/runtime paths (`G115`, `G407`, `G703`)
+- Improve Docker security baseline by pinning Alpine image version and tightening security scan coverage
+- Fix unhandled error paths (`G104`) in test/compliance-related flows
+
+### Reliability
+- Fix false optional-skip behavior in the master test runner by correcting Security Scans `sed` pipeline
+- Harden KEK startup checks to use real HSM availability (`list-kek --verbose`) instead of metadata-only presence
+- Stabilize integration startup behavior and reduce init/orphan edge-case failures
+
+### Tests
+- Harden integration/E2E scenarios for isolated test compose environments (`config-test.yaml`, `metadata-test.yaml`, `revoked-test.yaml`)
+- Improve key-rotation/disaster-recovery/ACL real-time reload scenario robustness
+- Expand dry-run and safe-path coverage, plus broader security/compliance orchestration coverage
+- Keep Security Scans optional but executable end-to-end on prepared environments
+
+### Compliance
+- Decompose PCI DSS validation into focused scripts and fix test warning/error handling
+- Preserve explicit warning semantics for optional split-knowledge controls and align tests with current implementation status
+
+### Documentation
+- Update architecture/plan/runbook documents to reflect testing workflow hardening and compliance status clarifications
+
 ## v2.0.1 - 2026-03-02
 
 ### Features
