@@ -16,6 +16,8 @@ import (
 	"github.com/titaev-lv/hsm-service/internal/server"
 )
 
+var version = "local-build"
+
 func main() {
 	// 1. Load configuration
 	configPath := getConfigPath()
@@ -35,6 +37,7 @@ func main() {
 
 	logServer := slog.With("module", "server")
 	logKeyManager := slog.With("module", "keymanager")
+	logServer.Info("service bootstrap complete", "version", version)
 
 	// 2. Load metadata
 	metadataPath := cfg.HSM.MetadataFile
@@ -121,7 +124,7 @@ func main() {
 	// 8. Start server in goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		logServer.Info("starting HSM service", "port", cfg.Server.Port)
+		logServer.Info("starting HSM service", "port", cfg.Server.Port, "version", version)
 		if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
 		}

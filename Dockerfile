@@ -17,8 +17,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build main service
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o hsm-service .
+# Build main service with version from VERSION file
+RUN HSM_VERSION="$(cat VERSION)" && \
+    CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags="-X main.version=${HSM_VERSION}" \
+    -o hsm-service .
 
 # Build admin CLI
 RUN cd cmd/hsm-admin && CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o ../../hsm-admin .
